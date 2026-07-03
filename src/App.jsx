@@ -127,11 +127,11 @@ export default function App() {
                 <video
                   key={index}
                   src={`videos/travel${num}.mp4`}
-                  autoPlay
                   muted
                   loop
                   playsInline
-                  controls
+                  onMouseEnter={(e) => e.target.play()}
+                  onMouseLeave={(e) => e.target.pause()}
                 />
               ))}
             </div>
