@@ -78,6 +78,7 @@ export default function App() {
         <h2>周杰 / Dylan</h2>
         <nav>
           <a href="#about">About</a>
+          <a href="#daily">Daily</a>
           <a href="#reading">Reading</a>
           <a href="#travel">Travel</a>
           <a href="#photography">Photography</a>
@@ -96,6 +97,72 @@ export default function App() {
           <p>
             因为天气好，因为天气不好，因为天气感刚好。现居成都。
           </p>
+        </section>
+
+        <section id="daily" className="daily-section">
+          <h2>Daily</h2>
+          <div className="layout-grid">
+            <aside className="col-timeline">
+              <div className="timeline-header">Timeline</div>
+              <div className="timeline-track">
+                <div className="timeline-node active">Jul 03, 2026</div>
+                <div className="timeline-node">Jul 01, 2026</div>
+                <div className="timeline-node">Jun 28, 2026</div>
+                <div className="timeline-node">Jun 15, 2026</div>
+              </div>
+            </aside>
+
+            <main className="col-content">
+              <article className="entry" id="post-1">
+                <div className="entry-date">Jul 03, 2026</div>
+                <div className="entry-text">
+                  重新构思了博客的架构。决定把复杂的长篇写作和轻量的日常碎片区分开来。这个 Daily 模块会作为我个人的数字后花园，不需要长篇大论，哪怕只是一张图、一句话。
+                </div>
+              </article>
+
+              <article className="entry" id="post-2">
+                <div className="entry-date">Jul 01, 2026</div>
+                <div className="entry-text">
+                  周末去看了新办的摄影展，光影布置得非常克制、精妙。灵感爆棚的一天。
+                </div>
+                <div className="entry-media media-grid-2">
+                  <div style={{ backgroundColor: "#d5d4d0" }}></div>
+                  <div style={{ backgroundColor: "#e4e4e1" }}></div>
+                </div>
+              </article>
+
+              <article className="entry" id="post-3">
+                <div className="entry-date">Jun 28, 2026</div>
+                <div className="entry-text">
+                  暴雨过后的傍晚，捕捉到几秒绝美的天空。
+                </div>
+                <div className="entry-media media-single">
+                  <div style={{ backgroundColor: "#2c3e50", height: "400px", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.5)" }}>
+                    [ Video Player - 悬停播放 ]
+                  </div>
+                </div>
+              </article>
+
+              <article className="entry" id="post-4">
+                <div className="entry-date">Jun 15, 2026</div>
+                <div className="entry-media media-grid-3">
+                  <div style={{ backgroundColor: "#a18cd1" }}></div>
+                  <div style={{ backgroundColor: "#fbc2eb" }}></div>
+                  <div style={{ backgroundColor: "#84fab0" }}></div>
+                </div>
+              </article>
+            </main>
+
+            <aside className="col-editor">
+              <div className="editor-panel">
+                <div className="editor-header">
+                  <span>Write Update</span>
+                  <span className="status-dot" title="System Online"></span>
+                </div>
+                <textarea className="editor-textarea" placeholder="记录今天的碎片..."></textarea>
+              </div>
+            </aside>
+          </div>
         </section>
 
         <section id="reading">

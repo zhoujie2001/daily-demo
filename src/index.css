@@ -433,3 +433,119 @@ h2 {
     opacity: 1;
   }
 }
+
+/* ===== Daily Section (Refined Minimalism) ===== */
+.daily-section {
+  --bg-primary: #fff;
+  --bg-secondary: #f9f9f9;
+  --text-primary: #222;
+  --text-secondary: #888;
+  --border-color: #eaeaea;
+  --accent-color: #222;
+  
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+}
+
+.daily-section .layout-grid {
+  display: grid;
+  grid-template-columns: 180px minmax(300px, 1fr) 300px;
+  gap: 3rem;
+  align-items: start;
+}
+
+.col-timeline {
+  position: sticky;
+  top: 80px;
+}
+
+.timeline-header {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 2rem;
+  font-weight: 600;
+}
+
+.timeline-track {
+  position: relative;
+  border-left: 1px solid var(--border-color);
+  padding-left: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.timeline-node {
+  position: relative;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.3s ease;
+}
+
+.timeline-node:hover,
+.timeline-node.active {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.timeline-node::before {
+  content: "";
+  position: absolute;
+  left: -1.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0.8rem;
+  height: 1px;
+  background-color: var(--border-color);
+  transition: background-color 0.3s ease;
+}
+
+.timeline-node.active::before {
+  background-color: var(--text-primary);
+  width: 1.5rem;
+}
+
+.col-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4rem;
+}
+
+.entry-date {
+  display: none;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+
+.entry-text {
+  font-size: 1rem;
+  margin-bottom: 1.5rem;
+  color: var(--text-primary);
+}
+
+.entry-media {
+  display: grid;
+  gap: 0.5rem;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.entry-media div {
+  width: 100%;
+  height: 100%;
+  background-color: var(--bg-secondary);
+}
+
+.media-single { grid-template-columns: 1fr; max-height: 500px; min-height: 200px; }
+.media-grid-2 { grid-template-columns: 1fr 1fr; aspect-ratio: 16/9; }
+.media-grid-3 { grid-template-columns: 1fr 1fr 1fr; aspect-ratio: 21/9; }
+
+.col-editor {
+  position: sticky;
+  top: 80px;
+}
