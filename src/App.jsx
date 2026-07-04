@@ -64,6 +64,7 @@ export default function App() {
     const newAttachments = files.map(file => ({
       id: Math.random().toString(36).substr(2, 9),
       name: file.name,
+      file: file,
       type: file.type.startsWith('image/') ? 'image' : 'video',
       url: URL.createObjectURL(file)
     }));
@@ -85,29 +86,99 @@ export default function App() {
   };
 
   
-  const [posts, setPosts] = useState(dailyData);
+  const [posts, setPosts] = useState([]);
+
+  useEffect(() => {
+    fetch('http://localhost:3000/api/diary')
+      .then(res => res.json())
+      .then(data => {
+        // map backend structure to frontend structure
+        const mappedData = data.map(item => ({
+          ...item,
+          media: typeof item.media === 'string' ? JSON.parse(item.media) : item.media,
+          id: `post-${item.id}`
+        }));
+        setPosts(mappedData);
+      })
+      .catch(err => console.error("Failed to fetch diary:", err));
+  }, []);
 
   const handlePublish = async () => {
     if (!updateText.trim() && attachments.length === 0) return;
 
-    // Simulate saving file locally and updating posts state
-    const newPost = {
-      id: `post-${Math.random().toString(36).substr(2, 9)}`,
-      date: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+    // Note: Real authentication token would be passed here
+    // Upload files first if any
+    const finalMedia = [];
+
+    let loginData;
+    try {
+      const loginRes = await fetch('http://localhost:3000/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'testuser', password: 'password123' })
+      });
+      loginData = await loginRes.json();
+    } catch(e) {
+      console.error(e);
+      return;
+    }
+
+    if (attachments.length > 0) {
+      const formData = new FormData();
+      attachments.forEach(att => {
+        if (att.file) {
+          formData.append('files', att.file);
+        }
+      });
+
+      if (formData.has('files')) {
+         const uploadRes = await fetch('http://localhost:3000/api/upload', {
+           method: 'POST',
+           headers: { 'Authorization': `Bearer ${loginData.token}` },
+           body: formData
+         });
+         const uploadData = await uploadRes.json();
+
+         if (uploadData.urls) {
+           uploadData.urls.forEach((url, i) => {
+             finalMedia.push({
+               type: attachments[i].type,
+               url: `http://localhost:3000${url}`,
+               value: `http://localhost:3000${url}`
+             });
+           });
+         }
+      }
+    }
+
+    const newPostData = {
       text: updateText.trim(),
-      media: attachments.map(att => ({
-        type: att.type,
-        url: att.url,
-        value: att.url
-      })),
+      media: finalMedia.length > 0 ? finalMedia : attachments.map(att => ({type: att.type, url: att.url, value: att.url})),
       mediaGrid: attachments.length === 1 ? 'media-single' :
                  attachments.length === 2 ? 'media-grid-2' :
                  attachments.length >= 3 ? 'media-grid-3' : ''
     };
 
-    setPosts(prev => [newPost, ...prev]);
-    setUpdateText("");
-    setAttachments([]);
+    fetch('http://localhost:3000/api/diary', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${loginData.token}`
+      },
+      body: JSON.stringify(newPostData)
+    })
+    .then(res => res.json())
+    .then(item => {
+      const newPost = {
+        ...item,
+        media: typeof item.media === 'string' ? JSON.parse(item.media) : item.media,
+        id: `post-${item.id}`
+      };
+      setPosts(prev => [newPost, ...prev]);
+      setUpdateText("");
+      setAttachments([]);
+    })
+    .catch(err => console.error("Publish failed:", err));
   };
 
   const books = [
