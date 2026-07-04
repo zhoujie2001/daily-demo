@@ -1,5 +1,5 @@
 // import { useState } from "react";
-import { Mail, ExternalLink } from "lucide-react";
+import { Mail, ExternalLink, Image as ImageIcon, Film, Link as LinkIcon, Send, X } from "lucide-react";
 import { useEffect, useRef } from "react"; 
 import {useState } from "react";
 
@@ -55,6 +55,34 @@ export default function App() {
 
 
   const [activePhoto, setActivePhoto] = useState(null);
+  const [updateText, setUpdateText] = useState("");
+  const [attachments, setAttachments] = useState([]);
+
+  const handleFileUpload = (e) => {
+    const files = Array.from(e.target.files);
+    const newAttachments = files.map(file => ({
+      id: Math.random().toString(36).substr(2, 9),
+      name: file.name,
+      type: file.type.startsWith('image/') ? 'image' : 'video',
+      url: URL.createObjectURL(file)
+    }));
+    setAttachments(prev => [...prev, ...newAttachments]);
+    // Reset file input
+    e.target.value = '';
+  };
+
+  const removeAttachment = (id) => {
+    setAttachments(prev => {
+      const filtered = prev.filter(att => att.id !== id);
+      // Revoke object URL to prevent memory leaks
+      const removed = prev.find(att => att.id === id);
+      if (removed && removed.url) {
+        URL.revokeObjectURL(removed.url);
+      }
+      return filtered;
+    });
+  };
+
   
   const books = [
     { title: "霍乱时期的爱情", year: "2024" },
@@ -162,10 +190,53 @@ export default function App() {
             <aside className="col-editor">
               <div className="editor-panel">
                 <div className="editor-header">
-                  <span>Write Update</span>
-                  <span className="status-dot" title="System Online"></span>
+                  <span className="editor-title">Write Update</span>
+                  <div className="status-indicator">
+                    <span className="status-dot" title="System Online"></span>
+                    <span className="status-text">Online</span>
+                  </div>
                 </div>
-                <textarea className="editor-textarea" placeholder="记录今天的碎片..."></textarea>
+                
+                <div className="editor-body">
+                  <textarea 
+                    className="editor-textarea" 
+                    placeholder="记录今天的碎片..."
+                    value={updateText}
+                    onChange={(e) => setUpdateText(e.target.value)}
+                  ></textarea>
+                  
+                  {attachments.length > 0 && (
+                    <div className="editor-attachments">
+                      {attachments.map(att => (
+                        <div key={att.id} className="attachment-preview">
+                          {att.type === 'image' ? (
+                            <img src={att.url} alt={att.name} />
+                          ) : (
+                            <div className="video-thumbnail"><Film size={20}/></div>
+                          )}
+                          <button className="remove-att-btn" onClick={() => removeAttachment(att.id)}>
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="editor-footer">
+                  <div className="editor-tools">
+                    <label className="tool-btn" title="Add Photo/Video">
+                      <ImageIcon size={18} />
+                      <input type="file" multiple accept="image/*,video/*" className="hidden-input" onChange={handleFileUpload} />
+                    </label>
+                    <button className="tool-btn" title="Add Link"><LinkIcon size={18} /></button>
+                  </div>
+                  
+                  <button className="publish-btn" disabled={!updateText.trim() && attachments.length === 0}>
+                    <span>Publish</span>
+                    <Send size={14} />
+                  </button>
+                </div>
               </div>
             </aside>
           </div>
