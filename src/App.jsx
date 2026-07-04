@@ -103,12 +103,18 @@ export default function App() {
           <h2>Daily</h2>
           <div className="layout-grid">
             <aside className="col-timeline">
-              <div className="timeline-header">Timeline</div>
-              <div className="timeline-track">
-                <div className="timeline-node active">Jul 03, 2026</div>
-                <div className="timeline-node">Jul 01, 2026</div>
-                <div className="timeline-node">Jun 28, 2026</div>
-                <div className="timeline-node">Jun 15, 2026</div>
+              <div className="timeline-header">DATE</div>
+              <div className="timeline-track scrollable-timeline">
+                <a href="#post-1" className="timeline-node active">Jul 03, 2026</a>
+                <a href="#post-2" className="timeline-node">Jul 01, 2026</a>
+                <a href="#post-3" className="timeline-node">Jun 28, 2026</a>
+                <a href="#post-4" className="timeline-node">Jun 15, 2026</a>
+                <a href="#post-5" className="timeline-node">Jun 10, 2026</a>
+                <a href="#post-6" className="timeline-node">Jun 05, 2026</a>
+                <a href="#post-7" className="timeline-node">May 28, 2026</a>
+                <a href="#post-8" className="timeline-node">May 20, 2026</a>
+                <a href="#post-9" className="timeline-node">May 15, 2026</a>
+                <a href="#post-10" className="timeline-node">May 01, 2026</a>
               </div>
             </aside>
 

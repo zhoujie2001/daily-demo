@@ -476,6 +476,27 @@ h2 {
   gap: 2rem;
 }
 
+.timeline-track.scrollable-timeline {
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+  padding-right: 1rem;
+}
+
+.timeline-track.scrollable-timeline::-webkit-scrollbar {
+  width: 4px;
+}
+
+.timeline-track.scrollable-timeline::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.timeline-track.scrollable-timeline::-webkit-scrollbar-thumb {
+  background-color: var(--border-color);
+  border-radius: 4px;
+}
+
 .timeline-node {
   position: relative;
   font-family: var(--font-mono);
@@ -483,6 +504,8 @@ h2 {
   color: var(--text-secondary);
   cursor: pointer;
   transition: color 0.3s ease;
+  text-decoration: none;
+  display: block;
 }
 
 .timeline-node:hover,
