@@ -1,0 +1,38 @@
+[
+  {
+    "id": "post-1",
+    "date": "Jul 03, 2026",
+    "text": "重新构思了博客的架构。决定把复杂的长篇写作和轻量的日常碎片区分开来。这个 Daily 模块会作为我个人的数字后花园，不需要长篇大论，哪怕只是一张图、一句话。",
+    "media": []
+  },
+  {
+    "id": "post-2",
+    "date": "Jul 01, 2026",
+    "text": "周末去看了新办的摄影展，光影布置得非常克制、精妙。灵感爆棚的一天。",
+    "media": [
+      { "type": "color", "value": "#d5d4d0" },
+      { "type": "color", "value": "#e4e4e1" }
+    ],
+    "mediaGrid": "media-grid-2"
+  },
+  {
+    "id": "post-3",
+    "date": "Jun 28, 2026",
+    "text": "暴雨过后的傍晚，捕捉到几秒绝美的天空。",
+    "media": [
+      { "type": "video-placeholder", "value": "#2c3e50" }
+    ],
+    "mediaGrid": "media-single"
+  },
+  {
+    "id": "post-4",
+    "date": "Jun 15, 2026",
+    "text": "",
+    "media": [
+      { "type": "color", "value": "#a18cd1" },
+      { "type": "color", "value": "#fbc2eb" },
+      { "type": "color", "value": "#84fab0" }
+    ],
+    "mediaGrid": "media-grid-3"
+  }
+]

@@ -1,5 +1,6 @@
 // import { useState } from "react";
 import { Mail, ExternalLink, Image as ImageIcon, Film, Link as LinkIcon, Send, X } from "lucide-react";
+import dailyData from "./data/dailyData.json";
 import { useEffect, useRef } from "react"; 
 import {useState } from "react";
 
@@ -84,6 +85,31 @@ export default function App() {
   };
 
   
+  const [posts, setPosts] = useState(dailyData);
+
+  const handlePublish = async () => {
+    if (!updateText.trim() && attachments.length === 0) return;
+
+    // Simulate saving file locally and updating posts state
+    const newPost = {
+      id: `post-${Math.random().toString(36).substr(2, 9)}`,
+      date: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+      text: updateText.trim(),
+      media: attachments.map(att => ({
+        type: att.type,
+        url: att.url,
+        value: att.url
+      })),
+      mediaGrid: attachments.length === 1 ? 'media-single' :
+                 attachments.length === 2 ? 'media-grid-2' :
+                 attachments.length >= 3 ? 'media-grid-3' : ''
+    };
+
+    setPosts(prev => [newPost, ...prev]);
+    setUpdateText("");
+    setAttachments([]);
+  };
+
   const books = [
     { title: "霍乱时期的爱情", year: "2024" },
     { title: "花街往事", year: "2024" },
@@ -133,58 +159,47 @@ export default function App() {
             <aside className="col-timeline">
               <div className="timeline-header">DATE</div>
               <div className="timeline-track scrollable-timeline">
-                <a href="#post-1" className="timeline-node active">Jul 03, 2026</a>
-                <a href="#post-2" className="timeline-node">Jul 01, 2026</a>
-                <a href="#post-3" className="timeline-node">Jun 28, 2026</a>
-                <a href="#post-4" className="timeline-node">Jun 15, 2026</a>
-                <a href="#post-5" className="timeline-node">Jun 10, 2026</a>
-                <a href="#post-6" className="timeline-node">Jun 05, 2026</a>
-                <a href="#post-7" className="timeline-node">May 28, 2026</a>
-                <a href="#post-8" className="timeline-node">May 20, 2026</a>
-                <a href="#post-9" className="timeline-node">May 15, 2026</a>
-                <a href="#post-10" className="timeline-node">May 01, 2026</a>
+                {posts.map((post, index) => (
+                  <a key={post.id} href={`#${post.id}`} className={`timeline-node ${index === 0 ? 'active' : ''}`}>
+                    {post.date}
+                  </a>
+                ))}
               </div>
             </aside>
 
             <main className="col-content">
-              <article className="entry" id="post-1">
-                <div className="entry-date">Jul 03, 2026</div>
-                <div className="entry-text">
-                  重新构思了博客的架构。决定把复杂的长篇写作和轻量的日常碎片区分开来。这个 Daily 模块会作为我个人的数字后花园，不需要长篇大论，哪怕只是一张图、一句话。
-                </div>
-              </article>
+              {posts.map((post) => (
+                <article key={post.id} className="entry" id={post.id}>
+                  <div className="entry-date">{post.date}</div>
+                  {post.text && <div className="entry-text">{post.text}</div>}
 
-              <article className="entry" id="post-2">
-                <div className="entry-date">Jul 01, 2026</div>
-                <div className="entry-text">
-                  周末去看了新办的摄影展，光影布置得非常克制、精妙。灵感爆棚的一天。
-                </div>
-                <div className="entry-media media-grid-2">
-                  <div style={{ backgroundColor: "#d5d4d0" }}></div>
-                  <div style={{ backgroundColor: "#e4e4e1" }}></div>
-                </div>
-              </article>
-
-              <article className="entry" id="post-3">
-                <div className="entry-date">Jun 28, 2026</div>
-                <div className="entry-text">
-                  暴雨过后的傍晚，捕捉到几秒绝美的天空。
-                </div>
-                <div className="entry-media media-single">
-                  <div style={{ backgroundColor: "#2c3e50", height: "400px", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.5)" }}>
-                    [ Video Player - 悬停播放 ]
-                  </div>
-                </div>
-              </article>
-
-              <article className="entry" id="post-4">
-                <div className="entry-date">Jun 15, 2026</div>
-                <div className="entry-media media-grid-3">
-                  <div style={{ backgroundColor: "#a18cd1" }}></div>
-                  <div style={{ backgroundColor: "#fbc2eb" }}></div>
-                  <div style={{ backgroundColor: "#84fab0" }}></div>
-                </div>
-              </article>
+                  {post.media && post.media.length > 0 && (
+                    <div className={`entry-media ${post.mediaGrid || 'media-single'}`}>
+                      {post.media.map((item, idx) => {
+                        if (item.type === 'color') {
+                          return <div key={idx} style={{ backgroundColor: item.value }}></div>;
+                        }
+                        if (item.type === 'video-placeholder') {
+                          return (
+                            <div key={idx} style={{ backgroundColor: item.value, height: "400px", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.5)" }}>
+                              [ Video Player - 悬停播放 ]
+                            </div>
+                          );
+                        }
+                        if (item.type === 'image') {
+                          return <img key={idx} src={item.url} alt="daily photo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+                        }
+                        if (item.type === 'video') {
+                          return (
+                            <video key={idx} src={item.url} muted loop playsInline onMouseEnter={(e) => e.target.play()} onMouseLeave={(e) => e.target.pause()} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          );
+                        }
+                        return null;
+                      })}
+                    </div>
+                  )}
+                </article>
+              ))}
             </main>
 
             <aside className="col-editor">
@@ -232,7 +247,11 @@ export default function App() {
                     <button className="tool-btn" title="Add Link"><LinkIcon size={18} /></button>
                   </div>
                   
-                  <button className="publish-btn" disabled={!updateText.trim() && attachments.length === 0}>
+                  <button
+                    className="publish-btn"
+                    disabled={!updateText.trim() && attachments.length === 0}
+                    onClick={handlePublish}
+                  >
                     <span>Publish</span>
                     <Send size={14} />
                   </button>
