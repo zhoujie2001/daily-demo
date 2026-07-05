@@ -689,17 +689,17 @@ export default function App() {
               
         <section id="travel">
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '60px' }}>
-            <h2 style={{ marginTop: 0, marginBottom: 0 }}>Travel</h2>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '60px', marginBottom: '10px' }}>
+            <h2 style={{ margin: 0 }}>Travel</h2>
             <div>
               <label className={`upload-btn ${isUploadingVideo ? 'disabled' : ''}`}>
-                <Plus size={16} />
-                {isUploadingVideo ? 'Uploading...' : 'Upload Video'}
+                <Plus size={14} />
+                <span>{isUploadingVideo ? 'Uploading...' : 'Upload Video'}</span>
                 <input type="file" accept="video/*" className="hidden-input" onChange={handleVideoUpload} disabled={isUploadingVideo} />
               </label>
             </div>
           </div>
-          <p style={{ marginTop: '10px' }}>
+          <p style={{ marginTop: '0', color: '#666', fontSize: '14px' }}>
             嘿！快看那边。
           </p>
 
@@ -758,6 +758,7 @@ export default function App() {
                 ))
               ) : (
                 [1,2,3,4,5,6,7,8,9,10].map((num, index) => (
+                <div key={`static-video-${index}`} className="video-card">
                   <video
                     key={index}
                     src={`videos/travel${num}.mp4`}
@@ -767,6 +768,11 @@ export default function App() {
                     onMouseEnter={(e) => { e.target.play().catch(err => console.warn("Video playback prevented:", err)); }}
                     onMouseLeave={(e) => e.target.pause()}
                   />
+                  <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
+                    <button className="action-btn" title="Edit Video"><Edit2 size={14} /></button>
+                    <button className="action-btn delete" title="Delete Video"><Trash2 size={14} /></button>
+                  </div>
+                </div>
                 ))
               )}
             </div>
@@ -778,11 +784,11 @@ export default function App() {
           <h2>Photography</h2>
           <section id="photography-inner">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-              <h2 style={{ marginTop: 0, marginBottom: 0 }}>  myCut</h2>
+              <h2 style={{ margin: 0 }}>myCut</h2>
               <div>
                 <label className={`upload-btn ${isUploadingPhoto ? 'disabled' : ''}`}>
-                  <Plus size={16} />
-                  {isUploadingPhoto ? 'Uploading...' : 'Upload Photo'}
+                  <Plus size={14} />
+                  <span>{isUploadingPhoto ? 'Uploading...' : 'Upload Photo'}</span>
                   <input type="file" accept="image/*" className="hidden-input" onChange={handlePhotoUpload} disabled={isUploadingPhoto} />
                 </label>
               </div>
@@ -883,6 +889,10 @@ export default function App() {
                   key={index}
                   style={{ position: 'relative' }}
                   onClick={() => setActivePhoto(item)}>
+                    <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
+                      <button className="action-btn" title="Edit Photo"><Edit2 size={14} /></button>
+                      <button className="action-btn delete" title="Delete Photo"><Trash2 size={14} /></button>
+                    </div>
                     <div className="photo-img-wrapper">
                       <img src={item.src} alt={item.title} />
                     </div>

@@ -250,8 +250,8 @@ h2 {
 }
 
 .video-track .video-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
+  transform: translateY(-6px);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.08);
 }
 
 .video-track .video-card:hover::after {
@@ -273,11 +273,11 @@ h2 {
 
 .hover-actions {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 10px;
+  right: 10px;
   display: flex;
   flex-direction: row;
-  gap: 10px;
+  gap: 8px;
   opacity: 0;
   transform: translateY(-4px) scale(0.96);
   transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -294,10 +294,10 @@ h2 {
 
 .hover-actions-header {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 10px;
+  right: 10px;
   display: flex;
-  gap: 10px;
+  gap: 8px;
   opacity: 0;
   transform: translateY(-4px) scale(0.96);
   transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -312,60 +312,61 @@ h2 {
 }
 
 .action-btn {
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(8px);
-  color: #333;
-  border: 1px solid rgba(0,0,0,0.05);
+  color: #666;
+  border: 1px solid rgba(0,0,0,0.03);
   border-radius: 50%;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.05);
 }
 
 .action-btn:hover {
-  transform: scale(1.15) translateY(-2px);
-  box-shadow: 0 8px 16px rgba(0,0,0,0.12);
+  transform: scale(1.1) translateY(-1px);
+  box-shadow: 0 6px 12px rgba(0,0,0,0.08);
   background: #fff;
+  color: #222;
 }
 
 .action-btn.delete {
-  color: #666;
+  color: #888;
 }
 
 .action-btn.delete:hover {
-  background: #fef2f2;
+  background: #fffafa;
   color: #ef4444;
-  border-color: rgba(239, 68, 68, 0.2);
-  box-shadow: 0 8px 16px rgba(220, 38, 38, 0.15);
+  border-color: rgba(239, 68, 68, 0.1);
+  box-shadow: 0 6px 12px rgba(220, 38, 38, 0.1);
 }
 
 .upload-btn {
-  background: rgba(34, 34, 34, 0.95);
+  background: rgba(240, 240, 240, 0.85);
   backdrop-filter: blur(8px);
-  color: #fff;
-  padding: 8px 18px;
-  border-radius: 24px;
+  color: #333;
+  padding: 6px 14px;
+  border-radius: 20px;
   cursor: pointer;
-  font-size: 13px;
-  font-family: var(--font-mono), Consolas, monospace;
+  font-size: 12px;
+  font-family: inherit;
   font-weight: 500;
   display: flex;
   align-items: center;
   gap: 6px;
   transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1), background 0.4s ease;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .upload-btn:hover:not(.disabled) {
-  transform: translateY(-3px) scale(1.02);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
-  background: #000;
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
+  background: #fff;
 }
 
 .upload-btn:active:not(.disabled) {
@@ -450,8 +451,8 @@ h2 {
 }
 
 .photo-card:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.1);
+  transform: translateY(-6px);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.08);
 }
 
 /* 图片部分 */
