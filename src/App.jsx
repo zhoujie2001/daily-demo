@@ -430,7 +430,7 @@ export default function App() {
                         }
                         if (item.type === 'video') {
                           return (
-                            <video key={idx} src={item.url} muted loop playsInline onMouseEnter={(e) => e.target.play()} onMouseLeave={(e) => e.target.pause()} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <video key={idx} src={item.url} muted loop playsInline onMouseEnter={(e) => { e.target.play().catch(err => console.warn("Video playback prevented:", err)); }} onMouseLeave={(e) => e.target.pause()} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           );
                         }
                         return null;
@@ -546,7 +546,7 @@ export default function App() {
                   muted
                   loop
                   playsInline
-                  onMouseEnter={(e) => e.target.play()}
+                  onMouseEnter={(e) => { e.target.play().catch(err => console.warn("Video playback prevented:", err)); }}
                   onMouseLeave={(e) => e.target.pause()}
                 />
               ))}
