@@ -295,7 +295,11 @@ export default function App() {
         if (!res.ok) throw new Error("Backend not available");
         return res.json();
       })
-      .then(data => setPhotoData(data))
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setPhotoData(data);
+        }
+      })
       .catch(err => console.error("Error fetching photos", err));
 
     // Fetch Videos
@@ -304,7 +308,11 @@ export default function App() {
         if (!res.ok) throw new Error("Backend not available");
         return res.json();
       })
-      .then(data => setVideoData(data))
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setVideoData(data);
+        }
+      })
       .catch(err => console.error("Error fetching videos", err));
   }, []);
 
