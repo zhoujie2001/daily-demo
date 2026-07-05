@@ -692,9 +692,9 @@ export default function App() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '60px' }}>
             <h2 style={{ marginTop: 0, marginBottom: 0 }}>Travel</h2>
             <div>
-              <label className="tool-btn" style={{ background: '#f0f0f0', padding: '6px 12px', borderRadius: '20px', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Plus size={14} />
-                {isUploadingVideo ? 'Uploading...' : '上传视频'}
+              <label className={`upload-btn ${isUploadingVideo ? 'disabled' : ''}`}>
+                <Plus size={16} />
+                {isUploadingVideo ? 'Uploading...' : 'Upload Video'}
                 <input type="file" accept="video/*" className="hidden-input" onChange={handleVideoUpload} disabled={isUploadingVideo} />
               </label>
             </div>
@@ -707,7 +707,7 @@ export default function App() {
             <div className="video-track">
               {videoData.length > 0 ? (
                 videoData.map((video, index) => (
-                  <div key={index} style={{ position: 'relative', display: 'inline-block' }}>
+                  <div key={index} className="video-card">
                     <video
                       src={video.url.startsWith('videos/') ? video.url : `https://daily-demo-backend.vercel.app${video.url.startsWith('/') ? '' : '/'}${video.url}`}
                       muted
@@ -715,43 +715,45 @@ export default function App() {
                       playsInline
                       onMouseEnter={(e) => { e.target.play().catch(err => console.warn("Video playback prevented:", err)); }}
                       onMouseLeave={(e) => e.target.pause()}
-                      style={{ borderRadius: '8px' }}
                     />
-                    <button
-                      onClick={(e) => handleDeleteVideo(video.id, e)}
-                      style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(255,0,0,0.7)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10 }}
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                    <button
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        const newTitle = prompt("修改视频名称:", video.title);
-                        if (newTitle !== null) {
-                          try {
-                            const loginRes = await fetch('https://daily-demo-backend.vercel.app/api/auth/login', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ username: 'testuser', password: 'password123' })
-                            });
-                            const loginData = await loginRes.json();
-                            await fetch(`https://daily-demo-backend.vercel.app/api/videos/${video.id}`, {
-                              method: 'PUT',
-                              headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${loginData.token}`
-                              },
-                              body: JSON.stringify({ title: newTitle || video.title, url: video.url })
-                            });
-                            setVideoData(videoData.map(v => v.id === video.id ? { ...v, title: newTitle || video.title } : v));
-                          } catch (err) { console.error(err); }
-                        }
-                      }}
-                      style={{ position: 'absolute', top: '40px', right: '10px', background: '#f0f0f0', color: '#333', border: 'none', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10 }}
-                      title={video.title || "Edit Video"}
-                    >
-                      <Edit2 size={12} />
-                    </button>
+                    <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className="action-btn"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const newTitle = prompt("修改视频名称:", video.title);
+                          if (newTitle !== null) {
+                            try {
+                              const loginRes = await fetch('https://daily-demo-backend.vercel.app/api/auth/login', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ username: 'testuser', password: 'password123' })
+                              });
+                              const loginData = await loginRes.json();
+                              await fetch(`https://daily-demo-backend.vercel.app/api/videos/${video.id}`, {
+                                method: 'PUT',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  'Authorization': `Bearer ${loginData.token}`
+                                },
+                                body: JSON.stringify({ title: newTitle || video.title, url: video.url })
+                              });
+                              setVideoData(videoData.map(v => v.id === video.id ? { ...v, title: newTitle || video.title } : v));
+                            } catch (err) { console.error(err); }
+                          }
+                        }}
+                        title={video.title || "Edit Video"}
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        className="action-btn delete"
+                        onClick={(e) => handleDeleteVideo(video.id, e)}
+                        title="Delete Video"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 ))
               ) : (
@@ -778,9 +780,9 @@ export default function App() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
               <h2 style={{ marginTop: 0, marginBottom: 0 }}>  myCut</h2>
               <div>
-                <label className="tool-btn" style={{ background: '#f0f0f0', padding: '6px 12px', borderRadius: '20px', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Plus size={14} />
-                  {isUploadingPhoto ? 'Uploading...' : '上传照片'}
+                <label className={`upload-btn ${isUploadingPhoto ? 'disabled' : ''}`}>
+                  <Plus size={16} />
+                  {isUploadingPhoto ? 'Uploading...' : 'Upload Photo'}
                   <input type="file" accept="image/*" className="hidden-input" onChange={handlePhotoUpload} disabled={isUploadingPhoto} />
                 </label>
               </div>
@@ -792,24 +794,13 @@ export default function App() {
                   <div
                   className="photo-card"
                   key={index}
-                  style={{ position: 'relative' }}
                   onClick={() => setActivePhoto({
                     ...item,
                     src: item.url.startsWith('images/') ? item.url : `https://daily-demo-backend.vercel.app${item.url.startsWith('/') ? '' : '/'}${item.url}`
                   })}>
-                    <button
-                      onClick={(e) => handleDeletePhoto(item.id, e)}
-                      style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(255,0,0,0.7)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10 }}
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                    <div className="photo-img-wrapper">
-                      <img src={item.url.startsWith('images/') ? item.url : `https://daily-demo-backend.vercel.app${item.url.startsWith('/') ? '' : '/'}${item.url}`} alt={item.title} />
-                    </div>
-                    <div className="photo-info" style={{ position: 'relative' }}>
-                      <h3>{item.title}</h3>
-                      <p>{item.desc}</p>
+                    <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
                       <button
+                        className="action-btn"
                         onClick={async (e) => {
                           e.stopPropagation();
                           const newTitle = prompt("修改图片名称:", item.title);
@@ -834,10 +825,24 @@ export default function App() {
                             } catch (err) { console.error(err); }
                           }
                         }}
-                        style={{ position: 'absolute', top: '16px', right: '18px', background: '#f0f0f0', color: '#333', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: '12px' }}
+                        title="Edit Photo"
                       >
-                        <Edit2 size={12} />
+                        <Edit2 size={14} />
                       </button>
+                      <button
+                        className="action-btn delete"
+                        onClick={(e) => handleDeletePhoto(item.id, e)}
+                        title="Delete Photo"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                    <div className="photo-img-wrapper">
+                      <img src={item.url.startsWith('images/') ? item.url : `https://daily-demo-backend.vercel.app${item.url.startsWith('/') ? '' : '/'}${item.url}`} alt={item.title} />
+                    </div>
+                    <div className="photo-info">
+                      <h3>{item.title}</h3>
+                      <p>{item.desc}</p>
                     </div>
                   </div>
                 ))
