@@ -243,8 +243,8 @@ export default function App() {
                uploadData.urls.forEach((url, i) => {
                  finalMedia.push({
                    type: attachments[i].type,
-                   url: `https://daily-demo-backend.vercel.app${url}`,
-                   value: `https://daily-demo-backend.vercel.app${url}`
+                   url: url,
+                   value: url
                  });
                });
              }
