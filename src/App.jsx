@@ -175,6 +175,11 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: 'testuser', password: 'password123' })
       });
+
+      if (!loginRes.ok) {
+        throw new Error(`Login failed with status: ${loginRes.status}`);
+      }
+
       const loginData = await loginRes.json();
 
       const res = await fetch(`https://daily-demo-backend.vercel.app/api/diary/${realId}`, {
@@ -184,10 +189,12 @@ export default function App() {
 
       if (res.ok) {
         setPosts(prev => prev.filter(p => p.id !== postId));
+      } else {
+        throw new Error(`Delete failed with status: ${res.status}`);
       }
     } catch (err) {
       console.error("Delete failed:", err);
-      // Fallback for local testing
+      // Local fallback testing deletion
       setPosts(prev => prev.filter(p => p.id !== postId));
     }
   };
