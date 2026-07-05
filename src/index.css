@@ -221,37 +221,38 @@ h2 {
 
 .video-track {
   display: flex;
-  gap: 20px;
+  gap: 24px;
   width: max-content;
+  padding: 10px 0 30px; /* Leave room for shadow/transform */
 }
 
 /* 视频样式 */
 .video-track .video-card {
   position: relative;
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
   display: inline-block;
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  background: #000;
+  transition: transform 0.5s cubic-bezier(0.19, 1, 0.22, 1), box-shadow 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.03);
 }
 
 .video-track .video-card::after {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0) 40%);
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0) 20%, rgba(0,0,0,0) 80%, rgba(0,0,0,0.4) 100%);
   opacity: 0;
   transition: opacity 0.4s ease;
   pointer-events: none;
-  border-radius: 8px;
+  border-radius: 12px;
 }
 
 .video-track .video-card:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.08);
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+  z-index: 2;
 }
 
 .video-track .video-card:hover::after {
@@ -259,126 +260,109 @@ h2 {
 }
 
 .video-track video {
-  width: 280px;
-  height: 180px;
+  width: 320px;
+  height: 200px;
   object-fit: cover;
-  border-radius: 8px;
-  flex-shrink: 0;
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 12px;
+  display: block;
+  transition: transform 0.6s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.4s ease;
 }
 
 .video-track .video-card:hover video {
-  transform: scale(1.03);
+  transform: scale(1.05);
+  opacity: 0.9;
 }
 
-.hover-actions {
+.hover-actions, .hover-actions-header {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 12px;
+  right: 12px;
   display: flex;
   flex-direction: row;
   gap: 8px;
   opacity: 0;
-  transform: translateY(-4px) scale(0.96);
-  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: translateY(-8px);
+  transition: opacity 0.4s cubic-bezier(0.19, 1, 0.22, 1), transform 0.4s cubic-bezier(0.19, 1, 0.22, 1);
   z-index: 10;
   pointer-events: none;
 }
 
 .video-card:hover .hover-actions,
-.photo-card:hover .hover-actions {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-  pointer-events: auto;
-}
-
-.hover-actions-header {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  display: flex;
-  gap: 8px;
-  opacity: 0;
-  transform: translateY(-4px) scale(0.96);
-  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 10;
-  pointer-events: none;
-}
-
+.photo-card:hover .hover-actions,
 .header-card:hover .hover-actions-header {
   opacity: 1;
-  transform: translateY(0) scale(1);
+  transform: translateY(0);
   pointer-events: auto;
 }
 
 .action-btn {
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(8px);
-  color: #666;
-  border: 1px solid rgba(0,0,0,0.03);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  color: #444;
+  border: 1px solid rgba(0,0,0,0.05);
   border-radius: 50%;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+  transition: all 0.3s cubic-bezier(0.19, 1, 0.22, 1);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  outline: none;
 }
 
 .action-btn:hover {
-  transform: scale(1.1) translateY(-1px);
-  box-shadow: 0 6px 12px rgba(0,0,0,0.08);
+  transform: scale(1.15) translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.12);
   background: #fff;
-  color: #222;
+  color: #000;
 }
 
 .action-btn.delete {
-  color: #888;
+  color: #666;
 }
 
 .action-btn.delete:hover {
-  background: #fffafa;
-  color: #ef4444;
-  border-color: rgba(239, 68, 68, 0.1);
-  box-shadow: 0 6px 12px rgba(220, 38, 38, 0.1);
+  background: #fff;
+  color: #e11d48;
+  border-color: rgba(225, 29, 72, 0.2);
+  box-shadow: 0 8px 16px rgba(225, 29, 72, 0.15);
 }
 
 .upload-btn {
-  background: rgba(240, 240, 240, 0.85);
-  backdrop-filter: blur(8px);
-  color: #333;
-  padding: 6px 14px;
+  background: #111;
+  color: #fff;
+  padding: 8px 18px;
   border-radius: 20px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   font-family: inherit;
   font-weight: 500;
   display: flex;
   align-items: center;
-  gap: 6px;
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1), background 0.4s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  border: 1px solid rgba(0, 0, 0, 0.05);
+  gap: 8px;
+  transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+  border: 1px solid transparent;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .upload-btn:hover:not(.disabled) {
-  transform: translateY(-2px) scale(1.02);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
-  background: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  background: #000;
 }
 
 .upload-btn:active:not(.disabled) {
   transform: translateY(0) scale(0.98);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .upload-btn.disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: wait;
   transform: none;
-  background: #666;
+  background: #444;
+  box-shadow: none;
 }
 
 
@@ -436,23 +420,27 @@ h2 {
   grid-template-columns: repeat(4, 1fr);
   gap: 28px;
   margin-top: 30px;
+  padding-bottom: 20px;
 }
 
 /* 卡片整体 */
 .photo-card {
   position: relative;
   background: #ffffff;
-  border-radius: 12px;
+  border-radius: 16px;
   overflow: hidden;
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.5s cubic-bezier(0.19, 1, 0.22, 1), box-shadow 0.5s cubic-bezier(0.19, 1, 0.22, 1);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
   cursor: pointer;
   border: 1px solid rgba(0,0,0,0.03);
+  display: flex;
+  flex-direction: column;
 }
 
 .photo-card:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.08);
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+  z-index: 2;
 }
 
 /* 图片部分 */
@@ -460,18 +448,14 @@ h2 {
   width: 100%;
   aspect-ratio: 4 / 3;
   overflow: hidden;
-  border-radius: 12px 12px 0 0;
   position: relative;
 }
 
 .photo-img-wrapper::after {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0) 30%);
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0) 30%);
   opacity: 0;
   transition: opacity 0.4s ease;
   pointer-events: none;
@@ -485,28 +469,30 @@ h2 {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.7s cubic-bezier(0.19, 1, 0.22, 1);
 }
 
 .photo-card:hover img {
-  transform: scale(1.05);
+  transform: scale(1.08);
 }
 
 /* 文字区域 */
 .photo-info {
-  padding: 16px 18px 18px;
+  padding: 20px 20px;
   background: #fff;
   z-index: 2;
   position: relative;
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+  flex-grow: 1;
 }
 
 .photo-info h3 {
-  font-size: 15px;
-  margin: 0 0 6px;
-  font-weight: 500;
-  color: #222;
+  font-size: 16px;
+  margin: 0 0 8px;
+  font-weight: 600;
+  color: #111;
   transition: color 0.3s ease;
+  letter-spacing: -0.01em;
 }
 
 .photo-card:hover .photo-info h3 {
@@ -514,10 +500,11 @@ h2 {
 }
 
 .photo-info p {
-  font-size: 13px;
-  color: #777;
+  font-size: 13.5px;
+  color: #666;
   margin: 0;
   font-family: inherit;
+  line-height: 1.5;
 }
 
 @media (max-width: 1200px) {
