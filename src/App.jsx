@@ -291,13 +291,19 @@ export default function App() {
 
     // Fetch Photos
     fetch('https://daily-demo-backend.vercel.app/api/photos')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error("Backend not available");
+        return res.json();
+      })
       .then(data => setPhotoData(data))
       .catch(err => console.error("Error fetching photos", err));
 
     // Fetch Videos
     fetch('https://daily-demo-backend.vercel.app/api/videos')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error("Backend not available");
+        return res.json();
+      })
       .then(data => setVideoData(data))
       .catch(err => console.error("Error fetching videos", err));
   }, []);
