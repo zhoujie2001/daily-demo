@@ -89,7 +89,7 @@ export default function App() {
   const [posts, setPosts] = useState(dailyData);
 
   useEffect(() => {
-    fetch('http://localhost:3000/api/diary')
+    fetch('https://daily-demo-backend.vercel.app/api/diary')
       .then(res => {
         if (!res.ok) throw new Error("Backend not available");
         return res.json();
@@ -117,7 +117,7 @@ export default function App() {
     let loginData = null;
     let backendAvailable = true;
     try {
-      const loginRes = await fetch('http://localhost:3000/api/auth/login', {
+      const loginRes = await fetch('https://daily-demo-backend.vercel.app/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: 'testuser', password: 'password123' })
@@ -140,7 +140,7 @@ export default function App() {
 
         if (formData.has('files')) {
            try {
-             const uploadRes = await fetch('http://localhost:3000/api/upload', {
+             const uploadRes = await fetch('https://daily-demo-backend.vercel.app/api/upload', {
                method: 'POST',
                headers: { 'Authorization': `Bearer ${loginData.token}` },
                body: formData
@@ -151,8 +151,8 @@ export default function App() {
                uploadData.urls.forEach((url, i) => {
                  finalMedia.push({
                    type: attachments[i].type,
-                   url: `http://localhost:3000${url}`,
-                   value: `http://localhost:3000${url}`
+                   url: `https://daily-demo-backend.vercel.app${url}`,
+                   value: `https://daily-demo-backend.vercel.app${url}`
                  });
                });
              }
@@ -181,7 +181,7 @@ export default function App() {
     };
 
     if (backendAvailable && loginData) {
-      fetch('http://localhost:3000/api/diary', {
+      fetch('https://daily-demo-backend.vercel.app/api/diary', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
