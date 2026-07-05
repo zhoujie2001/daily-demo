@@ -8,4 +8,7 @@ export default defineConfig({
     tailwindcss(),
   ],
   base: '/daily-demo/',
+  build: {
+    target: 'esnext',
+  }
 })
