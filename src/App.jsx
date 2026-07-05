@@ -86,13 +86,15 @@ export default function App() {
   };
 
   
-  const [posts, setPosts] = useState([]);
+  const [posts, setPosts] = useState(dailyData);
 
   useEffect(() => {
     fetch('http://localhost:3000/api/diary')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error("Backend not available");
+        return res.json();
+      })
       .then(data => {
-        // map backend structure to frontend structure
         const mappedData = data.map(item => ({
           ...item,
           media: typeof item.media === 'string' ? JSON.parse(item.media) : item.media,
@@ -100,7 +102,9 @@ export default function App() {
         }));
         setPosts(mappedData);
       })
-      .catch(err => console.error("Failed to fetch diary:", err));
+      .catch(err => {
+        console.warn("Backend not reachable, falling back to static data.");
+      });
   }, []);
 
   const handlePublish = async () => {
@@ -110,44 +114,61 @@ export default function App() {
     // Upload files first if any
     const finalMedia = [];
 
-    let loginData;
+    let loginData = null;
+    let backendAvailable = true;
     try {
       const loginRes = await fetch('http://localhost:3000/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: 'testuser', password: 'password123' })
       });
+      if (!loginRes.ok) throw new Error("Login failed");
       loginData = await loginRes.json();
     } catch(e) {
-      console.error(e);
-      return;
+      console.warn("Backend unavailable, using local mock publish.");
+      backendAvailable = false;
     }
 
     if (attachments.length > 0) {
-      const formData = new FormData();
-      attachments.forEach(att => {
-        if (att.file) {
-          formData.append('files', att.file);
-        }
-      });
+      if (backendAvailable && loginData) {
+        const formData = new FormData();
+        attachments.forEach(att => {
+          if (att.file) {
+            formData.append('files', att.file);
+          }
+        });
 
-      if (formData.has('files')) {
-         const uploadRes = await fetch('http://localhost:3000/api/upload', {
-           method: 'POST',
-           headers: { 'Authorization': `Bearer ${loginData.token}` },
-           body: formData
-         });
-         const uploadData = await uploadRes.json();
-
-         if (uploadData.urls) {
-           uploadData.urls.forEach((url, i) => {
-             finalMedia.push({
-               type: attachments[i].type,
-               url: `http://localhost:3000${url}`,
-               value: `http://localhost:3000${url}`
+        if (formData.has('files')) {
+           try {
+             const uploadRes = await fetch('http://localhost:3000/api/upload', {
+               method: 'POST',
+               headers: { 'Authorization': `Bearer ${loginData.token}` },
+               body: formData
              });
-           });
-         }
+             const uploadData = await uploadRes.json();
+
+             if (uploadData.urls) {
+               uploadData.urls.forEach((url, i) => {
+                 finalMedia.push({
+                   type: attachments[i].type,
+                   url: `http://localhost:3000${url}`,
+                   value: `http://localhost:3000${url}`
+                 });
+               });
+             }
+           } catch(e) {
+             console.warn("Upload failed, falling back to local URLs.");
+           }
+        }
+      } else {
+        // Fallback: just use blob URLs
+        attachments.forEach(att => {
+          finalMedia.push({
+            type: att.type,
+            url: att.url,
+            value: att.url
+          });
+        });
       }
     }
 
@@ -159,26 +180,40 @@ export default function App() {
                  attachments.length >= 3 ? 'media-grid-3' : ''
     };
 
-    fetch('http://localhost:3000/api/diary', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${loginData.token}`
-      },
-      body: JSON.stringify(newPostData)
-    })
-    .then(res => res.json())
-    .then(item => {
+    if (backendAvailable && loginData) {
+      fetch('http://localhost:3000/api/diary', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${loginData.token}`
+        },
+        body: JSON.stringify(newPostData)
+      })
+      .then(res => res.json())
+      .then(item => {
+        const newPost = {
+          ...item,
+          media: typeof item.media === 'string' ? JSON.parse(item.media) : item.media,
+          id: `post-${item.id}`
+        };
+        setPosts(prev => [newPost, ...prev]);
+        setUpdateText("");
+        setAttachments([]);
+      })
+      .catch(err => console.error("Publish failed:", err));
+    } else {
+      // Local fallback publish
       const newPost = {
-        ...item,
-        media: typeof item.media === 'string' ? JSON.parse(item.media) : item.media,
-        id: `post-${item.id}`
+        id: `post-${Math.random().toString(36).substr(2, 9)}`,
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+        text: newPostData.text,
+        media: newPostData.media,
+        mediaGrid: newPostData.mediaGrid
       };
       setPosts(prev => [newPost, ...prev]);
       setUpdateText("");
       setAttachments([]);
-    })
-    .catch(err => console.error("Publish failed:", err));
+    }
   };
 
   const books = [
