@@ -451,11 +451,13 @@ h2 {
   grid-template-columns: 180px minmax(300px, 1fr) 300px;
   gap: 3rem;
   align-items: start;
+  height: calc(100vh - 160px);
+  overflow: hidden;
 }
 
 .col-timeline {
-  position: sticky;
-  top: 80px;
+  position: relative;
+  height: 100%;
 }
 
 .timeline-header {
@@ -477,7 +479,7 @@ h2 {
 }
 
 .timeline-track.scrollable-timeline {
-  max-height: calc(100vh - 160px);
+  max-height: calc(100% - 3rem);
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--border-color) transparent;
@@ -535,16 +537,33 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 3rem; /* Adjusted gap to tighten up empty space */
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+}
+
+.col-content::-webkit-scrollbar {
+  display: none;
 }
 
 .entry {
   position: relative; /* Ensure it serves as a containing block if needed */
   padding-bottom: 2rem; /* Add padding to entries so they distance from each other consistently */
   border-bottom: 1px solid var(--border-color); /* Optional: visual separation */
+  min-height: 50vh;
 }
 
 .entry:last-child {
   border-bottom: none;
+  min-height: calc(100vh - 160px); /* Ensure last item can be scrolled to top */
+}
+
+.entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
 }
 
 .entry-date {
@@ -552,7 +571,40 @@ h2 {
   font-family: var(--font-mono);
   font-size: 0.8rem;
   color: var(--text-secondary);
-  margin-bottom: 1rem;
+}
+
+.entry-actions {
+  display: flex;
+  gap: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.entry:hover .entry-actions {
+  opacity: 1;
+}
+
+.entry-action-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.entry-action-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.entry-action-btn.delete:hover {
+  color: #ef4444;
+  background: #fef2f2;
 }
 
 .entry-text {
@@ -561,6 +613,7 @@ h2 {
   color: var(--text-primary);
   min-height: 1.5rem; /* Ensure empty text blocks don't collapse margins weirdly */
   word-wrap: break-word; /* Ensure long links/words don't overflow */
+  white-space: pre-wrap;
 }
 
 .entry-media {

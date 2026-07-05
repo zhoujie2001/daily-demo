@@ -1,11 +1,11 @@
 // import { useState } from "react";
-import { Mail, ExternalLink, Image as ImageIcon, Film, Link as LinkIcon, Send, X } from "lucide-react";
+import { Mail, ExternalLink, Image as ImageIcon, Film, Link as LinkIcon, Send, X, Edit2, Trash2 } from "lucide-react";
 import dailyData from "./data/dailyData.json";
-import { useEffect, useRef } from "react"; 
-import {useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function App() {
     const sliderRef = useRef(null);
+    const contentRef = useRef(null);
 
   useEffect(() => {
         const slider = sliderRef.current;
@@ -58,6 +58,41 @@ export default function App() {
   const [activePhoto, setActivePhoto] = useState(null);
   const [updateText, setUpdateText] = useState("");
   const [attachments, setAttachments] = useState([]);
+  const [editingId, setEditingId] = useState(null);
+  const [activeDate, setActiveDate] = useState(null);
+
+  const scrollToPost = (id) => {
+    setActiveDate(id);
+    const element = document.getElementById(id);
+    if (element && contentRef.current) {
+      const containerTop = contentRef.current.getBoundingClientRect().top;
+      const elementTop = element.getBoundingClientRect().top;
+      const scrollPos = elementTop - containerTop + contentRef.current.scrollTop;
+
+      contentRef.current.scrollTo({
+        top: scrollPos,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  const handleScroll = () => {
+    if (!contentRef.current) return;
+
+    const elements = posts.map(post => document.getElementById(post.id)).filter(Boolean);
+    const containerTop = contentRef.current.getBoundingClientRect().top;
+
+    for (const el of elements) {
+      const rect = el.getBoundingClientRect();
+      // If the top of the element is near the top of the container
+      if (rect.top >= containerTop - 50 && rect.top <= containerTop + 200) {
+        if (activeDate !== el.id) {
+          setActiveDate(el.id);
+        }
+        break;
+      }
+    }
+  };
 
   const handleFileUpload = (e) => {
     const files = Array.from(e.target.files);
@@ -101,11 +136,61 @@ export default function App() {
           id: `post-${item.id}`
         }));
         setPosts(mappedData);
+        if (mappedData.length > 0) {
+          setActiveDate(mappedData[0].id);
+        }
       })
       .catch(err => {
         console.warn("Backend not reachable, falling back to static data.");
       });
   }, []);
+
+  const handleEdit = (post) => {
+    setEditingId(post.id);
+    setUpdateText(post.text || "");
+
+    // Set up existing media as attachments
+    if (post.media && post.media.length > 0) {
+      const existingAtts = post.media.map((m, i) => ({
+        id: `existing-${i}`,
+        type: m.type,
+        url: m.url,
+        value: m.value,
+        isExisting: true
+      }));
+      setAttachments(existingAtts);
+    } else {
+      setAttachments([]);
+    }
+  };
+
+  const handleDelete = async (postId) => {
+    if (!window.confirm("确定删除这条记录吗？")) return;
+
+    const realId = postId.replace('post-', '');
+
+    try {
+      const loginRes = await fetch('https://daily-demo-backend.vercel.app/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'testuser', password: 'password123' })
+      });
+      const loginData = await loginRes.json();
+
+      const res = await fetch(`https://daily-demo-backend.vercel.app/api/diary/${realId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${loginData.token}` }
+      });
+
+      if (res.ok) {
+        setPosts(prev => prev.filter(p => p.id !== postId));
+      }
+    } catch (err) {
+      console.error("Delete failed:", err);
+      // Fallback for local testing
+      setPosts(prev => prev.filter(p => p.id !== postId));
+    }
+  };
 
   const handlePublish = async () => {
     if (!updateText.trim() && attachments.length === 0) return;
@@ -174,15 +259,21 @@ export default function App() {
 
     const newPostData = {
       text: updateText.trim(),
-      media: finalMedia.length > 0 ? finalMedia : attachments.map(att => ({type: att.type, url: att.url, value: att.url})),
+      media: finalMedia.length > 0 ? finalMedia : attachments.map(att => ({type: att.type, url: att.url, value: att.value || att.url})),
       mediaGrid: attachments.length === 1 ? 'media-single' :
                  attachments.length === 2 ? 'media-grid-2' :
                  attachments.length >= 3 ? 'media-grid-3' : ''
     };
 
     if (backendAvailable && loginData) {
-      fetch('https://daily-demo-backend.vercel.app/api/diary', {
-        method: 'POST',
+      const url = editingId
+        ? `https://daily-demo-backend.vercel.app/api/diary/${editingId.replace('post-', '')}`
+        : 'https://daily-demo-backend.vercel.app/api/diary';
+
+      const method = editingId ? 'PUT' : 'POST';
+
+      fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${loginData.token}`
@@ -196,23 +287,40 @@ export default function App() {
           media: typeof item.media === 'string' ? JSON.parse(item.media) : item.media,
           id: `post-${item.id}`
         };
-        setPosts(prev => [newPost, ...prev]);
+
+        if (editingId) {
+          setPosts(prev => prev.map(p => p.id === editingId ? newPost : p));
+        } else {
+          setPosts(prev => [newPost, ...prev]);
+        }
+
         setUpdateText("");
         setAttachments([]);
+        setEditingId(null);
       })
       .catch(err => console.error("Publish failed:", err));
     } else {
-      // Local fallback publish
-      const newPost = {
-        id: `post-${Math.random().toString(36).substr(2, 9)}`,
-        date: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
-        text: newPostData.text,
-        media: newPostData.media,
-        mediaGrid: newPostData.mediaGrid
-      };
-      setPosts(prev => [newPost, ...prev]);
+      // Local fallback publish/edit
+      if (editingId) {
+        setPosts(prev => prev.map(p => {
+          if (p.id === editingId) {
+            return { ...p, text: newPostData.text, media: newPostData.media, mediaGrid: newPostData.mediaGrid };
+          }
+          return p;
+        }));
+      } else {
+        const newPost = {
+          id: `post-${Math.random().toString(36).substr(2, 9)}`,
+          date: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+          text: newPostData.text,
+          media: newPostData.media,
+          mediaGrid: newPostData.mediaGrid
+        };
+        setPosts(prev => [newPost, ...prev]);
+      }
       setUpdateText("");
       setAttachments([]);
+      setEditingId(null);
     }
   };
 
@@ -266,17 +374,35 @@ export default function App() {
               <div className="timeline-header">DATE</div>
               <div className="timeline-track scrollable-timeline">
                 {posts.map((post, index) => (
-                  <a key={post.id} href={`#${post.id}`} className={`timeline-node ${index === 0 ? 'active' : ''}`}>
+                  <a
+                    key={post.id}
+                    href={`#${post.id}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      scrollToPost(post.id);
+                    }}
+                    className={`timeline-node ${activeDate === post.id ? 'active' : ''}`}
+                  >
                     {post.date}
                   </a>
                 ))}
               </div>
             </aside>
 
-            <main className="col-content">
+            <main className="col-content" ref={contentRef} onScroll={handleScroll}>
               {posts.map((post) => (
                 <article key={post.id} className="entry" id={post.id}>
-                  <div className="entry-date">{post.date}</div>
+                  <div className="entry-header">
+                    <div className="entry-date">{post.date}</div>
+                    <div className="entry-actions">
+                      <button className="entry-action-btn edit" onClick={() => handleEdit(post)} title="Edit">
+                        <Edit2 size={14} />
+                      </button>
+                      <button className="entry-action-btn delete" onClick={() => handleDelete(post.id)} title="Delete">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
                   {post.text && <div className="entry-text">{post.text}</div>}
 
                   {post.media && post.media.length > 0 && (
@@ -311,7 +437,7 @@ export default function App() {
             <aside className="col-editor">
               <div className="editor-panel">
                 <div className="editor-header">
-                  <span className="editor-title">Write Update</span>
+                  <span className="editor-title">{editingId ? 'Edit Update' : 'Write Update'}</span>
                   <div className="status-indicator">
                     <span className="status-dot" title="System Online"></span>
                     <span className="status-text">Online</span>
@@ -358,9 +484,23 @@ export default function App() {
                     disabled={!updateText.trim() && attachments.length === 0}
                     onClick={handlePublish}
                   >
-                    <span>Publish</span>
+                    <span>{editingId ? 'Update' : 'Publish'}</span>
                     <Send size={14} />
                   </button>
+                  {editingId && (
+                    <button
+                      className="publish-btn"
+                      style={{ background: '#fef2f2', color: '#ef4444', marginLeft: '8px' }}
+                      onClick={() => {
+                        setEditingId(null);
+                        setUpdateText('');
+                        setAttachments([]);
+                      }}
+                    >
+                      <span>Cancel</span>
+                      <X size={14} />
+                    </button>
+                  )}
                 </div>
               </div>
             </aside>
