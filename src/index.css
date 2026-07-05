@@ -534,11 +534,21 @@ h2 {
 .col-content {
   display: flex;
   flex-direction: column;
-  gap: 4rem;
+  gap: 3rem; /* Adjusted gap to tighten up empty space */
+}
+
+.entry {
+  position: relative; /* Ensure it serves as a containing block if needed */
+  padding-bottom: 2rem; /* Add padding to entries so they distance from each other consistently */
+  border-bottom: 1px solid var(--border-color); /* Optional: visual separation */
+}
+
+.entry:last-child {
+  border-bottom: none;
 }
 
 .entry-date {
-  display: none;
+  display: block; /* Show the date in the entry for better context */
   font-family: var(--font-mono);
   font-size: 0.8rem;
   color: var(--text-secondary);
@@ -549,6 +559,8 @@ h2 {
   font-size: 1rem;
   margin-bottom: 1.5rem;
   color: var(--text-primary);
+  min-height: 1.5rem; /* Ensure empty text blocks don't collapse margins weirdly */
+  word-wrap: break-word; /* Ensure long links/words don't overflow */
 }
 
 .entry-media {
@@ -556,6 +568,7 @@ h2 {
   gap: 0.5rem;
   border-radius: 6px;
   overflow: hidden;
+  margin-bottom: 2rem; /* Add margin below media so subsequent items space out correctly */
 }
 
 .entry-media div {
