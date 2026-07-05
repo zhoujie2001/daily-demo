@@ -709,7 +709,7 @@ export default function App() {
                 videoData.map((video, index) => (
                   <div key={index} className="video-card">
                     <video
-                      src={video.url.startsWith('videos/') ? video.url : `https://daily-demo-backend.vercel.app${video.url.startsWith('/') ? '' : '/'}${video.url}`}
+                      src={video.url.startsWith('videos/') ? video.url : video.url.startsWith('http') ? video.url : `https://daily-demo-backend.vercel.app${video.url.startsWith('/') ? '' : '/'}${video.url}`}
                       muted
                       loop
                       playsInline
@@ -802,7 +802,7 @@ export default function App() {
                   key={index}
                   onClick={() => setActivePhoto({
                     ...item,
-                    src: item.url.startsWith('images/') ? item.url : `https://daily-demo-backend.vercel.app${item.url.startsWith('/') ? '' : '/'}${item.url}`
+                    src: item.url.startsWith('images/') ? item.url : item.url.startsWith('http') ? item.url : `https://daily-demo-backend.vercel.app${item.url.startsWith('/') ? '' : '/'}${item.url}`
                   })}>
                     <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
                       <button
@@ -844,7 +844,7 @@ export default function App() {
                       </button>
                     </div>
                     <div className="photo-img-wrapper">
-                      <img src={item.url.startsWith('images/') ? item.url : `https://daily-demo-backend.vercel.app${item.url.startsWith('/') ? '' : '/'}${item.url}`} alt={item.title} />
+                      <img src={item.url.startsWith('images/') ? item.url : item.url.startsWith('http') ? item.url : `https://daily-demo-backend.vercel.app${item.url.startsWith('/') ? '' : '/'}${item.url}`} alt={item.title} />
                     </div>
                     <div className="photo-info">
                       <h3>{item.title}</h3>
