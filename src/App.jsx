@@ -1,5 +1,5 @@
 // import { useState } from "react";
-import { Mail, ExternalLink, Image as ImageIcon, Film, Link as LinkIcon, Send, X, Edit2, Trash2 } from "lucide-react";
+import { Mail, ExternalLink, Image as ImageIcon, Film, Link as LinkIcon, Send, X, Edit2, Trash2, Plus } from "lucide-react";
 import dailyData from "./data/dailyData.json";
 import { useEffect, useRef, useState } from "react";
 
@@ -60,6 +60,148 @@ export default function App() {
   const [attachments, setAttachments] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [activeDate, setActiveDate] = useState(null);
+
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setIsUploadingPhoto(true);
+    try {
+      const loginRes = await fetch('https://daily-demo-backend.vercel.app/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'testuser', password: 'password123' })
+      });
+      if (!loginRes.ok) throw new Error("Login failed");
+      const loginData = await loginRes.json();
+
+      const formData = new FormData();
+      formData.append('files', file);
+
+      const uploadRes = await fetch('https://daily-demo-backend.vercel.app/api/upload', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${loginData.token}` },
+        body: formData
+      });
+      const uploadData = await uploadRes.json();
+      const newUrl = uploadData.urls[0];
+
+      const res = await fetch('https://daily-demo-backend.vercel.app/api/photos', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${loginData.token}`
+        },
+        body: JSON.stringify({
+          title: file.name.split('.')[0] || "New Photo",
+          desc: "New upload",
+          url: newUrl
+        })
+      });
+      const newPhoto = await res.json();
+      setPhotoData([newPhoto, ...photoData]);
+    } catch (err) {
+      console.error("Failed to upload photo:", err);
+      alert("上传照片失败");
+    } finally {
+      setIsUploadingPhoto(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleVideoUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setIsUploadingVideo(true);
+    try {
+      const loginRes = await fetch('https://daily-demo-backend.vercel.app/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'testuser', password: 'password123' })
+      });
+      if (!loginRes.ok) throw new Error("Login failed");
+      const loginData = await loginRes.json();
+
+      const formData = new FormData();
+      formData.append('files', file);
+
+      const uploadRes = await fetch('https://daily-demo-backend.vercel.app/api/upload', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${loginData.token}` },
+        body: formData
+      });
+      const uploadData = await uploadRes.json();
+      const newUrl = uploadData.urls[0];
+
+      const res = await fetch('https://daily-demo-backend.vercel.app/api/videos', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${loginData.token}`
+        },
+        body: JSON.stringify({
+          title: file.name.split('.')[0] || "New Video",
+          url: newUrl
+        })
+      });
+      const newVideo = await res.json();
+      setVideoData([newVideo, ...videoData]);
+    } catch (err) {
+      console.error("Failed to upload video:", err);
+      alert("上传视频失败");
+    } finally {
+      setIsUploadingVideo(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleDeletePhoto = async (id, e) => {
+    e.stopPropagation();
+    if (!window.confirm("确定删除这张照片吗？")) return;
+
+    try {
+      const loginRes = await fetch('https://daily-demo-backend.vercel.app/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'testuser', password: 'password123' })
+      });
+      const loginData = await loginRes.json();
+
+      await fetch(`https://daily-demo-backend.vercel.app/api/photos/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${loginData.token}` }
+      });
+      setPhotoData(photoData.filter(p => p.id !== id));
+    } catch (err) {
+      console.error("Delete photo failed", err);
+    }
+  };
+
+  const handleDeleteVideo = async (id, e) => {
+    e.stopPropagation();
+    if (!window.confirm("确定删除这个视频吗？")) return;
+
+    try {
+      const loginRes = await fetch('https://daily-demo-backend.vercel.app/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'testuser', password: 'password123' })
+      });
+      const loginData = await loginRes.json();
+
+      await fetch(`https://daily-demo-backend.vercel.app/api/videos/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${loginData.token}` }
+      });
+      setVideoData(videoData.filter(v => v.id !== id));
+    } catch (err) {
+      console.error("Delete video failed", err);
+    }
+  };
 
   const scrollToPost = (id) => {
     setActiveDate(id);
@@ -122,8 +264,11 @@ export default function App() {
 
   
   const [posts, setPosts] = useState(dailyData);
+  const [photoData, setPhotoData] = useState([]);
+  const [videoData, setVideoData] = useState([]);
 
   useEffect(() => {
+    // Fetch Diary
     fetch('https://daily-demo-backend.vercel.app/api/diary')
       .then(res => {
         if (!res.ok) throw new Error("Backend not available");
@@ -143,6 +288,18 @@ export default function App() {
       .catch(err => {
         console.warn("Backend not reachable, falling back to static data.");
       });
+
+    // Fetch Photos
+    fetch('https://daily-demo-backend.vercel.app/api/photos')
+      .then(res => res.json())
+      .then(data => setPhotoData(data))
+      .catch(err => console.error("Error fetching photos", err));
+
+    // Fetch Videos
+    fetch('https://daily-demo-backend.vercel.app/api/videos')
+      .then(res => res.json())
+      .then(data => setVideoData(data))
+      .catch(err => console.error("Error fetching videos", err));
   }, []);
 
   const handleEdit = (post) => {
@@ -532,79 +689,205 @@ export default function App() {
               
         <section id="travel">
 
-          <h2>Travel</h2>
-          <p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '60px' }}>
+            <h2 style={{ marginTop: 0, marginBottom: 0 }}>Travel</h2>
+            <div>
+              <label className="tool-btn" style={{ background: '#f0f0f0', padding: '6px 12px', borderRadius: '20px', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Plus size={14} />
+                {isUploadingVideo ? 'Uploading...' : '上传视频'}
+                <input type="file" accept="video/*" className="hidden-input" onChange={handleVideoUpload} disabled={isUploadingVideo} />
+              </label>
+            </div>
+          </div>
+          <p style={{ marginTop: '10px' }}>
             嘿！快看那边。
           </p>
 
           <div className="slider-wrapper" ref={sliderRef}>
             <div className="video-track">
-              {[1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10].map((num, index) => (
-                <video
-                  key={index}
-                  src={`videos/travel${num}.mp4`}
-                  muted
-                  loop
-                  playsInline
-                  onMouseEnter={(e) => { e.target.play().catch(err => console.warn("Video playback prevented:", err)); }}
-                  onMouseLeave={(e) => e.target.pause()}
-                />
-              ))}
+              {videoData.length > 0 ? (
+                videoData.map((video, index) => (
+                  <div key={index} style={{ position: 'relative', display: 'inline-block' }}>
+                    <video
+                      src={video.url.startsWith('videos/') ? video.url : `https://daily-demo-backend.vercel.app${video.url.startsWith('/') ? '' : '/'}${video.url}`}
+                      muted
+                      loop
+                      playsInline
+                      onMouseEnter={(e) => { e.target.play().catch(err => console.warn("Video playback prevented:", err)); }}
+                      onMouseLeave={(e) => e.target.pause()}
+                      style={{ borderRadius: '8px' }}
+                    />
+                    <button
+                      onClick={(e) => handleDeleteVideo(video.id, e)}
+                      style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(255,0,0,0.7)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10 }}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const newTitle = prompt("修改视频名称:", video.title);
+                        if (newTitle !== null) {
+                          try {
+                            const loginRes = await fetch('https://daily-demo-backend.vercel.app/api/auth/login', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ username: 'testuser', password: 'password123' })
+                            });
+                            const loginData = await loginRes.json();
+                            await fetch(`https://daily-demo-backend.vercel.app/api/videos/${video.id}`, {
+                              method: 'PUT',
+                              headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${loginData.token}`
+                              },
+                              body: JSON.stringify({ title: newTitle || video.title, url: video.url })
+                            });
+                            setVideoData(videoData.map(v => v.id === video.id ? { ...v, title: newTitle || video.title } : v));
+                          } catch (err) { console.error(err); }
+                        }
+                      }}
+                      style={{ position: 'absolute', top: '40px', right: '10px', background: '#f0f0f0', color: '#333', border: 'none', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10 }}
+                      title={video.title || "Edit Video"}
+                    >
+                      <Edit2 size={12} />
+                    </button>
+                  </div>
+                ))
+              ) : (
+                [1,2,3,4,5,6,7,8,9,10].map((num, index) => (
+                  <video
+                    key={index}
+                    src={`videos/travel${num}.mp4`}
+                    muted
+                    loop
+                    playsInline
+                    onMouseEnter={(e) => { e.target.play().catch(err => console.warn("Video playback prevented:", err)); }}
+                    onMouseLeave={(e) => e.target.pause()}
+                  />
+                ))
+              )}
             </div>
           </div>
-          
+
         </section>
 
         <section id="photography">
           <h2>Photography</h2>
-          <section id="photography">
-            <h2>  myCut</h2>
+          <section id="photography-inner">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <h2 style={{ marginTop: 0, marginBottom: 0 }}>  myCut</h2>
+              <div>
+                <label className="tool-btn" style={{ background: '#f0f0f0', padding: '6px 12px', borderRadius: '20px', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Plus size={14} />
+                  {isUploadingPhoto ? 'Uploading...' : '上传照片'}
+                  <input type="file" accept="image/*" className="hidden-input" onChange={handlePhotoUpload} disabled={isUploadingPhoto} />
+                </label>
+              </div>
+            </div>
 
             <div className="photo-grid">
-              {[
-                { src: "images/photo1.jpg", title: "星星上开满了花", desc: "成都 · 2023" },
-                { src: "images/photo2.jpg", title: "平潭一角", desc: "平潭 · 2024" },
-                { src: "images/photo3.jpg", title: "嘿，抬头", desc: "成都 · 2023" },
-                { src: "images/photo4.jpg", title: "马里冷旧", desc: "峨眉 · 2024" },
-                { src: "images/photo5.jpg", title: "风车&海田", desc: "平潭 · 2024" },
-                { src: "images/photo6.jpg", title: "沉思", desc: "平潭 · 2024" },
-                { src: "images/photo7.jpg", title: "你看那边", desc: "平潭 · 2024" },
-                { src: "images/photo8.jpg", title: "风车", desc: "平潭 · 2024" },
-                { src: "images/photo9.jpg", title: "修狗们", desc: "成都 · 2022" },
-                { src: "images/photo10.jpg", title: "日落", desc: "成都 · 2023" },
-                { src: "images/photo11.jpg", title: "你谁？", desc: "成都 · 2018" },
-                { src: "images/photo12.jpg", title: "傍晚", desc: "昆明 · 2024" },
-                { src: "images/photo13.jpg", title: "群山", desc: "川西 · 2024" },
-                { src: "images/photo14.jpg", title: "矮油，不错哦", desc: "海口 · 2024" },
-                { src: "images/photo16.jpg", title: "氧气", desc: "川西 · 2024" },
-                { src: "images/photo17.jpg", title: "苍山浮在洱海上", desc: "大理 · 2024" },
-                { src: "images/photo18.jpg", title: "燥热的空气", desc: "海南某处 · 2024" },
-                { src: "images/photo19.jpg", title: "境", desc: "鱼子西 · 2024" },
-                { src: "images/photo20.jpg", title: "快拍", desc: "鱼子西 · 2024" },
-                { src: "images/photo21.jpg", title: "新疆？", desc: "随机点 · 2024" },
-                { src: "images/photo22.jpg", title: "门缝里看鸥", desc: "昆明 · 2024" },
-                { src: "images/photo23.jpg", title: "翠湖", desc: "昆明 · 2024" },
-                { src: "images/photo24.jpg", title: "下一秒即将开抢的牛仔", desc: "昆明 · 2024" },
-                { src: "images/photo25.jpg", title: "呔", desc: "昆明 · 2024" },
-                { src: "images/photo26.jpg", title: "你贵，但值", desc: "昆明 · 2024" },
-                { src: "images/photo27.jpg", title: "你见到小王子了吗", desc: "鱼子西 · 2024" },
-                { src: "images/photo28.jpg", title: "威猛猛兽_Ariza", desc: "成都 · 2024" },
-                { src: "images/photo29.jpg", title: "小家伙", desc: "成都 · 2024" },
-                { src: "images/photo30.jpg", title: "日出", desc: "鱼子西 · 2024" }
-              ].map((item, index) => (
-                <div 
-                className="photo-card" 
-                key={index} 
-                onClick={() => setActivePhoto(item)}>
-                  <div className="photo-img-wrapper">
-                    <img src={item.src} alt={item.title} />
+              {photoData.length > 0 ? (
+                photoData.map((item, index) => (
+                  <div
+                  className="photo-card"
+                  key={index}
+                  style={{ position: 'relative' }}
+                  onClick={() => setActivePhoto({
+                    ...item,
+                    src: item.url.startsWith('images/') ? item.url : `https://daily-demo-backend.vercel.app${item.url.startsWith('/') ? '' : '/'}${item.url}`
+                  })}>
+                    <button
+                      onClick={(e) => handleDeletePhoto(item.id, e)}
+                      style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(255,0,0,0.7)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10 }}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                    <div className="photo-img-wrapper">
+                      <img src={item.url.startsWith('images/') ? item.url : `https://daily-demo-backend.vercel.app${item.url.startsWith('/') ? '' : '/'}${item.url}`} alt={item.title} />
+                    </div>
+                    <div className="photo-info" style={{ position: 'relative' }}>
+                      <h3>{item.title}</h3>
+                      <p>{item.desc}</p>
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const newTitle = prompt("修改图片名称:", item.title);
+                          const newDesc = prompt("修改图片描述:", item.desc);
+                          if (newTitle !== null || newDesc !== null) {
+                            try {
+                              const loginRes = await fetch('https://daily-demo-backend.vercel.app/api/auth/login', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ username: 'testuser', password: 'password123' })
+                              });
+                              const loginData = await loginRes.json();
+                              await fetch(`https://daily-demo-backend.vercel.app/api/photos/${item.id}`, {
+                                method: 'PUT',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  'Authorization': `Bearer ${loginData.token}`
+                                },
+                                body: JSON.stringify({ title: newTitle || item.title, desc: newDesc || item.desc, url: item.url })
+                              });
+                              setPhotoData(photoData.map(p => p.id === item.id ? { ...p, title: newTitle || item.title, desc: newDesc || item.desc } : p));
+                            } catch (err) { console.error(err); }
+                          }
+                        }}
+                        style={{ position: 'absolute', top: '16px', right: '18px', background: '#f0f0f0', color: '#333', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: '12px' }}
+                      >
+                        <Edit2 size={12} />
+                      </button>
+                    </div>
                   </div>
-                  <div className="photo-info">
-                    <h3>{item.title}</h3>
-                    <p>{item.desc}</p>
+                ))
+              ) : (
+                [
+                  { src: "images/photo1.jpg", title: "星星上开满了花", desc: "成都 · 2023" },
+                  { src: "images/photo2.jpg", title: "平潭一角", desc: "平潭 · 2024" },
+                  { src: "images/photo3.jpg", title: "嘿，抬头", desc: "成都 · 2023" },
+                  { src: "images/photo4.jpg", title: "马里冷旧", desc: "峨眉 · 2024" },
+                  { src: "images/photo5.jpg", title: "风车&海田", desc: "平潭 · 2024" },
+                  { src: "images/photo6.jpg", title: "沉思", desc: "平潭 · 2024" },
+                  { src: "images/photo7.jpg", title: "你看那边", desc: "平潭 · 2024" },
+                  { src: "images/photo8.jpg", title: "风车", desc: "平潭 · 2024" },
+                  { src: "images/photo9.jpg", title: "修狗们", desc: "成都 · 2022" },
+                  { src: "images/photo10.jpg", title: "日落", desc: "成都 · 2023" },
+                  { src: "images/photo11.jpg", title: "你谁？", desc: "成都 · 2018" },
+                  { src: "images/photo12.jpg", title: "傍晚", desc: "昆明 · 2024" },
+                  { src: "images/photo13.jpg", title: "群山", desc: "川西 · 2024" },
+                  { src: "images/photo14.jpg", title: "矮油，不错哦", desc: "海口 · 2024" },
+                  { src: "images/photo16.jpg", title: "氧气", desc: "川西 · 2024" },
+                  { src: "images/photo17.jpg", title: "苍山浮在洱海上", desc: "大理 · 2024" },
+                  { src: "images/photo18.jpg", title: "燥热的空气", desc: "海南某处 · 2024" },
+                  { src: "images/photo19.jpg", title: "境", desc: "鱼子西 · 2024" },
+                  { src: "images/photo20.jpg", title: "快拍", desc: "鱼子西 · 2024" },
+                  { src: "images/photo21.jpg", title: "新疆？", desc: "随机点 · 2024" },
+                  { src: "images/photo22.jpg", title: "门缝里看鸥", desc: "昆明 · 2024" },
+                  { src: "images/photo23.jpg", title: "翠湖", desc: "昆明 · 2024" },
+                  { src: "images/photo24.jpg", title: "下一秒即将开抢的牛仔", desc: "昆明 · 2024" },
+                  { src: "images/photo25.jpg", title: "呔", desc: "昆明 · 2024" },
+                  { src: "images/photo26.jpg", title: "你贵，但值", desc: "昆明 · 2024" },
+                  { src: "images/photo27.jpg", title: "你见到小王子了吗", desc: "鱼子西 · 2024" },
+                  { src: "images/photo28.jpg", title: "威猛猛兽_Ariza", desc: "成都 · 2024" },
+                  { src: "images/photo29.jpg", title: "小家伙", desc: "成都 · 2024" },
+                  { src: "images/photo30.jpg", title: "日出", desc: "鱼子西 · 2024" }
+                ].map((item, index) => (
+                  <div
+                  className="photo-card"
+                  key={index}
+                  style={{ position: 'relative' }}
+                  onClick={() => setActivePhoto(item)}>
+                    <div className="photo-img-wrapper">
+                      <img src={item.src} alt={item.title} />
+                    </div>
+                    <div className="photo-info" style={{ position: 'relative' }}>
+                      <h3>{item.title}</h3>
+                      <p>{item.desc}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </section>
           {activePhoto && (
