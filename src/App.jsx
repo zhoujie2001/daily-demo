@@ -1,5 +1,6 @@
 // import { useState } from "react";
 import { Mail, ExternalLink, Image as ImageIcon, Film, Link as LinkIcon, Send, X, Edit2, Trash2, Plus } from "lucide-react";
+import AdminLogin from "./AdminLogin";
 import dailyData from "./data/dailyData.json";
 import { useEffect, useRef, useState } from "react";
 
@@ -70,20 +71,12 @@ export default function App() {
 
     setIsUploadingPhoto(true);
     try {
-      const loginRes = await fetch('https://daily-demo-backend.vercel.app/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: 'testuser', password: 'password123' })
-      });
-      if (!loginRes.ok) throw new Error("Login failed");
-      const loginData = await loginRes.json();
-
       const formData = new FormData();
       formData.append('files', file);
 
       const uploadRes = await fetch('https://daily-demo-backend.vercel.app/api/upload', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${loginData.token}` },
+        headers: { 'Authorization': `Bearer ${token}` },
         body: formData
       });
       const uploadData = await uploadRes.json();
@@ -93,7 +86,7 @@ export default function App() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${loginData.token}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           title: file.name.split('.')[0] || "New Photo",
@@ -116,22 +109,19 @@ export default function App() {
     const file = e.target.files[0];
     if (!file) return;
 
+    if (!isAdmin) {
+      setShowLogin(true);
+      return;
+    }
+
     setIsUploadingVideo(true);
     try {
-      const loginRes = await fetch('https://daily-demo-backend.vercel.app/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: 'testuser', password: 'password123' })
-      });
-      if (!loginRes.ok) throw new Error("Login failed");
-      const loginData = await loginRes.json();
-
       const formData = new FormData();
       formData.append('files', file);
 
       const uploadRes = await fetch('https://daily-demo-backend.vercel.app/api/upload', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${loginData.token}` },
+        headers: { 'Authorization': `Bearer ${token}` },
         body: formData
       });
       const uploadData = await uploadRes.json();
@@ -141,7 +131,7 @@ export default function App() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${loginData.token}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           title: file.name.split('.')[0] || "New Video",
@@ -161,19 +151,16 @@ export default function App() {
 
   const handleDeletePhoto = async (id, e) => {
     e.stopPropagation();
+    if (!isAdmin) {
+      setShowLogin(true);
+      return;
+    }
     if (!window.confirm("确定删除这张照片吗？")) return;
 
     try {
-      const loginRes = await fetch('https://daily-demo-backend.vercel.app/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: 'testuser', password: 'password123' })
-      });
-      const loginData = await loginRes.json();
-
       await fetch(`https://daily-demo-backend.vercel.app/api/photos/${id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${loginData.token}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       setPhotoData(photoData.filter(p => p.id !== id));
     } catch (err) {
@@ -183,19 +170,16 @@ export default function App() {
 
   const handleDeleteVideo = async (id, e) => {
     e.stopPropagation();
+    if (!isAdmin) {
+      setShowLogin(true);
+      return;
+    }
     if (!window.confirm("确定删除这个视频吗？")) return;
 
     try {
-      const loginRes = await fetch('https://daily-demo-backend.vercel.app/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: 'testuser', password: 'password123' })
-      });
-      const loginData = await loginRes.json();
-
       await fetch(`https://daily-demo-backend.vercel.app/api/videos/${id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${loginData.token}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       setVideoData(videoData.filter(v => v.id !== id));
     } catch (err) {
@@ -267,7 +251,20 @@ export default function App() {
   const [photoData, setPhotoData] = useState([]);
   const [videoData, setVideoData] = useState([]);
 
+  // Auth state
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [token, setToken] = useState(null);
+
   useEffect(() => {
+    // Check if user was already logged in
+    const storedAdmin = localStorage.getItem('isAdmin') === 'true';
+    const storedToken = localStorage.getItem('adminToken');
+    if (storedAdmin && storedToken) {
+      setIsAdmin(true);
+      setToken(storedToken);
+    }
+
     // Fetch Diary
     fetch('https://daily-demo-backend.vercel.app/api/diary')
       .then(res => {
@@ -336,26 +333,18 @@ export default function App() {
   };
 
   const handleDelete = async (postId) => {
+    if (!isAdmin) {
+      setShowLogin(true);
+      return;
+    }
     if (!window.confirm("确定删除这条记录吗？")) return;
 
     const realId = postId.replace('post-', '');
 
     try {
-      const loginRes = await fetch('https://daily-demo-backend.vercel.app/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: 'testuser', password: 'password123' })
-      });
-
-      if (!loginRes.ok) {
-        throw new Error(`Login failed with status: ${loginRes.status}`);
-      }
-
-      const loginData = await loginRes.json();
-
       const res = await fetch(`https://daily-demo-backend.vercel.app/api/diary/${realId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${loginData.token}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
 
       if (res.ok) {
@@ -371,29 +360,16 @@ export default function App() {
   };
 
   const handlePublish = async () => {
+    if (!isAdmin) {
+      setShowLogin(true);
+      return;
+    }
     if (!updateText.trim() && attachments.length === 0) return;
 
-    // Note: Real authentication token would be passed here
-    // Upload files first if any
     const finalMedia = [];
 
-    let loginData = null;
-    let backendAvailable = true;
-    try {
-      const loginRes = await fetch('https://daily-demo-backend.vercel.app/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: 'testuser', password: 'password123' })
-      });
-      if (!loginRes.ok) throw new Error("Login failed");
-      loginData = await loginRes.json();
-    } catch(e) {
-      console.warn("Backend unavailable, using local mock publish.");
-      backendAvailable = false;
-    }
-
     if (attachments.length > 0) {
-      if (backendAvailable && loginData) {
+      if (token) {
         const formData = new FormData();
         attachments.forEach(att => {
           if (att.file) {
@@ -405,7 +381,7 @@ export default function App() {
            try {
              const uploadRes = await fetch('https://daily-demo-backend.vercel.app/api/upload', {
                method: 'POST',
-               headers: { 'Authorization': `Bearer ${loginData.token}` },
+               headers: { 'Authorization': `Bearer ${token}` },
                body: formData
              });
              const uploadData = await uploadRes.json();
@@ -443,7 +419,7 @@ export default function App() {
                  attachments.length >= 3 ? 'media-grid-3' : ''
     };
 
-    if (backendAvailable && loginData) {
+    if (token) {
       const url = editingId
         ? `https://daily-demo-backend.vercel.app/api/diary/${editingId.replace('post-', '')}`
         : 'https://daily-demo-backend.vercel.app/api/diary';
@@ -454,7 +430,7 @@ export default function App() {
         method,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${loginData.token}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(newPostData)
       })
@@ -502,6 +478,18 @@ export default function App() {
     }
   };
 
+  const handleLoginSuccess = (newToken) => {
+    setIsAdmin(true);
+    setToken(newToken);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('isAdmin');
+    setIsAdmin(false);
+    setToken(null);
+  };
+
   const books = [
     { title: "霍乱时期的爱情", year: "2024" },
     { title: "花街往事", year: "2024" },
@@ -518,10 +506,17 @@ export default function App() {
 
   return (
     <div className="layout">
-      
+      {showLogin && <AdminLogin onClose={() => setShowLogin(false)} onLogin={handleLoginSuccess} />}
+
       {/* 左侧目录 */}
       <aside className="sidebar">
-        <h2>周杰 / Dylan</h2>
+        <h2
+          onDoubleClick={() => !isAdmin && setShowLogin(true)}
+          style={{ cursor: isAdmin ? 'default' : 'pointer' }}
+          title={!isAdmin ? "Double click to login as admin" : ""}
+        >
+          周杰 / Dylan
+        </h2>
         <nav>
           <a href="#about">About</a>
           <a href="#daily">Daily</a>
@@ -530,6 +525,14 @@ export default function App() {
           <a href="#photography">Photography</a>
           <a href="#links">Links</a>
         </nav>
+        {isAdmin && (
+          <button
+            onClick={handleLogout}
+            style={{ marginTop: '20px', padding: '6px 12px', background: '#f0f0f0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
+          >
+            Logout
+          </button>
+        )}
       </aside>
 
       {/* 主体内容 */}
@@ -612,6 +615,7 @@ export default function App() {
               ))}
             </main>
 
+            {isAdmin && (
             <aside className="col-editor">
               <div className="editor-panel">
                 <div className="editor-header">
@@ -621,10 +625,10 @@ export default function App() {
                     <span className="status-text">Online</span>
                   </div>
                 </div>
-                
+
                 <div className="editor-body">
-                  <textarea 
-                    className="editor-textarea" 
+                  <textarea
+                    className="editor-textarea"
                     placeholder="记录今天的碎片..."
                     value={updateText}
                     onChange={(e) => setUpdateText(e.target.value)}
@@ -682,6 +686,7 @@ export default function App() {
                 </div>
               </div>
             </aside>
+            )}
           </div>
         </section>
 
@@ -705,13 +710,15 @@ export default function App() {
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '60px', marginBottom: '10px' }}>
             <h2 style={{ margin: 0 }}>Travel</h2>
-            <div>
-              <label className={`upload-btn ${isUploadingVideo ? 'disabled' : ''}`}>
-                <Plus size={14} />
-                <span>{isUploadingVideo ? 'Uploading...' : 'Upload Video'}</span>
-                <input type="file" accept="video/*" className="hidden-input" onChange={handleVideoUpload} disabled={isUploadingVideo} />
-              </label>
-            </div>
+            {isAdmin && (
+              <div>
+                <label className={`upload-btn ${isUploadingVideo ? 'disabled' : ''}`}>
+                  <Plus size={14} />
+                  <span>{isUploadingVideo ? 'Uploading...' : 'Upload Video'}</span>
+                  <input type="file" accept="video/*" className="hidden-input" onChange={handleVideoUpload} disabled={isUploadingVideo} />
+                </label>
+              </div>
+            )}
           </div>
           <p style={{ marginTop: '0', color: '#666', fontSize: '14px' }}>
             嘿！快看那边。
@@ -731,6 +738,7 @@ export default function App() {
                       onMouseLeave={(e) => e.target.pause()}
                       style={{ width: '200px', height: '280px', objectFit: 'cover' }}
                     />
+                    {isAdmin && (
                     <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
                       <button
                         className="action-btn"
@@ -739,17 +747,11 @@ export default function App() {
                           const newTitle = prompt("修改视频名称:", video.title);
                           if (newTitle !== null) {
                             try {
-                              const loginRes = await fetch('https://daily-demo-backend.vercel.app/api/auth/login', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ username: 'testuser', password: 'password123' })
-                              });
-                              const loginData = await loginRes.json();
                               await fetch(`https://daily-demo-backend.vercel.app/api/videos/${video.id}`, {
                                 method: 'PUT',
                                 headers: {
                                   'Content-Type': 'application/json',
-                                  'Authorization': `Bearer ${loginData.token}`
+                                  'Authorization': `Bearer ${token}`
                                 },
                                 body: JSON.stringify({ title: newTitle || video.title, url: video.url })
                               });
@@ -769,6 +771,7 @@ export default function App() {
                         <Trash2 size={14} />
                       </button>
                     </div>
+                    )}
                   </div>
                 ))
               ) : (
@@ -784,10 +787,12 @@ export default function App() {
                     onMouseLeave={(e) => e.target.pause()}
                     style={{ width: '200px', height: '280px', objectFit: 'cover' }}
                   />
+                  {isAdmin && (
                   <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
                     <button className="action-btn" title="Edit Video"><Edit2 size={14} /></button>
                     <button className="action-btn delete" title="Delete Video"><Trash2 size={14} /></button>
                   </div>
+                  )}
                 </div>
                 ))
               )}
@@ -801,6 +806,7 @@ export default function App() {
           <section id="photography-inner">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
               <h2 style={{ margin: 0 }}>myCut</h2>
+              {isAdmin && (
               <div>
                 <label className={`upload-btn ${isUploadingPhoto ? 'disabled' : ''}`}>
                   <Plus size={14} />
@@ -808,6 +814,7 @@ export default function App() {
                   <input type="file" accept="image/*" className="hidden-input" onChange={handlePhotoUpload} disabled={isUploadingPhoto} />
                 </label>
               </div>
+              )}
             </div>
 
             <div className="photo-grid">
@@ -820,6 +827,7 @@ export default function App() {
                     ...item,
                     src: item.url.startsWith('images/') ? item.url : item.url.startsWith('http') ? item.url : `https://daily-demo-backend.vercel.app${item.url.startsWith('/') ? '' : '/'}${item.url}`
                   })}>
+                    {isAdmin && (
                     <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
                       <button
                         className="action-btn"
@@ -859,6 +867,7 @@ export default function App() {
                         <Trash2 size={14} />
                       </button>
                     </div>
+                    )}
                     <div className="photo-img-wrapper">
                       <img src={item.url.startsWith('images/') ? item.url : item.url.startsWith('http') ? item.url : `https://daily-demo-backend.vercel.app${item.url.startsWith('/') ? '' : '/'}${item.url}`} alt={item.title} />
                     </div>
@@ -905,10 +914,12 @@ export default function App() {
                   key={index}
                   style={{ position: 'relative' }}
                   onClick={() => setActivePhoto(item)}>
+                    {isAdmin && (
                     <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
                       <button className="action-btn" title="Edit Photo"><Edit2 size={14} /></button>
                       <button className="action-btn delete" title="Delete Photo"><Trash2 size={14} /></button>
                     </div>
+                    )}
                     <div className="photo-img-wrapper">
                       <img src={item.src} alt={item.title} />
                     </div>
