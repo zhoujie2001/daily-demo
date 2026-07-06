@@ -848,7 +848,7 @@ export default function App() {
                               const loginRes = await fetch('https://daily-demo-backend.vercel.app/api/auth/login', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ username: 'testuser', password: 'password123' })
+                                body: JSON.stringify({ username: 'testuser', password: 'Zj&116139' })
                               });
                               const loginData = await loginRes.json();
                               await fetch(`https://daily-demo-backend.vercel.app/api/photos/${item.id}`, {
