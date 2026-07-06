@@ -46,16 +46,18 @@ export default function DailyEditor({
         </div>
 
         <div className="editor-body">
-        <textarea
-          className="editor-textarea"
-          rows={4}
-          value={text}
-          placeholder="今天有什么想说的？"
-          onChange={(e) => onTextChange(e.target.value)}
-        />
-        <div className="editor-meta-row">
-          <span>{editingId ? '正在编辑已有 Daily' : '支持文字、图片、视频与标签'}</span>
-          <span>{text.trim().length} 字</span>
+        <div className="editor-writing-surface">
+          <textarea
+            className="editor-textarea"
+            rows={4}
+            value={text}
+            placeholder="今天有什么想说的？"
+            onChange={(e) => onTextChange(e.target.value)}
+          />
+          <div className="editor-meta-row">
+            <span>{editingId ? '正在编辑已有 Daily' : '支持文字、图片、视频与标签'}</span>
+            <span>{text.trim().length} 字</span>
+          </div>
         </div>
 
         {attachments.length > 0 && (
@@ -82,9 +84,13 @@ export default function DailyEditor({
         )}
 
         <div className="editor-tags">
-          <div className="editor-tags-label">
-            <TagIcon size={11} /> 标签
+          <div className="editor-tags-label-row">
+            <div className="editor-tags-label">
+              <TagIcon size={11} /> 标签
+            </div>
+            <span className="editor-tags-hint">点击快速分类，也可以自定义</span>
           </div>
+          <div className="editor-tag-surface">
           <div className="editor-tag-chips">
             {PRESET_TAGS.map((t) => (
               <button
@@ -123,6 +129,7 @@ export default function DailyEditor({
               }}
               onBlur={addCustom}
             />
+          </div>
           </div>
         </div>
 
