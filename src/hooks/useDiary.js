@@ -28,6 +28,14 @@ function todayLabel() {
   });
 }
 
+function hasMeaningfulText(value) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function hasMeaningfulMedia(value) {
+  return Array.isArray(value) && value.length > 0;
+}
+
 function dedupePostsByDate(list) {
   const map = new Map();
   (list || []).forEach((post) => {
@@ -39,10 +47,9 @@ function dedupePostsByDate(list) {
     }
     const merged = {
       ...existing,
-      ...post,
-      text: existing.text || post.text || '',
-      media: (existing.media && existing.media.length > 0) ? existing.media : (post.media || []),
-      mediaGrid: existing.mediaGrid || post.mediaGrid || '',
+      text: hasMeaningfulText(existing.text) ? existing.text : (post.text || ''),
+      media: hasMeaningfulMedia(existing.media) ? existing.media : (post.media || []),
+      mediaGrid: hasMeaningfulMedia(existing.media) ? existing.mediaGrid : (post.mediaGrid || ''),
       tags: Array.from(new Set([...(existing.tags || []), ...(post.tags || [])])),
     };
     map.set(key, merged);

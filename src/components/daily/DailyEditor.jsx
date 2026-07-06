@@ -36,6 +36,7 @@ export default function DailyEditor({
       <div className="editor-panel">
         <div className="editor-header">
           <div>
+            <div className="editor-kicker">DAILY STUDIO</div>
             <span className="editor-title">{editingId ? 'Edit Update' : 'Write Update'}</span>
             <div className="editor-subtitle">记录今天，留一点给未来的自己。</div>
           </div>
