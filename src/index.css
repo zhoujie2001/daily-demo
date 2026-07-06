@@ -1591,3 +1591,95 @@ h2 {
   flex-wrap: wrap;
   gap: 5px;
 }
+
+/* ===== Lazy Image / Skeleton ===== */
+.lazy-image {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.lazy-image-skeleton {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.05) 0%,
+    rgba(0, 0, 0, 0.1) 20%,
+    rgba(0, 0, 0, 0.05) 40%
+  );
+  background-size: 200% 100%;
+  animation: lazyShimmer 1.35s ease-in-out infinite;
+}
+
+.lazy-image-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transform: scale(1.02);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.lazy-image-img.is-visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.lazy-image-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  background: rgba(0, 0, 0, 0.03);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-align: center;
+  padding: 0.75rem;
+}
+
+@keyframes lazyShimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.photo-img-wrapper {
+  position: relative;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+}
+
+.photo-lazy-wrapper,
+.daily-lazy-wrapper {
+  position: absolute;
+  inset: 0;
+}
+
+.photo-lazy-img,
+.daily-lazy-img {
+  object-fit: cover;
+}
+
+.photo-lazy-skeleton,
+.daily-lazy-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.04) 0%,
+    rgba(0, 0, 0, 0.09) 20%,
+    rgba(0, 0, 0, 0.04) 40%
+  );
+  background-size: 220% 100%;
+}
