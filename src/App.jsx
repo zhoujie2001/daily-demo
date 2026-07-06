@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import AdminLogin from './components/AdminLogin';
 import Sidebar from './components/Sidebar';
 import About from './components/About';
-import Reading from './components/Reading';
+import Reading from './components/reading/Reading';
 import Links from './components/Links';
 import Lightbox from './components/Lightbox';
 import Daily from './components/daily/Daily';
@@ -13,12 +13,14 @@ import { useAdminAuth } from './hooks/useAdminAuth';
 import { useDiary } from './hooks/useDiary';
 import { usePhotos } from './hooks/usePhotos';
 import { useVideos } from './hooks/useVideos';
+import { useReading } from './hooks/useReading';
 
 function AppInner() {
   const { token, isAdmin, login, logout } = useAdminAuth();
   const { posts, activeDate, setActiveDate, publish, remove: removeDiary } = useDiary(token);
   const photosState = usePhotos(token);
   const videosState = useVideos(token);
+  const readingState = useReading(token);
   const { toast } = useDialog();
 
   const [showLogin, setShowLogin] = useState(false);
@@ -55,7 +57,15 @@ function AppInner() {
           onDelete={removeDiary}
         />
 
-        <Reading />
+        <Reading
+          isAdmin={isAdmin}
+          books={readingState.books}
+          loading={readingState.loading}
+          saving={readingState.saving}
+          backendReady={readingState.backendReady}
+          onSave={readingState.save}
+          onDelete={readingState.remove}
+        />
 
         <Travel
           isAdmin={isAdmin}
