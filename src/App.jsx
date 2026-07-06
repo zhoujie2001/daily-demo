@@ -729,6 +729,7 @@ export default function App() {
                       playsInline
                       onMouseEnter={(e) => { e.target.play().catch(err => console.warn("Video playback prevented:", err)); }}
                       onMouseLeave={(e) => e.target.pause()}
+                      style={{ width: '200px', height: '280px', objectFit: 'cover' }}
                     />
                     <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
                       <button
@@ -781,6 +782,7 @@ export default function App() {
                     playsInline
                     onMouseEnter={(e) => { e.target.play().catch(err => console.warn("Video playback prevented:", err)); }}
                     onMouseLeave={(e) => e.target.pause()}
+                    style={{ width: '200px', height: '280px', objectFit: 'cover' }}
                   />
                   <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
                     <button className="action-btn" title="Edit Video"><Edit2 size={14} /></button>
