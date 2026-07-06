@@ -3,30 +3,71 @@ import { Edit2, Plus, Trash2 } from 'lucide-react';
 import { useHorizontalAutoScroll } from '../../hooks/useHorizontalAutoScroll';
 import { fallbackVideos } from '../../data/fallbackPhotos';
 import { resolveMediaUrl } from '../../utils/media';
+import { useDialog } from '../../context/DialogContext';
+import { LoadingSpinner, LoadingBlock } from '../ui/Loading';
 
-export default function Travel({ isAdmin, videos, uploading, onUpload, onUpdate, onDelete }) {
+export default function Travel({
+  isAdmin,
+  videos,
+  loading,
+  uploading,
+  onUpload,
+  onUpdate,
+  onDelete,
+}) {
   const sliderRef = useRef(null);
   useHorizontalAutoScroll(sliderRef, 0.5);
+  const { confirm, prompt, toast } = useDialog();
 
-  const list = videos.length > 0 ? videos : fallbackVideos;
   const isRealData = videos.length > 0;
+  const list = isRealData ? videos : fallbackVideos;
 
-  const handleFile = (e) => {
+  const handleFile = async (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    onUpload(file);
     e.target.value = '';
+    if (!file) return;
+    try {
+      await onUpload(file);
+      toast.success('视频上传成功');
+    } catch (err) {
+      console.error(err);
+      toast.error('视频上传失败，请稍后重试');
+    }
   };
 
   const handleEditTitle = async (video) => {
-    const newTitle = prompt('修改视频名称:', video.title);
+    const newTitle = await prompt({
+      title: '编辑视频名称',
+      label: '标题',
+      defaultValue: video.title,
+      placeholder: '视频名称',
+      confirmText: '保存',
+    });
     if (newTitle == null) return;
-    onUpdate(video.id, { title: newTitle || video.title });
+    try {
+      await onUpdate(video.id, { title: newTitle || video.title });
+      toast.success('已更新');
+    } catch (err) {
+      console.error(err);
+      toast.error('更新失败');
+    }
   };
 
-  const handleDelete = (id) => {
-    if (!window.confirm('确定删除这个视频吗？')) return;
-    onDelete(id);
+  const handleDelete = async (id) => {
+    const ok = await confirm({
+      title: '删除视频',
+      message: '删除后不可恢复，确定要删除这个视频吗？',
+      confirmText: '删除',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await onDelete(id);
+      toast.success('已删除');
+    } catch (err) {
+      console.error(err);
+      toast.error('删除失败');
+    }
   };
 
   return (
@@ -35,7 +76,7 @@ export default function Travel({ isAdmin, videos, uploading, onUpload, onUpdate,
         <h2 style={{ margin: 0 }}>Travel</h2>
         {isAdmin && (
           <label className={`upload-btn ${uploading ? 'disabled' : ''}`}>
-            <Plus size={14} />
+            {uploading ? <LoadingSpinner size={12} /> : <Plus size={14} />}
             <span>{uploading ? 'Uploading...' : 'Upload Video'}</span>
             <input
               type="file"
@@ -49,43 +90,49 @@ export default function Travel({ isAdmin, videos, uploading, onUpload, onUpdate,
       </div>
       <p style={{ marginTop: 0, color: '#666', fontSize: '14px' }}>嘿！快看那边。</p>
 
-      <div className="slider-wrapper" ref={sliderRef}>
-        <div className="video-track">
-          {list.map((video, index) => (
-            <div key={video.id ?? `static-${index}`} className="video-card">
-              <video
-                src={resolveMediaUrl(video.url)}
-                muted
-                loop
-                playsInline
-                onMouseEnter={(e) => {
-                  e.target.play().catch((err) => console.warn('Video playback prevented:', err));
-                }}
-                onMouseLeave={(e) => e.target.pause()}
-                style={{ width: '200px', height: '280px', objectFit: 'cover' }}
-              />
-              {isAdmin && isRealData && (
-                <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    className="action-btn"
-                    onClick={() => handleEditTitle(video)}
-                    title={video.title || 'Edit Video'}
-                  >
-                    <Edit2 size={14} />
-                  </button>
-                  <button
-                    className="action-btn delete"
-                    onClick={() => handleDelete(video.id)}
-                    title="Delete Video"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
+      {loading && !isRealData ? (
+        <LoadingBlock label="Loading videos..." />
+      ) : (
+        <div className="slider-wrapper" ref={sliderRef}>
+          <div className="video-track">
+            {list.map((video, index) => (
+              <div key={video.id ?? `static-${index}`} className="video-card">
+                <video
+                  src={resolveMediaUrl(video.url)}
+                  muted
+                  loop
+                  playsInline
+                  onMouseEnter={(e) => {
+                    e.target.play().catch((err) =>
+                      console.warn('Video playback prevented:', err)
+                    );
+                  }}
+                  onMouseLeave={(e) => e.target.pause()}
+                  style={{ width: '200px', height: '280px', objectFit: 'cover' }}
+                />
+                {isAdmin && isRealData && (
+                  <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      className="action-btn"
+                      onClick={() => handleEditTitle(video)}
+                      title={video.title || 'Edit Video'}
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                    <button
+                      className="action-btn delete"
+                      onClick={() => handleDelete(video.id)}
+                      title="Delete Video"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </section>
   );
 }

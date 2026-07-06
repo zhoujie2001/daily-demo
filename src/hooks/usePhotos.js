@@ -4,6 +4,7 @@ import * as uploadApi from '../api/upload';
 
 export function usePhotos(token) {
   const [photos, setPhotos] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
@@ -14,7 +15,10 @@ export function usePhotos(token) {
         if (cancelled) return;
         if (Array.isArray(data) && data.length > 0) setPhotos(data);
       })
-      .catch((err) => console.error('Error fetching photos', err));
+      .catch((err) => console.error('Error fetching photos', err))
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -22,7 +26,7 @@ export function usePhotos(token) {
 
   const upload = useCallback(
     async (file) => {
-      if (!file || !token) return;
+      if (!file || !token) throw new Error('no file or token');
       setUploading(true);
       try {
         const [url] = await uploadApi.uploadFiles(file, token);
@@ -35,9 +39,7 @@ export function usePhotos(token) {
           token
         );
         setPhotos((prev) => [created, ...prev]);
-      } catch (err) {
-        console.error('Failed to upload photo:', err);
-        alert('上传照片失败');
+        return created;
       } finally {
         setUploading(false);
       }
@@ -47,34 +49,26 @@ export function usePhotos(token) {
 
   const update = useCallback(
     async (id, patch) => {
-      if (!token) return;
+      if (!token) throw new Error('not authenticated');
       const current = photos.find((p) => p.id === id);
-      if (!current) return;
-      try {
-        await photosApi.updatePhoto(
-          id,
-          { title: patch.title ?? current.title, desc: patch.desc ?? current.desc, url: current.url },
-          token
-        );
-        setPhotos((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
-      } catch (err) {
-        console.error('Update photo failed', err);
-      }
+      if (!current) throw new Error('photo not found');
+      await photosApi.updatePhoto(
+        id,
+        { title: patch.title ?? current.title, desc: patch.desc ?? current.desc, url: current.url },
+        token
+      );
+      setPhotos((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
     },
     [photos, token]
   );
 
   const remove = useCallback(
     async (id) => {
-      try {
-        if (token) await photosApi.deletePhoto(id, token);
-      } catch (err) {
-        console.error('Delete photo failed', err);
-      }
+      if (token) await photosApi.deletePhoto(id, token);
       setPhotos((prev) => prev.filter((p) => p.id !== id));
     },
     [token]
   );
 
-  return { photos, uploading, upload, update, remove };
+  return { photos, loading, uploading, upload, update, remove };
 }

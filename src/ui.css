@@ -1,0 +1,329 @@
+/* =========================================
+   UI primitives: Modal / Button / Form / Toast / Loading / EmptyState
+   ========================================= */
+
+/* ---------- Modal ---------- */
+.ui-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 15, 15, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: ui-fade-in 0.18s ease-out;
+  padding: 16px;
+}
+
+.ui-modal-panel {
+  position: relative;
+  background: #fff;
+  border-radius: 14px;
+  padding: 22px 22px 18px;
+  width: 100%;
+  max-width: 360px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.05);
+  animation: ui-scale-in 0.2s cubic-bezier(0.19, 1, 0.22, 1);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", sans-serif;
+}
+
+.ui-modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #111;
+  margin-bottom: 12px;
+  padding-right: 24px;
+}
+
+.ui-modal-body {
+  font-size: 14px;
+  color: #333;
+}
+
+.ui-modal-footer {
+  margin-top: 20px;
+}
+
+.ui-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.ui-modal-close:hover {
+  background: #f2f2f2;
+  color: #111;
+}
+
+/* ---------- Button ---------- */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.05s ease,
+    box-shadow 0.15s ease;
+  font-family: inherit;
+}
+
+.ui-btn:active:not(.ui-btn-disabled) {
+  transform: translateY(1px);
+}
+
+.ui-btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.ui-btn-md {
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+.ui-btn-primary {
+  background: #111;
+  color: #fff;
+}
+
+.ui-btn-primary:hover:not(.ui-btn-disabled) {
+  background: #222;
+}
+
+.ui-btn-secondary {
+  background: #f2f2f2;
+  color: #111;
+}
+
+.ui-btn-secondary:hover:not(.ui-btn-disabled) {
+  background: #e6e6e6;
+}
+
+.ui-btn-ghost {
+  background: transparent;
+  color: #555;
+}
+
+.ui-btn-ghost:hover:not(.ui-btn-disabled) {
+  background: #f5f5f5;
+  color: #111;
+}
+
+.ui-btn-danger {
+  background: #e11d48;
+  color: #fff;
+}
+
+.ui-btn-danger:hover:not(.ui-btn-disabled) {
+  background: #be1a3c;
+}
+
+.ui-btn-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ---------- Form ---------- */
+.ui-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ui-form-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ui-form-label {
+  font-size: 12px;
+  color: #666;
+  font-weight: 500;
+}
+
+.ui-input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #111;
+  background: #fff;
+  outline: none;
+  box-sizing: border-box;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ui-input:focus {
+  border-color: #111;
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.08);
+}
+
+.ui-textarea {
+  resize: vertical;
+  min-height: 72px;
+  line-height: 1.5;
+}
+
+/* ---------- Toast ---------- */
+.ui-toast-container {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.ui-toast {
+  pointer-events: auto;
+  min-width: 220px;
+  max-width: 420px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: ui-toast-in 0.24s cubic-bezier(0.19, 1, 0.22, 1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  color: #111;
+  background: #fff;
+  border: 1px solid #eee;
+}
+
+.ui-toast-success {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #065f46;
+}
+
+.ui-toast-error {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.ui-toast-info {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1e40af;
+}
+
+.ui-toast-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.ui-toast-msg {
+  flex: 1;
+  line-height: 1.4;
+}
+
+/* ---------- Loading ---------- */
+.ui-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ui-spinner {
+  display: inline-block;
+  border-radius: 50%;
+  border-style: solid;
+  border-color: rgba(17, 17, 17, 0.15);
+  border-top-color: rgba(17, 17, 17, 0.7);
+  animation: ui-spin 0.8s linear infinite;
+  box-sizing: border-box;
+}
+
+.ui-loading-label {
+  font-size: 12px;
+  color: #666;
+}
+
+.ui-loading-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 0;
+  color: #666;
+}
+
+.ui-loading-block-label {
+  font-size: 13px;
+}
+
+/* ---------- Empty ---------- */
+.ui-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 20px;
+  text-align: center;
+  color: #666;
+}
+
+.ui-empty-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: #333;
+}
+
+.ui-empty-desc {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #888;
+  line-height: 1.6;
+}
+
+.ui-empty-action {
+  margin-top: 14px;
+}
+
+/* ---------- Animations ---------- */
+@keyframes ui-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ui-scale-in {
+  from { opacity: 0; transform: scale(0.96) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes ui-toast-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ui-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

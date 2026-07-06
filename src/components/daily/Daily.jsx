@@ -2,12 +2,15 @@ import React, { useCallback, useRef, useState } from 'react';
 import Timeline from './Timeline';
 import DailyEntry from './DailyEntry';
 import DailyEditor from './DailyEditor';
+import { useDialog } from '../../context/DialogContext';
 
 export default function Daily({ isAdmin, posts, activeDate, onActiveDateChange, onPublish, onDelete }) {
   const contentRef = useRef(null);
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState([]);
   const [editingId, setEditingId] = useState(null);
+  const [publishing, setPublishing] = useState(false);
+  const { confirm, toast } = useDialog();
 
   const scrollToPost = useCallback((id) => {
     onActiveDateChange(id);
@@ -83,18 +86,34 @@ export default function Daily({ isAdmin, posts, activeDate, onActiveDateChange, 
 
   const publish = async () => {
     if (!text.trim() && attachments.length === 0) return;
+    setPublishing(true);
     try {
       await onPublish({ text, attachments, editingId });
+      toast.success(editingId ? '已更新' : '已发布');
+      cancelEdit();
     } catch (err) {
       console.error('Publish failed:', err);
-      return;
+      toast.error(editingId ? '更新失败' : '发布失败，请稍后重试');
+    } finally {
+      setPublishing(false);
     }
-    cancelEdit();
   };
 
   const handleDelete = async (postId) => {
-    if (!window.confirm('确定删除这条记录吗？')) return;
-    await onDelete(postId);
+    const ok = await confirm({
+      title: '删除记录',
+      message: '删除后不可恢复，确定要删除这条 Daily 吗？',
+      confirmText: '删除',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await onDelete(postId);
+      toast.success('已删除');
+    } catch (err) {
+      console.error(err);
+      toast.error('删除失败');
+    }
   };
 
   return (
@@ -118,6 +137,7 @@ export default function Daily({ isAdmin, posts, activeDate, onActiveDateChange, 
             editingId={editingId}
             text={text}
             attachments={attachments}
+            publishing={publishing}
             onTextChange={setText}
             onFilesSelected={handleFileSelect}
             onRemoveAttachment={removeAttachment}

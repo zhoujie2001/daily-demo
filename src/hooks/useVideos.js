@@ -4,6 +4,7 @@ import * as uploadApi from '../api/upload';
 
 export function useVideos(token) {
   const [videos, setVideos] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
@@ -14,7 +15,10 @@ export function useVideos(token) {
         if (cancelled) return;
         if (Array.isArray(data) && data.length > 0) setVideos(data);
       })
-      .catch((err) => console.error('Error fetching videos', err));
+      .catch((err) => console.error('Error fetching videos', err))
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -22,7 +26,7 @@ export function useVideos(token) {
 
   const upload = useCallback(
     async (file) => {
-      if (!file || !token) return;
+      if (!file || !token) throw new Error('no file or token');
       setUploading(true);
       try {
         const [url] = await uploadApi.uploadFiles(file, token);
@@ -31,9 +35,7 @@ export function useVideos(token) {
           token
         );
         setVideos((prev) => [created, ...prev]);
-      } catch (err) {
-        console.error('Failed to upload video:', err);
-        alert('上传视频失败');
+        return created;
       } finally {
         setUploading(false);
       }
@@ -43,34 +45,26 @@ export function useVideos(token) {
 
   const update = useCallback(
     async (id, patch) => {
-      if (!token) return;
+      if (!token) throw new Error('not authenticated');
       const current = videos.find((v) => v.id === id);
-      if (!current) return;
-      try {
-        await videosApi.updateVideo(
-          id,
-          { title: patch.title ?? current.title, url: current.url },
-          token
-        );
-        setVideos((prev) => prev.map((v) => (v.id === id ? { ...v, ...patch } : v)));
-      } catch (err) {
-        console.error('Update video failed', err);
-      }
+      if (!current) throw new Error('video not found');
+      await videosApi.updateVideo(
+        id,
+        { title: patch.title ?? current.title, url: current.url },
+        token
+      );
+      setVideos((prev) => prev.map((v) => (v.id === id ? { ...v, ...patch } : v)));
     },
     [videos, token]
   );
 
   const remove = useCallback(
     async (id) => {
-      try {
-        if (token) await videosApi.deleteVideo(id, token);
-      } catch (err) {
-        console.error('Delete video failed', err);
-      }
+      if (token) await videosApi.deleteVideo(id, token);
       setVideos((prev) => prev.filter((v) => v.id !== id));
     },
     [token]
   );
 
-  return { videos, uploading, upload, update, remove };
+  return { videos, loading, uploading, upload, update, remove };
 }
