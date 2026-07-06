@@ -626,8 +626,70 @@ h2 {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-secondary);
-  margin-bottom: 2rem;
+  margin-bottom: 1rem;
   font-weight: 600;
+}
+
+.timeline-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  padding-right: 1rem;
+}
+
+.timeline-search-icon {
+  position: absolute;
+  left: 0.6rem;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.timeline-search-input {
+  width: 100%;
+  padding: 0.4rem 1.9rem 0.4rem 1.9rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.timeline-search-input:focus {
+  border-color: var(--text-primary);
+}
+
+.timeline-search-input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+.timeline-search-clear {
+  position: absolute;
+  right: 1.4rem;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+}
+
+.timeline-search-clear:hover {
+  color: var(--text-primary);
+}
+
+.timeline-empty {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  padding-left: 0.2rem;
+  opacity: 0.7;
 }
 
 .timeline-track {
