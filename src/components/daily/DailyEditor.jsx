@@ -35,12 +35,16 @@ export default function DailyEditor({
     <aside className="col-editor">
       <div className="editor-panel">
         <div className="editor-header">
-          <span className="editor-title">{editingId ? 'Edit Update' : 'Write Update'}</span>
+          <div>
+            <span className="editor-title">{editingId ? 'Edit Update' : 'Write Update'}</span>
+            <div className="editor-subtitle">记录今天，留一点给未来的自己。</div>
+          </div>
           <div className="status-indicator">
             <span className="status-dot" title="System Online" />
           </div>
         </div>
 
+        <div className="editor-body">
         <textarea
           className="editor-textarea"
           rows={4}
@@ -48,6 +52,10 @@ export default function DailyEditor({
           placeholder="今天有什么想说的？"
           onChange={(e) => onTextChange(e.target.value)}
         />
+        <div className="editor-meta-row">
+          <span>{editingId ? '正在编辑已有 Daily' : '支持文字、图片、视频与标签'}</span>
+          <span>{text.trim().length} 字</span>
+        </div>
 
         {attachments.length > 0 && (
           <div className="editor-attachments">
@@ -115,6 +123,8 @@ export default function DailyEditor({
               onBlur={addCustom}
             />
           </div>
+        </div>
+
         </div>
 
         <div className="editor-footer">
