@@ -539,7 +539,13 @@ export default function App() {
       <main className="content">
 
         <section id="about">
-          <h1>周杰 / Dylan</h1>
+          <h1
+            onDoubleClick={() => !isAdmin && setShowLogin(true)}
+            style={{ cursor: isAdmin ? 'default' : 'pointer' }}
+            title={!isAdmin ? "Double click to login as admin" : ""}
+          >
+            周杰 / Dylan
+          </h1>
           <p className="subtitle">
             A pessimist in the third quadrant, yet passionate about movement.
           </p>
