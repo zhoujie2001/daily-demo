@@ -1,5 +1,6 @@
 import React from 'react';
 import { Edit2, Trash2 } from 'lucide-react';
+import LazyImage from '../ui/LazyImage';
 
 function renderMediaItem(item, idx) {
   if (item.type === 'color') {
@@ -24,11 +25,14 @@ function renderMediaItem(item, idx) {
   }
   if (item.type === 'image') {
     return (
-      <img
+      <LazyImage
         key={idx}
         src={item.url}
         alt="daily"
-        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        className="daily-lazy-wrapper"
+        imgClassName="daily-lazy-img"
+        skeletonClassName="daily-lazy-skeleton"
+        errorText="图片加载失败"
       />
     );
   }

@@ -5,6 +5,7 @@ import { resolveMediaUrl } from '../../utils/media';
 import { useDialog } from '../../context/DialogContext';
 import { LoadingSpinner, LoadingBlock } from '../ui/Loading';
 import EmptyState from '../ui/EmptyState';
+import LazyImage from '../ui/LazyImage';
 
 export default function Photography({
   isAdmin,
@@ -140,7 +141,14 @@ export default function Photography({
                   </div>
                 )}
                 <div className="photo-img-wrapper">
-                  <img src={resolveMediaUrl(item.url)} alt={item.title} />
+                  <LazyImage
+                    src={resolveMediaUrl(item.url)}
+                    alt={item.title}
+                    className="photo-lazy-wrapper"
+                    imgClassName="photo-lazy-img"
+                    skeletonClassName="photo-lazy-skeleton"
+                    errorText="照片加载失败"
+                  />
                 </div>
                 <div className="photo-info" style={{ position: 'relative' }}>
                   <h3>{item.title}</h3>
