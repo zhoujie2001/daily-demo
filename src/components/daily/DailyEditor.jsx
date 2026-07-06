@@ -1,17 +1,19 @@
 import React from 'react';
 import { Film, Image as ImageIcon, Link as LinkIcon, Send, X } from 'lucide-react';
+import { LoadingSpinner } from '../ui/Loading';
 
 export default function DailyEditor({
   editingId,
   text,
   attachments,
+  publishing = false,
   onTextChange,
   onFilesSelected,
   onRemoveAttachment,
   onPublish,
   onCancelEdit,
 }) {
-  const canPublish = text.trim().length > 0 || attachments.length > 0;
+  const canPublish = (text.trim().length > 0 || attachments.length > 0) && !publishing;
   return (
     <aside className="col-editor">
       <div className="editor-panel">
@@ -29,6 +31,7 @@ export default function DailyEditor({
             placeholder="记录今天的碎片..."
             value={text}
             onChange={(e) => onTextChange(e.target.value)}
+            disabled={publishing}
           />
           {attachments.length > 0 && (
             <div className="editor-attachments">
@@ -45,6 +48,7 @@ export default function DailyEditor({
                     className="remove-att-btn"
                     onClick={() => onRemoveAttachment(att.id)}
                     aria-label="remove attachment"
+                    disabled={publishing}
                   >
                     <X size={14} />
                   </button>
@@ -64,23 +68,34 @@ export default function DailyEditor({
                 accept="image/*,video/*"
                 className="hidden-input"
                 onChange={onFilesSelected}
+                disabled={publishing}
               />
             </label>
-            <button className="tool-btn" title="Add Link">
+            <button className="tool-btn" title="Add Link" disabled={publishing}>
               <LinkIcon size={18} />
             </button>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <button className="publish-btn" disabled={!canPublish} onClick={onPublish}>
-              <span>{editingId ? 'Update' : 'Publish'}</span>
-              <Send size={14} />
+              {publishing ? (
+                <>
+                  <LoadingSpinner size={12} />
+                  <span>Publishing...</span>
+                </>
+              ) : (
+                <>
+                  <span>{editingId ? 'Update' : 'Publish'}</span>
+                  <Send size={14} />
+                </>
+              )}
             </button>
             {editingId && (
               <button
                 className="publish-btn"
                 style={{ background: '#fef2f2', color: '#ef4444', marginLeft: '8px' }}
                 onClick={onCancelEdit}
+                disabled={publishing}
               >
                 <span>Cancel</span>
                 <X size={14} />

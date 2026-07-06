@@ -1,135 +1,102 @@
 import React, { useState } from 'react';
-import { Lock, X } from 'lucide-react';
+import { Lock } from 'lucide-react';
 import * as authApi from '../api/auth';
+import Modal from './ui/Modal';
+import Button from './ui/Button';
 
 /**
  * 管理员登录弹窗。
- * 用户名 + 密码均由用户自行输入，源码中不再保留任何默认账号。
+ * 用户名与密码全部由用户输入，源码中不再保留任何默认账号。
  */
-export default function AdminLogin({ onClose, onLogin }) {
+export default function AdminLogin({ open, onClose, onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
+    if (e && e.preventDefault) e.preventDefault();
+    setLoading(true);
     setError('');
     try {
       const data = await authApi.login({ username, password });
       onLogin(data.token);
       onClose();
+      setUsername('');
+      setPassword('');
     } catch {
       setError('用户名或密码不正确');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div style={overlayStyle}>
-      <div style={modalStyle}>
-        <button onClick={onClose} style={closeBtnStyle} aria-label="close">
-          <X size={18} />
-        </button>
-        <div style={headerStyle}>
-          <div style={iconWrapperStyle}>
-            <Lock size={20} color="#444" />
-          </div>
-          <h3 style={titleStyle}>Admin Access</h3>
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="sm"
+      title={
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span
+            style={{
+              background: '#f2f2f2',
+              width: 32,
+              height: 32,
+              borderRadius: '50%',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Lock size={16} color="#444" />
+          </span>
+          <span>Admin Access</span>
         </div>
-
-        <form onSubmit={handleSubmit}>
+      }
+      footer={
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            loading={loading}
+            disabled={!username || !password}
+            onClick={handleSubmit}
+          >
+            Unlock
+          </Button>
+        </div>
+      }
+    >
+      <form onSubmit={handleSubmit} className="ui-form">
+        <div className="ui-form-item">
+          <label className="ui-form-label">Username</label>
           <input
             type="text"
-            placeholder="Username"
+            className="ui-input"
+            placeholder="Enter username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            style={inputStyle}
             autoFocus
           />
+        </div>
+        <div className="ui-form-item">
+          <label className="ui-form-label">Password</label>
           <input
             type="password"
-            placeholder="Password"
+            className="ui-input"
+            placeholder="Enter password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            style={inputStyle}
           />
-          {error && <p style={errorStyle}>{error}</p>}
-          <button
-            type="submit"
-            style={submitBtnStyle(isLoading)}
-            disabled={isLoading || !username || !password}
-          >
-            {isLoading ? 'Verifying...' : 'Unlock'}
-          </button>
-        </form>
-      </div>
-    </div>
+        </div>
+        {error && (
+          <p style={{ color: '#e11d48', fontSize: 12, margin: 0 }}>{error}</p>
+        )}
+        <button type="submit" style={{ display: 'none' }} aria-hidden />
+      </form>
+    </Modal>
   );
 }
-
-const overlayStyle = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(0,0,0,0.4)',
-  backdropFilter: 'blur(4px)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 9999,
-};
-const modalStyle = {
-  background: '#fff',
-  borderRadius: '12px',
-  padding: '24px',
-  width: '90%',
-  maxWidth: '320px',
-  boxShadow: '0 20px 40px rgba(0,0,0,0.1)',
-  position: 'relative',
-};
-const closeBtnStyle = {
-  position: 'absolute',
-  top: '12px',
-  right: '12px',
-  background: 'none',
-  border: 'none',
-  color: '#888',
-  cursor: 'pointer',
-  padding: '4px',
-};
-const headerStyle = { display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' };
-const iconWrapperStyle = {
-  background: '#f0f0f0',
-  width: '36px',
-  height: '36px',
-  borderRadius: '50%',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-};
-const titleStyle = { margin: 0, fontSize: '16px', fontWeight: 600, color: '#111' };
-const inputStyle = {
-  width: '100%',
-  padding: '10px 12px',
-  border: '1px solid #ddd',
-  borderRadius: '8px',
-  fontSize: '14px',
-  marginBottom: '12px',
-  boxSizing: 'border-box',
-  outline: 'none',
-};
-const errorStyle = { color: '#e11d48', fontSize: '12px', margin: '-4px 0 12px 0' };
-const submitBtnStyle = (isLoading) => ({
-  width: '100%',
-  padding: '10px',
-  background: isLoading ? '#666' : '#111',
-  color: '#fff',
-  border: 'none',
-  borderRadius: '8px',
-  fontSize: '14px',
-  fontWeight: 500,
-  cursor: isLoading ? 'wait' : 'pointer',
-  transition: 'background 0.2s',
-});
