@@ -260,8 +260,8 @@ h2 {
 }
 
 .video-track video {
-  width: 320px;
-  height: 200px;
+  width: 200px;
+  height: 280px;
   object-fit: cover;
   border-radius: 12px;
   display: block;
