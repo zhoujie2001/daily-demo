@@ -71,7 +71,7 @@ export default function DailyEntry({ post, isAdmin, onEdit, onDelete }) {
             </button>
             <button
               className="entry-action-btn delete"
-              onClick={() => onDelete(post.id)}
+              onClick={() => onDelete(post)}
               title="Delete"
             >
               <Trash2 size={14} />

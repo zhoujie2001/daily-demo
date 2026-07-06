@@ -814,35 +814,41 @@ h2 {
 }
 
 .entry-action-btn {
-  background: none;
-  border: none;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.08);
   color: var(--text-secondary);
   cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
+  padding: 6px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .entry-action-btn:hover {
-  background: var(--bg-secondary);
+  background: rgba(255, 255, 255, 1);
   color: var(--text-primary);
+  border-color: rgba(0, 0, 0, 0.14);
+  transform: translateY(-1px);
 }
 
 .entry-action-btn.delete:hover {
   color: #ef4444;
-  background: #fef2f2;
+  background: #fff5f5;
+  border-color: rgba(239, 68, 68, 0.25);
 }
 
 .entry-text {
+  display: block;
   font-size: 1rem;
   margin-bottom: 1.5rem;
   color: var(--text-primary);
   min-height: 1.5rem; /* Ensure empty text blocks don't collapse margins weirdly */
   word-wrap: break-word; /* Ensure long links/words don't overflow */
   white-space: pre-wrap;
+  line-height: 1.9;
 }
 
 .entry-media {

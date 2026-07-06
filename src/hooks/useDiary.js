@@ -13,10 +13,41 @@ function normalizePost(item) {
     : [];
   return {
     ...item,
+    text: item.text || '',
     media: typeof item.media === 'string' ? JSON.parse(item.media || '[]') : item.media || [],
     tags,
     id: `post-${item.id}`,
   };
+}
+
+function todayLabel() {
+  return new Date().toLocaleDateString('en-US', {
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+  });
+}
+
+function dedupePostsByDate(list) {
+  const map = new Map();
+  (list || []).forEach((post) => {
+    const key = post.date || post.id;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, post);
+      return;
+    }
+    const merged = {
+      ...existing,
+      ...post,
+      text: existing.text || post.text || '',
+      media: (existing.media && existing.media.length > 0) ? existing.media : (post.media || []),
+      mediaGrid: existing.mediaGrid || post.mediaGrid || '',
+      tags: Array.from(new Set([...(existing.tags || []), ...(post.tags || [])])),
+    };
+    map.set(key, merged);
+  });
+  return Array.from(map.values());
 }
 
 export function useDiary(token) {
@@ -29,7 +60,7 @@ export function useDiary(token) {
       .fetchDiary()
       .then((data) => {
         if (cancelled || !Array.isArray(data)) return;
-        const mapped = data.map(normalizePost);
+        const mapped = dedupePostsByDate(data.map(normalizePost));
         setPosts(mapped);
         if (mapped.length > 0) setActiveDate(mapped[0].id);
       })
@@ -88,43 +119,48 @@ export function useDiary(token) {
             : '',
       };
 
+      const today = todayLabel();
+
       if (!token) {
-        // 本地演示模式
-        if (editingId) {
+        // 本地演示模式：同一天只保留一条，若今天已存在则转为更新
+        const targetId = editingId || posts.find((p) => p.date === today)?.id;
+        if (targetId) {
           setPosts((prev) =>
-            prev.map((p) =>
-              p.id === editingId
-                ? { ...p, text: payload.text, media: payload.media, mediaGrid: payload.mediaGrid, tags: payload.tags }
-                : p
+            dedupePostsByDate(
+              prev.map((p) =>
+                p.id === targetId
+                  ? { ...p, text: payload.text, media: payload.media, mediaGrid: payload.mediaGrid, tags: payload.tags }
+                  : p
+              )
             )
           );
         } else {
           const localPost = {
             id: `post-local-${Math.random().toString(36).slice(2, 9)}`,
-            date: new Date().toLocaleDateString('en-US', {
-              month: 'short',
-              day: '2-digit',
-              year: 'numeric',
-            }),
+            date: today,
             ...payload,
           };
-          setPosts((prev) => [localPost, ...prev]);
+          setPosts((prev) => dedupePostsByDate([localPost, ...prev]));
         }
         return;
       }
 
-      const realId = editingId ? editingId.replace('post-', '') : null;
-      const item = editingId
+      const fallbackTodayPost = posts.find((p) => p.date === today);
+      const realId = (editingId || fallbackTodayPost?.id || '').replace('post-', '');
+      const item = realId
         ? await diaryApi.updateDiary(realId, payload, token)
         : await diaryApi.createDiary(payload, token);
       const newPost = normalizePost(item);
 
       setPosts((prev) => {
-        if (editingId) return prev.map((p) => (p.id === editingId ? newPost : p));
-        return [newPost, ...prev];
+        if (realId) {
+          return dedupePostsByDate(prev.map((p) => ((p.id === `post-${realId}` || p.date === today) ? newPost : p)));
+        }
+        return dedupePostsByDate([newPost, ...prev]);
       });
+      setActiveDate(newPost.id);
     },
-    [token]
+    [token, posts]
   );
 
   const remove = useCallback(
