@@ -575,6 +575,7 @@ export default function App() {
                 <article key={post.id} className="entry" id={post.id}>
                   <div className="entry-header">
                     <div className="entry-date">{post.date}</div>
+                    {isAdmin && (
                     <div className="entry-actions">
                       <button className="entry-action-btn edit" onClick={() => handleEdit(post)} title="Edit">
                         <Edit2 size={14} />
@@ -583,6 +584,7 @@ export default function App() {
                         <Trash2 size={14} />
                       </button>
                     </div>
+                    )}
                   </div>
                   {post.text && <div className="entry-text">{post.text}</div>}
 
