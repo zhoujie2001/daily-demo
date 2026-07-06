@@ -1488,3 +1488,106 @@ h2 {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== Daily Tags (P3) ===== */
+.daily-tag-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 1.5rem;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px dashed var(--border-color);
+}
+
+.daily-tag-filter-icon {
+  color: var(--text-secondary);
+  margin-right: 4px;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 10px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  white-space: nowrap;
+}
+
+.tag-chip:hover {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+.tag-chip.active {
+  color: #fff;
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+}
+
+.tag-chip.custom {
+  border-style: dashed;
+}
+
+.tag-chip-input {
+  padding: 2px 10px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px dashed var(--border-color);
+  border-radius: 12px;
+  outline: none;
+  width: 80px;
+  transition: border-color 0.15s ease;
+}
+
+.tag-chip-input:focus {
+  border-color: var(--text-primary);
+  border-style: solid;
+}
+
+.entry-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0.4rem 0 0.6rem;
+}
+
+.entry-tag {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.editor-tags {
+  margin-top: 0.8rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed var(--border-color);
+}
+
+.editor-tags-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.editor-tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}

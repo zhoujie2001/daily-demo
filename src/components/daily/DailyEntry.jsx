@@ -76,6 +76,13 @@ export default function DailyEntry({ post, isAdmin, onEdit, onDelete }) {
         )}
       </div>
       {post.text && <div className="entry-text">{post.text}</div>}
+      {post.tags && post.tags.length > 0 && (
+        <div className="entry-tags">
+          {post.tags.map((t) => (
+            <span key={t} className="entry-tag">#{t}</span>
+          ))}
+        </div>
+      )}
       {post.media && post.media.length > 0 && (
         <div className={`entry-media ${post.mediaGrid || 'media-single'}`}>
           {post.media.map(renderMediaItem)}

@@ -1,19 +1,36 @@
-import React from 'react';
-import { Film, Image as ImageIcon, Link as LinkIcon, Send, X } from 'lucide-react';
+import React, { useState } from 'react';
+import { Film, Image as ImageIcon, Link as LinkIcon, Send, Tag as TagIcon, X } from 'lucide-react';
 import { LoadingSpinner } from '../ui/Loading';
+
+const PRESET_TAGS = ['生活', '工作', '旅行', '读书', '随想', '摄影'];
 
 export default function DailyEditor({
   editingId,
   text,
   attachments,
+  tags = [],
   publishing = false,
   onTextChange,
+  onTagsChange,
   onFilesSelected,
   onRemoveAttachment,
   onPublish,
   onCancelEdit,
 }) {
   const canPublish = (text.trim().length > 0 || attachments.length > 0) && !publishing;
+  const [tagInput, setTagInput] = useState('');
+
+  const toggleTag = (t) => {
+    if (!onTagsChange) return;
+    if (tags.includes(t)) onTagsChange(tags.filter((x) => x !== t));
+    else onTagsChange([...tags, t]);
+  };
+  const addCustom = () => {
+    const v = tagInput.trim();
+    if (v && !tags.includes(v) && onTagsChange) onTagsChange([...tags, v]);
+    setTagInput('');
+  };
+
   return (
     <aside className="col-editor">
       <div className="editor-panel">
@@ -21,86 +38,125 @@ export default function DailyEditor({
           <span className="editor-title">{editingId ? 'Edit Update' : 'Write Update'}</span>
           <div className="status-indicator">
             <span className="status-dot" title="System Online" />
-            <span className="status-text">Online</span>
           </div>
         </div>
 
-        <div className="editor-body">
-          <textarea
-            className="editor-textarea"
-            placeholder="记录今天的碎片..."
-            value={text}
-            onChange={(e) => onTextChange(e.target.value)}
-            disabled={publishing}
-          />
-          {attachments.length > 0 && (
-            <div className="editor-attachments">
-              {attachments.map((att) => (
-                <div key={att.id} className="attachment-preview">
-                  {att.type === 'image' ? (
-                    <img src={att.url} alt={att.name || 'attachment'} />
-                  ) : (
-                    <div className="video-thumbnail">
-                      <Film size={20} />
-                    </div>
-                  )}
-                  <button
-                    className="remove-att-btn"
-                    onClick={() => onRemoveAttachment(att.id)}
-                    aria-label="remove attachment"
-                    disabled={publishing}
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
+        <textarea
+          className="editor-textarea"
+          rows={4}
+          value={text}
+          placeholder="今天有什么想说的？"
+          onChange={(e) => onTextChange(e.target.value)}
+        />
+
+        {attachments.length > 0 && (
+          <div className="editor-attachments">
+            {attachments.map((att, i) => (
+              <div key={att.url || i} className="editor-attachment">
+                {att.type === 'image' ? (
+                  <img src={att.url} alt="" />
+                ) : (
+                  <div className="editor-attachment-video">
+                    <Film size={14} /> video
+                  </div>
+                )}
+                <button
+                  className="editor-attachment-remove"
+                  onClick={() => onRemoveAttachment(i)}
+                  aria-label="remove"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="editor-tags">
+          <div className="editor-tags-label">
+            <TagIcon size={11} /> 标签
+          </div>
+          <div className="editor-tag-chips">
+            {PRESET_TAGS.map((t) => (
+              <button
+                key={t}
+                type="button"
+                className={`tag-chip ${tags.includes(t) ? 'active' : ''}`}
+                onClick={() => toggleTag(t)}
+              >
+                {t}
+              </button>
+            ))}
+            {tags
+              .filter((t) => !PRESET_TAGS.includes(t))
+              .map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className="tag-chip active custom"
+                  onClick={() => toggleTag(t)}
+                  title="点击移除"
+                >
+                  {t} <X size={9} />
+                </button>
               ))}
-            </div>
-          )}
+            <input
+              type="text"
+              className="tag-chip-input"
+              placeholder="+ 自定义"
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ',') {
+                  e.preventDefault();
+                  addCustom();
+                }
+              }}
+              onBlur={addCustom}
+            />
+          </div>
         </div>
 
         <div className="editor-footer">
-          <div className="editor-tools">
-            <label className="tool-btn" title="Add Photo/Video">
-              <ImageIcon size={18} />
+          <div className="editor-toolbar">
+            <label className="editor-tool" title="上传图片">
               <input
                 type="file"
+                accept="image/*"
                 multiple
-                accept="image/*,video/*"
-                className="hidden-input"
-                onChange={onFilesSelected}
-                disabled={publishing}
+                hidden
+                onChange={(e) => onFilesSelected(e, 'image')}
               />
+              <ImageIcon size={14} />
             </label>
-            <button className="tool-btn" title="Add Link" disabled={publishing}>
-              <LinkIcon size={18} />
+            <label className="editor-tool" title="上传视频">
+              <input
+                type="file"
+                accept="video/*"
+                hidden
+                onChange={(e) => onFilesSelected(e, 'video')}
+              />
+              <Film size={14} />
+            </label>
+            <button className="editor-tool" title="占位（暂未接入）" disabled>
+              <LinkIcon size={14} />
             </button>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <button className="publish-btn" disabled={!canPublish} onClick={onPublish}>
-              {publishing ? (
-                <>
-                  <LoadingSpinner size={12} />
-                  <span>Publishing...</span>
-                </>
-              ) : (
-                <>
-                  <span>{editingId ? 'Update' : 'Publish'}</span>
-                  <Send size={14} />
-                </>
-              )}
-            </button>
+          <div className="editor-actions">
             {editingId && (
-              <button
-                className="publish-btn"
-                style={{ background: '#fef2f2', color: '#ef4444', marginLeft: '8px' }}
-                onClick={onCancelEdit}
-                disabled={publishing}
-              >
-                <span>Cancel</span>
-                <X size={14} />
+              <button className="editor-cancel" onClick={onCancelEdit} disabled={publishing}>
+                取消
               </button>
             )}
+            <button
+              className={`editor-publish ${canPublish ? '' : 'disabled'}`}
+              onClick={onPublish}
+              disabled={!canPublish}
+            >
+              {publishing ? <LoadingSpinner size={12} /> : <Send size={12} />}{' '}
+              {editingId ? '更新' : '发布'}
+            </button>
           </div>
         </div>
       </div>

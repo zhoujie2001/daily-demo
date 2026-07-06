@@ -5,9 +5,16 @@ import * as uploadApi from '../api/upload';
 
 /** 把后端返回的一条 diary 归一化为前端使用的 post 结构 */
 function normalizePost(item) {
+  const tagsRaw = item.tags;
+  const tags = Array.isArray(tagsRaw)
+    ? tagsRaw.filter(Boolean)
+    : typeof tagsRaw === 'string' && tagsRaw
+    ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean)
+    : [];
   return {
     ...item,
     media: typeof item.media === 'string' ? JSON.parse(item.media || '[]') : item.media || [],
+    tags,
     id: `post-${item.id}`,
   };
 }
@@ -35,7 +42,7 @@ export function useDiary(token) {
   }, []);
 
   const publish = useCallback(
-    async ({ text, attachments, editingId }) => {
+    async ({ text, attachments, editingId, tags = [] }) => {
       const finalMedia = [];
 
       if (attachments.length > 0 && token) {
@@ -70,6 +77,7 @@ export function useDiary(token) {
       const payload = {
         text: text.trim(),
         media: finalMedia,
+        tags: Array.isArray(tags) ? tags : [],
         mediaGrid:
           attachments.length === 1
             ? 'media-single'
@@ -86,7 +94,7 @@ export function useDiary(token) {
           setPosts((prev) =>
             prev.map((p) =>
               p.id === editingId
-                ? { ...p, text: payload.text, media: payload.media, mediaGrid: payload.mediaGrid }
+                ? { ...p, text: payload.text, media: payload.media, mediaGrid: payload.mediaGrid, tags: payload.tags }
                 : p
             )
           );
