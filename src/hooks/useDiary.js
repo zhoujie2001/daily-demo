@@ -4,6 +4,18 @@ import * as diaryApi from '../api/diary';
 import * as uploadApi from '../api/upload';
 
 /** 把后端返回的一条 diary 归一化为前端使用的 post 结构 */
+function safeParseMedia(media) {
+  if (Array.isArray(media)) return media;
+  if (typeof media !== 'string' || !media.trim()) return [];
+  try {
+    const parsed = JSON.parse(media);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.error('Failed to parse diary media:', err, media);
+    return [];
+  }
+}
+
 function normalizePost(item) {
   const tagsRaw = item.tags;
   const tags = Array.isArray(tagsRaw)
@@ -13,8 +25,8 @@ function normalizePost(item) {
     : [];
   return {
     ...item,
-    text: item.text || '',
-    media: typeof item.media === 'string' ? JSON.parse(item.media || '[]') : item.media || [],
+    text: typeof item.text === 'string' ? item.text : item.text === null || item.text === undefined ? '' : String(item.text),
+    media: safeParseMedia(item.media),
     tags,
     id: `post-${item.id}`,
   };
@@ -32,24 +44,45 @@ function hasMeaningfulText(value) {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-function hasMeaningfulMedia(value) {
-  return Array.isArray(value) && value.length > 0;
+function pickPreferredText(existingText, nextText) {
+  const existing = typeof existingText === 'string' ? existingText : '';
+  const incoming = typeof nextText === 'string' ? nextText : '';
+  const existingMeaningful = hasMeaningfulText(existing);
+  const incomingMeaningful = hasMeaningfulText(incoming);
+
+  if (existingMeaningful && incomingMeaningful) {
+    return incoming.trim().length > existing.trim().length ? incoming : existing;
+  }
+  if (existingMeaningful) return existing;
+  if (incomingMeaningful) return incoming;
+  return existing || incoming;
+}
+
+function pickPreferredMedia(existingMedia, nextMedia) {
+  const existing = Array.isArray(existingMedia) ? existingMedia : [];
+  const incoming = Array.isArray(nextMedia) ? nextMedia : [];
+  if (existing.length > 0 && incoming.length > 0) {
+    return incoming.length > existing.length ? incoming : existing;
+  }
+  return existing.length > 0 ? existing : incoming;
 }
 
 function dedupePostsByDate(list) {
   const map = new Map();
   (list || []).forEach((post) => {
-    const key = post.date || post.id;
+    const key = (post.date || post.id || '').trim();
     const existing = map.get(key);
     if (!existing) {
       map.set(key, post);
       return;
     }
+    const mergedMedia = pickPreferredMedia(existing.media, post.media);
     const merged = {
       ...existing,
-      text: hasMeaningfulText(existing.text) ? existing.text : (post.text || ''),
-      media: hasMeaningfulMedia(existing.media) ? existing.media : (post.media || []),
-      mediaGrid: hasMeaningfulMedia(existing.media) ? existing.mediaGrid : (post.mediaGrid || ''),
+      ...post,
+      text: pickPreferredText(existing.text, post.text),
+      media: mergedMedia,
+      mediaGrid: mergedMedia === existing.media ? existing.mediaGrid : (post.mediaGrid || existing.mediaGrid || ''),
       tags: Array.from(new Set([...(existing.tags || []), ...(post.tags || [])])),
     };
     map.set(key, merged);
@@ -71,7 +104,8 @@ export function useDiary(token) {
         setPosts(mapped);
         if (mapped.length > 0) setActiveDate(mapped[0].id);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('Diary API failed:', err);
         // 后端不可用，静默使用静态兜底数据
       });
     return () => {
