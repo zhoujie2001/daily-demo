@@ -626,8 +626,70 @@ h2 {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-secondary);
-  margin-bottom: 2rem;
+  margin-bottom: 1rem;
   font-weight: 600;
+}
+
+.timeline-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  padding-right: 1rem;
+}
+
+.timeline-search-icon {
+  position: absolute;
+  left: 0.6rem;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.timeline-search-input {
+  width: 100%;
+  padding: 0.4rem 1.9rem 0.4rem 1.9rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.timeline-search-input:focus {
+  border-color: var(--text-primary);
+}
+
+.timeline-search-input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+.timeline-search-clear {
+  position: absolute;
+  right: 1.4rem;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+}
+
+.timeline-search-clear:hover {
+  color: var(--text-primary);
+}
+
+.timeline-empty {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  padding-left: 0.2rem;
+  opacity: 0.7;
 }
 
 .timeline-track {
@@ -783,6 +845,16 @@ h2 {
   border-radius: 6px;
   overflow: hidden;
   margin-bottom: 2rem; /* Add margin below media so subsequent items space out correctly */
+  width: 100%;
+  max-width: 100%;
+}
+
+/* 关键：grid 子项必须允许收缩到 0，否则子元素（图片/视频）的固有尺寸会撑爆容器，
+   进而溢出到下一条 entry。同时对子项强制 overflow: hidden 做二次兜底。 */
+.entry-media > * {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .entry-media div {
@@ -791,9 +863,33 @@ h2 {
   background-color: var(--bg-secondary);
 }
 
-.media-single { grid-template-columns: 1fr; max-height: 500px; min-height: 200px; }
-.media-grid-2 { grid-template-columns: 1fr 1fr; aspect-ratio: 16/9; }
-.media-grid-3 { grid-template-columns: 1fr 1fr 1fr; aspect-ratio: 21/9; }
+.entry-media img,
+.entry-media video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 每种排布都用 aspect-ratio 给容器一个确定的高度，再配合 max-height 兜底。
+   这样 grid 行高不再依赖图片的原始尺寸，图片就不会撑破容器。 */
+.media-single {
+  grid-template-columns: 1fr;
+  aspect-ratio: 16 / 9;
+  max-height: 500px;
+}
+
+.media-grid-2 {
+  grid-template-columns: 1fr 1fr;
+  aspect-ratio: 16 / 9;
+  max-height: 400px;
+}
+
+.media-grid-3 {
+  grid-template-columns: 1fr 1fr 1fr;
+  aspect-ratio: 21 / 9;
+  max-height: 320px;
+}
 
 .col-editor {
   position: sticky;

@@ -1,42 +1,26 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Timeline from './Timeline';
 import DailyEntry from './DailyEntry';
 import DailyEditor from './DailyEditor';
 import { useDialog } from '../../context/DialogContext';
+import EmptyState from '../ui/EmptyState';
 
 export default function Daily({ isAdmin, posts, activeDate, onActiveDateChange, onPublish, onDelete }) {
-  const contentRef = useRef(null);
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [publishing, setPublishing] = useState(false);
   const { confirm, toast } = useDialog();
 
-  const scrollToPost = useCallback((id) => {
-    onActiveDateChange(id);
-    const el = document.getElementById(id);
-    const container = contentRef.current;
-    if (el && container) {
-      const containerTop = container.getBoundingClientRect().top;
-      const elementTop = el.getBoundingClientRect().top;
-      const scrollPos = elementTop - containerTop + container.scrollTop;
-      container.scrollTo({ top: scrollPos, behavior: 'smooth' });
-    }
-  }, [onActiveDateChange]);
+  // 单日展示模式：只显示 activeDate 对应的一条；若未选中，默认展示第一条（最新一天）
+  const currentPost = useMemo(() => {
+    if (!posts || posts.length === 0) return null;
+    const target = posts.find((p) => p.id === activeDate);
+    return target || posts[0];
+  }, [posts, activeDate]);
 
-  const handleScroll = () => {
-    const container = contentRef.current;
-    if (!container) return;
-    const containerTop = container.getBoundingClientRect().top;
-    for (const post of posts) {
-      const el = document.getElementById(post.id);
-      if (!el) continue;
-      const rect = el.getBoundingClientRect();
-      if (rect.top >= containerTop - 50 && rect.top <= containerTop + 200) {
-        if (activeDate !== post.id) onActiveDateChange(post.id);
-        break;
-      }
-    }
+  const handleSelectDate = (id) => {
+    onActiveDateChange(id);
   };
 
   const handleFileSelect = (e) => {
@@ -120,17 +104,19 @@ export default function Daily({ isAdmin, posts, activeDate, onActiveDateChange, 
     <section id="daily" className="daily-section">
       <h2>Daily</h2>
       <div className="layout-grid">
-        <Timeline posts={posts} activeDate={activeDate} onSelect={scrollToPost} />
-        <main className="col-content" ref={contentRef} onScroll={handleScroll}>
-          {posts.map((post) => (
+        <Timeline posts={posts} activeDate={currentPost?.id} onSelect={handleSelectDate} />
+        <main className="col-content">
+          {currentPost ? (
             <DailyEntry
-              key={post.id}
-              post={post}
+              key={currentPost.id}
+              post={currentPost}
               isAdmin={isAdmin}
               onEdit={startEdit}
               onDelete={handleDelete}
             />
-          ))}
+          ) : (
+            <EmptyState title="暂无 Daily" description="等博主慢慢补上吧～" />
+          )}
         </main>
         {isAdmin && (
           <DailyEditor
