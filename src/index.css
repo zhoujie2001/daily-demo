@@ -363,7 +363,9 @@ h2 {
   opacity: 0.5;
   cursor: wait;
   transform: none;
-  background: #444;
+  background: #f5f5f5;
+  color: #999;
+  border-color: transparent;
   box-shadow: none;
 }
 
