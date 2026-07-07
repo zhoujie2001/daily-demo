@@ -3,10 +3,11 @@ import { Edit2, Plus, Trash2 } from 'lucide-react';
 import { fallbackPhotos } from '../../data/fallbackPhotos';
 import { resolveMediaUrl } from '../../utils/media';
 import { useDialog } from '../../context/DialogContext';
-import { LoadingSpinner, LoadingBlock } from '../ui/Loading';
+import { LoadingSpinner } from '../ui/Loading';
 import EmptyState from '../ui/EmptyState';
 import LazyImage from '../ui/LazyImage';
 import PhotoCardDeck from './PhotoCardDeck';
+import { SkeletonCard, SkeletonText } from '../Skeleton';
 
 export default function Photography({
   isAdmin,
@@ -89,7 +90,7 @@ export default function Photography({
       <section id="photography-inner">
         <div style={headerRowStyle}>
           <h2 style={{ margin: 0 }}>myCut</h2>
-          {isAdmin && (
+          {isAdmin ? (
             <label className={`upload-btn ${uploading ? 'disabled' : ''}`}>
               {uploading ? <LoadingSpinner size={12} /> : <Plus size={14} />}
               <span>{uploading ? 'Uploading...' : 'Upload Photo'}</span>
@@ -101,11 +102,21 @@ export default function Photography({
                 disabled={uploading}
               />
             </label>
-          )}
+          ) : null}
         </div>
 
         {loading && !isRealData ? (
-          <LoadingBlock label="Loading photos..." />
+          <div className="photo-skeleton-grid">
+            {[0, 1, 2, 3].map((item) => (
+              <div key={item} className="photo-skeleton-card">
+                <SkeletonCard height="auto" className="photo-skeleton-block" style={{ aspectRatio: '1 / 1', borderRadius: 20 }} />
+                <div className="photo-skeleton-copy">
+                  <SkeletonText width="70%" />
+                  <SkeletonText width="50%" />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : showEmpty ? (
           <EmptyState title="暂无照片" description="等博主慢慢补上吧～" />
         ) : (
@@ -119,7 +130,7 @@ export default function Photography({
                   onClick={() => handleCardClick(item)}
                   style={{ position: 'relative' }}
                 >
-                  {isAdmin && isRealData && (
+                  {isAdmin && isRealData ? (
                     <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
                       <button
                         className="action-btn"
@@ -142,7 +153,7 @@ export default function Photography({
                         <Trash2 size={14} />
                       </button>
                     </div>
-                  )}
+                  ) : null}
                   <div className="photo-img-wrapper">
                     <LazyImage
                       src={resolveMediaUrl(item.url)}

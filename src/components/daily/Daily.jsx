@@ -5,6 +5,7 @@ import DailyEntry from './DailyEntry';
 import DailyEditor from './DailyEditor';
 import { useDialog } from '../../context/DialogContext';
 import EmptyState from '../ui/EmptyState';
+import { SkeletonCard, SkeletonText } from '../Skeleton';
 
 function todayLabel() {
   return new Date().toLocaleDateString('en-US', {
@@ -14,7 +15,7 @@ function todayLabel() {
   });
 }
 
-export default function Daily({ isAdmin, posts, activeDate, onActiveDateChange, onPublish, onDelete }) {
+export default function Daily({ isAdmin, posts, loading = false, activeDate, onActiveDateChange, onPublish, onDelete }) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState([]);
   const [tags, setTags] = useState([]);
@@ -139,7 +140,7 @@ export default function Daily({ isAdmin, posts, activeDate, onActiveDateChange, 
     <section id="daily" className="daily-section">
       <h2>Daily</h2>
 
-      {allTags.length > 0 && (
+      {allTags.length > 0 ? (
         <div className="daily-tag-filter">
           <TagIcon size={12} className="daily-tag-filter-icon" />
           <button type="button" className={`tag-chip ${!activeTag ? 'active' : ''}`} onClick={() => setActiveTag(null)}>
@@ -156,21 +157,37 @@ export default function Daily({ isAdmin, posts, activeDate, onActiveDateChange, 
             </button>
           ))}
         </div>
-      )}
+      ) : null}
 
       <div className="layout-grid">
-        <Timeline posts={filteredPosts} activeDate={currentPost?.id} onSelect={handleSelectDate} />
-        <main className="col-content">
-          {currentPost ? (
-            <DailyEntry key={currentPost.id} post={currentPost} isAdmin={isAdmin} onEdit={startEdit} onDelete={handleDelete} />
-          ) : (
-            <EmptyState
-              title={activeTag ? `没有带 “${activeTag}” 标签的 Daily` : '暂无 Daily'}
-              description={activeTag ? '换个标签或点“全部”看看' : '等博主慢慢补上吧～'}
-            />
-          )}
-        </main>
-        {isAdmin && (
+        {loading ? (
+          <main className="col-content daily-skeleton-list">
+            {[0, 1, 2].map((item) => (
+              <div key={item} className="daily-skeleton-item">
+                <SkeletonCard height={150} />
+                <div className="daily-skeleton-text-group">
+                  <SkeletonText width="100%" />
+                  <SkeletonText width="70%" />
+                </div>
+              </div>
+            ))}
+          </main>
+        ) : (
+          <>
+            <Timeline posts={filteredPosts} activeDate={currentPost?.id} onSelect={handleSelectDate} />
+            <main className="col-content">
+              {currentPost ? (
+                <DailyEntry key={currentPost.id} post={currentPost} isAdmin={isAdmin} onEdit={startEdit} onDelete={handleDelete} />
+              ) : (
+                <EmptyState
+                  title={activeTag ? `没有带 “${activeTag}” 标签的 Daily` : '暂无 Daily'}
+                  description={activeTag ? '换个标签或点“全部”看看' : '等博主慢慢补上吧～'}
+                />
+              )}
+            </main>
+          </>
+        )}
+        {isAdmin ? (
           <DailyEditor
             editingId={editingId || todayPost?.id || null}
             text={text}
@@ -184,7 +201,7 @@ export default function Daily({ isAdmin, posts, activeDate, onActiveDateChange, 
             onPublish={handlePublish}
             onCancelEdit={resetEditorToToday}
           />
-        )}
+        ) : null}
       </div>
     </section>
   );
