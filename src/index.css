@@ -20,9 +20,9 @@ body {
 
 .sidebar {
   position: fixed;
-  left: 60px;
+  left: 24px;
   top: 80px;
-  width: 200px;
+  width: 120px;
 }
 
 .sidebar h2 {
@@ -62,7 +62,7 @@ body {
 /* 让内容避开左侧目录 */
 @media (min-width: 1000px) {
   .content {
-    margin-left: 500px;
+    margin-left: 200px;
   }
 }
 
