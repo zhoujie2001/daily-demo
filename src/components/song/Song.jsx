@@ -7,6 +7,11 @@ const SWIPE_THRESHOLD = 70;
 const SWIPE_OUT_DISTANCE = 220;
 const TRANSITION_MS = 300;
 
+function pickRandom(arr, n) {
+  const shuffled = [...arr].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, n);
+}
+
 const PLAYLISTS_META = [
   { id: '8670100374', name: '光和枯树' },
   { id: '8667064202', name: '雨和屋檐' },
@@ -76,8 +81,10 @@ export default function Song() {
               const songs = Array.isArray(data?.songs) ? data.songs : [];
               if (songs.length === 0) throw new Error('empty songs');
 
+              const picked = pickRandom(songs, 5);
+
               const fallbackTracks = FALLBACK_PLAYLISTS[index]?.tracks || [];
-              const tracks = songs.map((song, idx) => ({
+              const tracks = picked.map((song, idx) => ({
                 title: song.name || fallbackTracks[idx]?.title || '',
                 artist: song.singer || fallbackTracks[idx]?.artist || '',
                 cover: fallbackTracks[idx]?.cover || 'linear-gradient(135deg, #e5e7eb, #9ca3af)',
