@@ -2524,6 +2524,7 @@ h2 {
   position: relative;
   margin-top: 22px;
   min-height: 520px;
+  touch-action: pan-y;
 }
 
 .song-deck-card {
@@ -2533,35 +2534,18 @@ h2 {
   width: 88vw;
   max-width: 420px;
   transform-origin: center;
-  transition: transform 260ms ease, opacity 260ms ease;
+  transition-property: transform, opacity;
+  transition-duration: 300ms;
+  transition-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  will-change: transform;
 }
 
-.song-deck-card.active {
-  transform: translateX(-50%) rotate(0deg) scale(1);
-  z-index: 3;
-  opacity: 1;
+.song-mobile-deck.dragging .song-deck-card {
+  transition-duration: 0ms;
 }
 
-.song-deck-card.left {
-  transform: translateX(calc(-50% - 30px)) rotate(-7deg) scale(0.95);
-  z-index: 2;
-  opacity: 0.78;
-}
-
-.song-deck-card.right {
-  transform: translateX(calc(-50% + 30px)) rotate(7deg) scale(0.95);
-  z-index: 1;
-  opacity: 0.72;
-}
-
-.song-deck-card.song-swipe-left {
-  transform: translateX(calc(-50% - 60px)) rotate(-10deg) scale(0.96);
-  opacity: 0.55;
-}
-
-.song-deck-card.song-swipe-right {
-  transform: translateX(calc(-50% + 60px)) rotate(10deg) scale(0.96);
-  opacity: 0.55;
+.song-deck-card.hidden {
+  pointer-events: none;
 }
 
 .song-card {
@@ -2570,27 +2554,18 @@ h2 {
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.12);
   border: 1px solid rgba(0, 0, 0, 0.06);
   overflow: hidden;
+  transition: transform 240ms ease, box-shadow 240ms ease;
 }
 
 .song-card-header {
   padding: 18px 18px 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  text-align: center;
 }
 
 .song-card-title {
   font-size: 20px;
   font-weight: 700;
   color: #121212;
-}
-
-.song-card-tag {
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  background: #111;
-  flex: 0 0 auto;
 }
 
 .song-track-list {
@@ -2604,16 +2579,20 @@ h2 {
 
 .song-track {
   display: grid;
-  grid-template-columns: 32px 32px 1fr;
+  grid-template-columns: 32px 1fr;
   gap: 10px;
   align-items: center;
+  padding: 8px 10px;
+  border-radius: 12px;
+  transition: background 200ms ease;
 }
 
-.song-track-index {
-  font-size: 12px;
-  color: #888;
-  font-family: var(--font-mono);
-  letter-spacing: 0.04em;
+.song-track:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.song-track:hover .song-track-name {
+  color: #111;
 }
 
 .song-track-cover {
@@ -2634,6 +2613,7 @@ h2 {
 
 .song-track-name {
   font-weight: 600;
+  transition: color 200ms ease;
 }
 
 .song-track-artist {
@@ -2644,24 +2624,12 @@ h2 {
   background: linear-gradient(180deg, rgba(255, 240, 223, 0.75), rgba(255, 255, 255, 1) 52%);
 }
 
-.song-card-variant-0 .song-card-tag {
-  background: #ff6b6b;
-}
-
 .song-card-variant-1 {
   background: linear-gradient(180deg, rgba(226, 242, 255, 0.8), rgba(255, 255, 255, 1) 52%);
 }
 
-.song-card-variant-1 .song-card-tag {
-  background: #3b82f6;
-}
-
 .song-card-variant-2 {
   background: linear-gradient(180deg, rgba(231, 255, 237, 0.8), rgba(255, 255, 255, 1) 52%);
-}
-
-.song-card-variant-2 .song-card-tag {
-  background: #22c55e;
 }
 
 .song-indicators {
@@ -2699,8 +2667,18 @@ h2 {
   }
 }
 
-.song-float {
+.song-float-wrapper {
   animation: song-float 5.6s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+.song-float-wrapper:hover {
+  animation-play-state: paused;
+}
+
+.song-float-wrapper:hover .song-card {
+  transform: translateY(-8px);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.16);
 }
 
 .song-float-0 {
@@ -2723,7 +2701,7 @@ h2 {
   .song-desktop-grid {
     display: flex;
     justify-content: center;
-    gap: 32px;
+    gap: 56px;
     margin-top: 24px;
   }
 
