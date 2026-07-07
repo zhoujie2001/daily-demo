@@ -1,7 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import SongCard from './SongCard';
 import { LoadingBlock } from '../ui/Loading';
 import { fetchPlaylist } from '../../api/song';
+
+const SWIPE_THRESHOLD = 60;
+const SWIPE_OUT_DISTANCE = 240;
+const TRANSITION_MS = 300;
 
 function pickRandom(arr, n) {
   const shuffled = [...arr].sort(() => Math.random() - 0.5);
@@ -54,6 +58,25 @@ export default function Song() {
   const [playlists, setPlaylists] = useState(FALLBACK_PLAYLISTS);
   const [loading, setLoading] = useState(true);
 
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [dragX, setDragX] = useState(0);
+  const [isSwiping, setIsSwiping] = useState(false);
+
+  const touchStartXRef = useRef(null);
+  const dragXRef = useRef(0);
+  const rafRef = useRef(0);
+  const animatingRef = useRef(false);
+
+  const total = playlists.length;
+
+  const visiblePlaylists = useMemo(() => {
+    if (!total) return [];
+    return [0, 1, 2].map((offset) => ({
+      playlist: playlists[(currentIndex + offset) % total],
+      offset,
+    }));
+  }, [currentIndex, playlists, total]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -102,6 +125,96 @@ export default function Song() {
     };
   }, []);
 
+  useEffect(() => {
+    if (currentIndex >= total) setCurrentIndex(0);
+  }, [currentIndex, total]);
+
+  const animateTo = (direction) => {
+    if (animatingRef.current || total <= 1) return;
+    animatingRef.current = true;
+    setDragX(direction === 'left' ? -SWIPE_OUT_DISTANCE : SWIPE_OUT_DISTANCE);
+
+    window.setTimeout(() => {
+      setCurrentIndex((prev) => {
+        if (direction === 'left') return (prev + 1) % total;
+        return (prev - 1 + total) % total;
+      });
+      setDragX(0);
+      dragXRef.current = 0;
+      animatingRef.current = false;
+    }, TRANSITION_MS);
+  };
+
+  const handleTouchStart = (e) => {
+    if (animatingRef.current) return;
+    touchStartXRef.current = e.touches[0]?.clientX ?? null;
+    dragXRef.current = 0;
+    setDragX(0);
+    setIsSwiping(false);
+  };
+
+  const handleTouchMove = (e) => {
+    const startX = touchStartXRef.current;
+    if (startX === null || animatingRef.current) return;
+
+    const x = e.touches[0]?.clientX ?? null;
+    if (x === null) return;
+
+    const delta = x - startX;
+    dragXRef.current = delta;
+    if (!isSwiping) setIsSwiping(true);
+
+    if (rafRef.current) return;
+    rafRef.current = window.requestAnimationFrame(() => {
+      setDragX(dragXRef.current);
+      rafRef.current = 0;
+    });
+  };
+
+  const handleTouchEnd = () => {
+    const delta = dragXRef.current;
+    touchStartXRef.current = null;
+    dragXRef.current = 0;
+
+    if (rafRef.current) {
+      window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+    }
+
+    setIsSwiping(false);
+
+    if (Math.abs(delta) >= SWIPE_THRESHOLD) {
+      animateTo(delta < 0 ? 'left' : 'right');
+      return;
+    }
+
+    setDragX(0);
+  };
+
+  const getCardStyle = (offset) => {
+    if (offset === 0) {
+      return {
+        transform: `translate3d(calc(-50% + ${dragX}px), 0, 0) rotate(0deg)`,
+        transitionDuration: isSwiping ? '0ms' : `${TRANSITION_MS}ms`,
+        zIndex: 3,
+      };
+    }
+
+    if (offset === 1) {
+      return {
+        transform: 'translate3d(calc(-50% - 20px), 12px, 0) rotate(-6deg)',
+        transitionDuration: `${TRANSITION_MS}ms`,
+        zIndex: 2,
+      };
+    }
+
+    return {
+      transform: 'translate3d(calc(-50% + 20px), 12px, 0) rotate(6deg)',
+      transitionDuration: `${TRANSITION_MS}ms`,
+      zIndex: 1,
+    };
+  };
+
   return (
     <section id="song" className="song-section">
       <h2>Song</h2>
@@ -112,10 +225,49 @@ export default function Song() {
         </div>
       ) : null}
 
-      <div className="song-grid">
+      <div className="song-grid" aria-hidden="true">
         {playlists.map((p, idx) => (
           <SongCard key={p.id} playlist={p} variant={idx} />
         ))}
+      </div>
+
+      <div
+        className={`song-deck ${isSwiping ? 'swiping' : ''}`.trim()}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        <div className="song-deck-cards">
+          {visiblePlaylists
+            .slice()
+            .reverse()
+            .map(({ playlist, offset }) => (
+              <SongCard
+                key={`${playlist.id}-${currentIndex}-${offset}`}
+                playlist={playlist}
+                variant={(currentIndex + offset) % total}
+                className={`song-deck-card ${offset === 0 ? 'active' : ''}`.trim()}
+                style={getCardStyle(offset)}
+              />
+            ))}
+        </div>
+
+        <div className="song-dots" aria-label="歌单切换进度">
+          {playlists.map((p, idx) => (
+            <button
+              key={p.id}
+              type="button"
+              className={`song-dot ${idx === currentIndex ? 'active' : ''}`.trim()}
+              aria-label={`切换到歌单 ${idx + 1}`}
+              onClick={() => {
+                if (animatingRef.current) return;
+                setCurrentIndex(idx);
+                setDragX(0);
+                dragXRef.current = 0;
+              }}
+            />
+          ))}
+        </div>
       </div>
     </section>
   );

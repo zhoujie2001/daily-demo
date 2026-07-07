@@ -2528,6 +2528,56 @@ h2 {
   margin-top: 24px;
 }
 
+.song-deck {
+  display: none;
+}
+
+.song-deck-cards {
+  position: relative;
+  width: 100%;
+  min-height: 520px;
+}
+
+.song-deck-card {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 88vw;
+  max-width: 420px;
+  transform-origin: center;
+  transition-property: transform;
+  transition-duration: 300ms;
+  transition-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  will-change: transform;
+}
+
+.song-deck.swiping .song-deck-card.active {
+  transition-duration: 0ms;
+}
+
+.song-dots {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.song-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  transition: transform 200ms ease, background 200ms ease;
+}
+
+.song-dot.active {
+  background: rgba(0, 0, 0, 0.6);
+  transform: scale(1.2);
+}
+
 .song-card {
   width: 88vw;
   max-width: 420px;
@@ -2635,7 +2685,12 @@ h2 {
 }
 
 @media (min-width: 768px) {
+  .song-deck {
+    display: none;
+  }
+
   .song-grid {
+    display: flex;
     flex-direction: row;
     justify-content: center;
     align-items: stretch;
@@ -2645,5 +2700,17 @@ h2 {
   .song-card {
     width: 300px;
     max-width: 300px;
+  }
+}
+
+@media (max-width: 767px) {
+  .song-grid {
+    display: none;
+  }
+
+  .song-deck {
+    display: block;
+    margin-top: 24px;
+    touch-action: pan-y;
   }
 }
