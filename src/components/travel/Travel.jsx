@@ -1,6 +1,5 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { Edit2, Plus, Trash2 } from 'lucide-react';
-import { useHorizontalAutoScroll } from '../../hooks/useHorizontalAutoScroll';
 import { fallbackVideos } from '../../data/fallbackPhotos';
 import { resolveMediaUrl } from '../../utils/media';
 import { useDialog } from '../../context/DialogContext';
@@ -15,12 +14,14 @@ export default function Travel({
   onUpdate,
   onDelete,
 }) {
-  const sliderRef = useRef(null);
-  useHorizontalAutoScroll(sliderRef, 0.5);
   const { confirm, prompt, toast } = useDialog();
 
   const isRealData = videos.length > 0;
   const list = isRealData ? videos : fallbackVideos;
+  const displayList = [
+    ...list.map((v, i) => ({ ...v, _key: `a-${v.id ?? i}`, _dup: false })),
+    ...list.map((v, i) => ({ ...v, _key: `b-${v.id ?? i}`, _dup: true })),
+  ];
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
@@ -43,7 +44,7 @@ export default function Travel({
       placeholder: '视频名称',
       confirmText: '保存',
     });
-    if (newTitle == null) return;
+    if (newTitle === null) return;
     try {
       await onUpdate(video.id, { title: newTitle || video.title });
       toast.success('已更新');
@@ -93,10 +94,10 @@ export default function Travel({
       {loading && !isRealData ? (
         <LoadingBlock label="Loading videos..." />
       ) : (
-        <div className="slider-wrapper" ref={sliderRef}>
-          <div className="video-track">
-            {list.map((video, index) => (
-              <div key={video.id ?? `static-${index}`} className="video-card">
+        <div className="slider-wrapper">
+          <div className="video-track video-track-infinite">
+            {displayList.map((video) => (
+              <div key={video._key} className="video-card">
                 <video
                   src={resolveMediaUrl(video.url)}
                   muted
@@ -110,7 +111,7 @@ export default function Travel({
                   onMouseLeave={(e) => e.target.pause()}
                   style={{ width: '200px', height: '280px', objectFit: 'cover' }}
                 />
-                {isAdmin && isRealData && (
+                {isAdmin && isRealData && !video._dup && (
                   <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
                     <button
                       className="action-btn"

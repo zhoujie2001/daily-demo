@@ -228,6 +228,24 @@ h2 {
   padding: 10px 0 30px; /* Leave room for shadow/transform */
 }
 
+@keyframes travel-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.video-track-infinite {
+  animation: travel-scroll 20s linear infinite;
+  will-change: transform;
+}
+
+.slider-wrapper:hover .video-track-infinite {
+  animation-play-state: paused;
+}
+
 /* 视频样式 */
 .video-track .video-card {
   position: relative;
