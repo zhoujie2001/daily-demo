@@ -1547,6 +1547,53 @@ h2 {
   margin: 0.4rem 0 0.6rem;
 }
 
+.emoji-reactions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.emoji-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid #e8e8e8;
+  background: #f7f7f7;
+  cursor: pointer;
+  font-size: 15px;
+  color: #666;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.emoji-btn:hover:not(:disabled) {
+  background: #efefef;
+  border-color: #d0d0d0;
+}
+
+.emoji-btn:disabled {
+  opacity: 0.72;
+}
+
+.emoji-btn.reacted {
+  background: #fff3e0;
+  border-color: #ffcc80;
+}
+
+.emoji-btn .reaction-count {
+  font-size: 11px;
+  color: #999;
+}
+
+.emoji-btn.reacted .reaction-count {
+  color: #e65100;
+}
+
 .daily-highlight {
   padding: 0 0.18em;
   color: inherit;

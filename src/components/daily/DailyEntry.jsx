@@ -1,6 +1,7 @@
 import React from 'react';
 import { Edit2, Trash2 } from 'lucide-react';
 import LazyImage from '../ui/LazyImage';
+import EmojiReactions from './EmojiReactions';
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -116,6 +117,7 @@ export default function DailyEntry({ post, isAdmin, onEdit, onDelete, keyword = 
           {post.media.map(renderMediaItem)}
         </div>
       ) : null}
+      <EmojiReactions diaryId={post.id} />
     </article>
   );
 }
