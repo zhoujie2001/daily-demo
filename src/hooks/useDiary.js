@@ -87,7 +87,11 @@ function dedupePostsByDate(list) {
     };
     map.set(key, merged);
   });
-  return Array.from(map.values());
+  return Array.from(map.values()).sort((a, b) => {
+    const da = new Date(a.date);
+    const db = new Date(b.date);
+    return db - da;
+  });
 }
 
 export function useDiary(token) {
@@ -195,7 +199,7 @@ export function useDiary(token) {
 
       setPosts((prev) => {
         if (realId) {
-          return dedupePostsByDate(prev.map((p) => ((p.id === `post-${realId}` || p.date === today) ? newPost : p)));
+          return dedupePostsByDate(prev.map((p) => ((p.id === `post-${realId}` || p.date === newPost.date) ? newPost : p)));
         }
         return dedupePostsByDate([newPost, ...prev]);
       });
