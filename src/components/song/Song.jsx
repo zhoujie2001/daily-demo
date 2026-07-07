@@ -1,11 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import SongCard from './SongCard';
 import { LoadingBlock } from '../ui/Loading';
 import { fetchPlaylist } from '../../api/song';
-
-const SWIPE_THRESHOLD = 70;
-const SWIPE_OUT_DISTANCE = 220;
-const TRANSITION_MS = 300;
 
 function pickRandom(arr, n) {
   const shuffled = [...arr].sort(() => Math.random() - 0.5);
@@ -58,17 +54,6 @@ export default function Song() {
   const [playlists, setPlaylists] = useState(FALLBACK_PLAYLISTS);
   const [loading, setLoading] = useState(true);
 
-  const [activeIndex, setActiveIndex] = useState(1);
-  const [dragX, setDragX] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-
-  const touchStartXRef = useRef(null);
-  const dragXRef = useRef(0);
-  const rafRef = useRef(0);
-  const animatingRef = useRef(false);
-
-  const total = playlists.length;
-
   useEffect(() => {
     let cancelled = false;
 
@@ -82,8 +67,8 @@ export default function Song() {
               if (songs.length === 0) throw new Error('empty songs');
 
               const picked = pickRandom(songs, 5);
-
               const fallbackTracks = FALLBACK_PLAYLISTS[index]?.tracks || [];
+
               const tracks = picked.map((song, idx) => ({
                 title: song.name || fallbackTracks[idx]?.title || '',
                 artist: song.singer || fallbackTracks[idx]?.artist || '',
@@ -103,9 +88,7 @@ export default function Song() {
           })
         );
 
-        if (!cancelled) {
-          setPlaylists(results);
-        }
+        if (!cancelled) setPlaylists(results);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -118,99 +101,10 @@ export default function Song() {
     };
   }, []);
 
-  const getRole = (index) => {
-    if (index === activeIndex) return 'active';
-    if (index === (activeIndex - 1 + total) % total) return 'left';
-    if (index === (activeIndex + 1) % total) return 'right';
-    return 'hidden';
-  };
-
-  const change = (direction) => {
-    if (animatingRef.current || total <= 1) return;
-    animatingRef.current = true;
-    setDragX(direction === 'left' ? -SWIPE_OUT_DISTANCE : SWIPE_OUT_DISTANCE);
-
-    window.setTimeout(() => {
-      setActiveIndex((prev) => {
-        if (direction === 'left') return (prev + 1) % total;
-        return (prev - 1 + total) % total;
-      });
-      setDragX(0);
-      dragXRef.current = 0;
-      animatingRef.current = false;
-    }, TRANSITION_MS);
-  };
-
-  const handleTouchStart = (e) => {
-    if (animatingRef.current) return;
-    touchStartXRef.current = e.touches[0]?.clientX ?? null;
-    dragXRef.current = 0;
-    setDragX(0);
-    setIsDragging(false);
-  };
-
-  const handleTouchMove = (e) => {
-    const startX = touchStartXRef.current;
-    if (startX === null || animatingRef.current) return;
-    const x = e.touches[0]?.clientX ?? null;
-    if (x === null) return;
-
-    const delta = x - startX;
-    dragXRef.current = delta;
-    if (!isDragging) setIsDragging(true);
-
-    if (rafRef.current) return;
-    rafRef.current = window.requestAnimationFrame(() => {
-      setDragX(dragXRef.current);
-      rafRef.current = 0;
-    });
-  };
-
-  const handleTouchEnd = () => {
-    const delta = dragXRef.current;
-    touchStartXRef.current = null;
-    dragXRef.current = 0;
-    if (rafRef.current) {
-      window.cancelAnimationFrame(rafRef.current);
-      rafRef.current = 0;
-    }
-
-    setIsDragging(false);
-
-    if (Math.abs(delta) >= SWIPE_THRESHOLD) {
-      change(delta < 0 ? 'left' : 'right');
-      return;
-    }
-
-    setDragX(0);
-  };
-
-  const getCardStyle = ({ role }) => {
-    const parallax = role === 'active' ? 1 : 0.15;
-    const dx = dragX * parallax;
-
-    const base = {
-      active: { x: 0, rotate: 0, scale: 1, opacity: 1, zIndex: 3 },
-      left: { x: -30, rotate: -7, scale: 0.95, opacity: 0.78, zIndex: 2 },
-      right: { x: 30, rotate: 7, scale: 0.95, opacity: 0.72, zIndex: 1 },
-      hidden: { x: 0, rotate: 0, scale: 0.92, opacity: 0, zIndex: 0 },
-    };
-
-    const cfg = base[role];
-    const x = cfg.x + dx;
-
-    return {
-      zIndex: cfg.zIndex,
-      opacity: cfg.opacity,
-      transform: `translate3d(calc(-50% + ${x}px), 0, 0) rotate(${cfg.rotate}deg) scale(${cfg.scale})`,
-      transitionDuration: isDragging ? '0ms' : `${TRANSITION_MS}ms`,
-    };
-  };
-
   return (
     <section id="song" className="song-section">
       <h2>Song</h2>
-      <p className="subtitle">三张歌单卡片：电脑端漂浮排列，移动端可左右滑动切换。</p>
+      <p className="subtitle">每次刷新会从每个歌单随机抽取 5 首歌展示。</p>
 
       {loading ? (
         <div className="song-loading">
@@ -218,48 +112,10 @@ export default function Song() {
         </div>
       ) : null}
 
-      <div className="song-desktop-grid" aria-hidden="true">
+      <div className="song-grid">
         {playlists.map((p, idx) => (
-          <div key={p.id} className={`song-float-wrapper song-float-${idx}`.trim()}>
-            <SongCard playlist={p} variant={idx} />
-          </div>
+          <SongCard key={p.id} playlist={p} variant={idx} />
         ))}
-      </div>
-
-      <div
-        className={`song-mobile-deck ${isDragging ? 'dragging' : ''}`.trim()}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
-        {playlists.map((p, idx) => {
-          const role = getRole(idx);
-          return (
-            <SongCard
-              key={p.id}
-              playlist={p}
-              variant={idx}
-              className={`song-deck-card ${role}`.trim()}
-              style={getCardStyle({ role })}
-            />
-          );
-        })}
-
-        <div className="song-indicators" aria-label="歌单切换进度">
-          {playlists.map((p, idx) => (
-            <button
-              key={p.id}
-              type="button"
-              className={`song-dot ${idx === activeIndex ? 'active' : ''}`.trim()}
-              aria-label={`切换到歌单 ${idx + 1}`}
-              onClick={() => {
-                setDragX(0);
-                dragXRef.current = 0;
-                setActiveIndex(idx);
-              }}
-            />
-          ))}
-        </div>
       </div>
     </section>
   );

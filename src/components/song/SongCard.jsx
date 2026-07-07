@@ -1,13 +1,10 @@
 import React from 'react';
 
-export default function SongCard({ playlist, variant = 0, floating = false, style, className = '' }) {
+export default function SongCard({ playlist, variant = 0, style, className = '' }) {
   const tracks = Array.isArray(playlist?.tracks) ? playlist.tracks : [];
 
   return (
-    <div
-      className={`song-card song-card-variant-${variant} ${floating ? `song-float song-float-${variant}` : ''} ${className}`.trim()}
-      style={style}
-    >
+    <div className={`song-card song-card-variant-${variant} ${className}`.trim()} style={style}>
       <div className="song-card-header">
         <div className="song-card-title">{playlist.title}</div>
       </div>
