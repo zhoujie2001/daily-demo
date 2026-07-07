@@ -8,6 +8,7 @@ import Lightbox from './components/Lightbox';
 import Daily from './components/daily/Daily';
 import Travel from './components/travel/Travel';
 import Photography from './components/photography/Photography';
+import Song from './components/song/Song';
 import { DialogProvider, useDialog } from './context/DialogContext';
 import NetworkAlertDialog from './components/ui/NetworkAlertDialog';
 import { apiUrl } from './api/client';
@@ -139,6 +140,8 @@ function AppInner() {
         />
 
         <Lightbox photo={activePhoto} onClose={() => setActivePhoto(null)} />
+
+        <Song />
 
         <Links />
       </main>
