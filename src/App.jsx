@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AdminLogin from './components/AdminLogin';
 import Sidebar from './components/Sidebar';
 import About from './components/About';
@@ -9,6 +9,8 @@ import Daily from './components/daily/Daily';
 import Travel from './components/travel/Travel';
 import Photography from './components/photography/Photography';
 import { DialogProvider, useDialog } from './context/DialogContext';
+import NetworkAlertDialog from './components/ui/NetworkAlertDialog';
+import { apiUrl } from './api/client';
 import { useAdminAuth } from './hooks/useAdminAuth';
 import { useDiary } from './hooks/useDiary';
 import { usePhotos } from './hooks/usePhotos';
@@ -25,6 +27,10 @@ function AppInner() {
 
   const [showLogin, setShowLogin] = useState(false);
   const [activePhoto, setActivePhoto] = useState(null);
+  const [networkAlertOpen, setNetworkAlertOpen] = useState(false);
+  const [networkRetrying, setNetworkRetrying] = useState(false);
+  const hasShownNetworkAlertRef = useRef(false);
+  const hasCheckedNetworkRef = useRef(false);
 
   const openLogin = () => setShowLogin(true);
   const closeLogin = () => setShowLogin(false);
@@ -39,8 +45,52 @@ function AppInner() {
     toast.info('已退出登录');
   };
 
+  const checkBackendReachable = useCallback(async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const res = await fetch(apiUrl('/api/diary'), { signal: controller.signal });
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  }, []);
+
+  const runBackendCheck = useCallback(
+    async ({ showDialogOnFail }) => {
+      setNetworkRetrying(true);
+      const ok = await checkBackendReachable();
+      setNetworkRetrying(false);
+      if (ok) {
+        setNetworkAlertOpen(false);
+        return true;
+      }
+      if (showDialogOnFail && !hasShownNetworkAlertRef.current) {
+        setNetworkAlertOpen(true);
+        hasShownNetworkAlertRef.current = true;
+      }
+      return false;
+    },
+    [checkBackendReachable]
+  );
+
+  useEffect(() => {
+    if (hasCheckedNetworkRef.current) return;
+    hasCheckedNetworkRef.current = true;
+    runBackendCheck({ showDialogOnFail: true });
+  }, [runBackendCheck]);
+
   return (
     <div className="layout">
+      <NetworkAlertDialog
+        open={networkAlertOpen}
+        retrying={networkRetrying}
+        onClose={() => setNetworkAlertOpen(false)}
+        onRetry={() => runBackendCheck({ showDialogOnFail: true })}
+      />
       <AdminLogin open={showLogin} onClose={closeLogin} onLogin={handleLogin} />
 
       <Sidebar isAdmin={isAdmin} onRequestLogin={openLogin} onLogout={handleLogout} />
