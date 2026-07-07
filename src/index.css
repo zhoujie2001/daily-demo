@@ -219,6 +219,7 @@ h2 {
 .slider-wrapper {
   overflow: hidden;
   width: 100%;
+  transform: translateZ(0);
 }
 
 .video-track {
@@ -230,16 +231,17 @@ h2 {
 
 @keyframes travel-scroll {
   0% {
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0);
   }
   100% {
-    transform: translateX(-50%);
+    transform: translate3d(-50%, 0, 0);
   }
 }
 
 .video-track-infinite {
-  animation: travel-scroll 20s linear infinite;
+  animation: travel-scroll 45s linear infinite;
   will-change: transform;
+  backface-visibility: hidden;
 }
 
 .slider-wrapper:hover .video-track-infinite {
