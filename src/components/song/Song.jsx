@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import SongCard from './SongCard';
-import { LoadingBlock } from '../ui/Loading';
 import { fetchPlaylist } from '../../api/song';
+import { SkeletonAvatar, SkeletonCard, SkeletonText } from '../Skeleton';
 
 const SWIPE_THRESHOLD = 60;
 const SWIPE_OUT_DISTANCE = 240;
@@ -221,54 +221,74 @@ export default function Song() {
 
       {loading ? (
         <div className="song-loading">
-          <LoadingBlock label="正在从 QQ 音乐加载歌单..." />
+          <div className="song-skeleton-card">
+            <SkeletonCard height={360} className="song-skeleton-surface" />
+            <div className="song-skeleton-content">
+              <SkeletonText width="40%" className="song-skeleton-title" style={{ height: 20 }} />
+              <div className="song-skeleton-list">
+                {[0, 1, 2, 3, 4].map((item) => (
+                  <div key={item} className="song-skeleton-row">
+                    <SkeletonAvatar size={36} />
+                    <div className="song-skeleton-texts">
+                      <SkeletonText width="100%" />
+                      <SkeletonText width="50%" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       ) : null}
 
-      <div className="song-grid" aria-hidden="true">
-        {playlists.map((p, idx) => (
-          <SongCard key={p.id} playlist={p} variant={idx} />
-        ))}
-      </div>
-
-      <div
-        className={`song-deck ${isSwiping ? 'swiping' : ''}`.trim()}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
-        <div className="song-deck-cards">
-          {visiblePlaylists
-            .slice()
-            .reverse()
-            .map(({ playlist, offset }) => (
-              <SongCard
-                key={`${playlist.id}-${currentIndex}-${offset}`}
-                playlist={playlist}
-                variant={(currentIndex + offset) % total}
-                className={`song-deck-card ${offset === 0 ? 'active' : ''}`.trim()}
-                style={getCardStyle(offset)}
-              />
+      {!loading ? (
+        <>
+          <div className="song-grid" aria-hidden="true">
+            {playlists.map((p, idx) => (
+              <SongCard key={p.id} playlist={p} variant={idx} />
             ))}
-        </div>
+          </div>
 
-        <div className="song-dots" aria-label="歌单切换进度">
-          {playlists.map((p, idx) => (
-            <button
-              key={p.id}
-              type="button"
-              className={`song-dot ${idx === currentIndex ? 'active' : ''}`.trim()}
-              aria-label={`切换到歌单 ${idx + 1}`}
-              onClick={() => {
-                if (animatingRef.current) return;
-                setCurrentIndex(idx);
-                setDragX(0);
-                dragXRef.current = 0;
-              }}
-            />
-          ))}
-        </div>
-      </div>
+          <div
+            className={`song-deck ${isSwiping ? 'swiping' : ''}`.trim()}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+          >
+            <div className="song-deck-cards">
+              {visiblePlaylists
+                .slice()
+                .reverse()
+                .map(({ playlist, offset }) => (
+                  <SongCard
+                    key={`${playlist.id}-${currentIndex}-${offset}`}
+                    playlist={playlist}
+                    variant={(currentIndex + offset) % total}
+                    className={`song-deck-card ${offset === 0 ? 'active' : ''}`.trim()}
+                    style={getCardStyle(offset)}
+                  />
+                ))}
+            </div>
+
+            <div className="song-dots" aria-label="歌单切换进度">
+              {playlists.map((p, idx) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`song-dot ${idx === currentIndex ? 'active' : ''}`.trim()}
+                  aria-label={`切换到歌单 ${idx + 1}`}
+                  onClick={() => {
+                    if (animatingRef.current) return;
+                    setCurrentIndex(idx);
+                    setDragX(0);
+                    dragXRef.current = 0;
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        </>
+      ) : null}
     </section>
   );
 }

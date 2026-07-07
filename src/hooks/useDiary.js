@@ -96,6 +96,7 @@ function dedupePostsByDate(list) {
 
 export function useDiary(token) {
   const [posts, setPosts] = useState(staticFallback);
+  const [loading, setLoading] = useState(true);
   const [activeDate, setActiveDate] = useState(null);
 
   useEffect(() => {
@@ -110,7 +111,9 @@ export function useDiary(token) {
       })
       .catch((err) => {
         console.error('Diary API failed:', err);
-        // 后端不可用，静默使用静态兜底数据
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
@@ -221,5 +224,5 @@ export function useDiary(token) {
     [token]
   );
 
-  return { posts, setPosts, activeDate, setActiveDate, publish, remove };
+  return { posts, setPosts, loading, activeDate, setActiveDate, publish, remove };
 }

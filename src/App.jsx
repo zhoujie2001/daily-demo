@@ -20,7 +20,7 @@ import { useReading } from './hooks/useReading';
 
 function AppInner() {
   const { token, isAdmin, login, logout } = useAdminAuth();
-  const { posts, activeDate, setActiveDate, publish, remove: removeDiary } = useDiary(token);
+  const { posts, loading: diaryLoading, activeDate, setActiveDate, publish, remove: removeDiary } = useDiary(token);
   const photosState = usePhotos(token);
   const videosState = useVideos(token);
   const readingState = useReading(token);
@@ -123,6 +123,7 @@ function AppInner() {
         <Daily
           isAdmin={isAdmin}
           posts={posts}
+          loading={diaryLoading}
           activeDate={activeDate}
           onActiveDateChange={setActiveDate}
           onPublish={publish}
