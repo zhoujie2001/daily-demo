@@ -3,6 +3,7 @@ import { Tag as TagIcon } from 'lucide-react';
 import Timeline from './Timeline';
 import DailyEntry from './DailyEntry';
 import DailyEditor from './DailyEditor';
+import SearchBar from './SearchBar';
 import { useDialog } from '../../context/DialogContext';
 import EmptyState from '../ui/EmptyState';
 import { SkeletonCard, SkeletonText } from '../Skeleton';
@@ -15,6 +16,15 @@ function todayLabel() {
   });
 }
 
+function matchesKeyword(post, keyword) {
+  const query = keyword.trim().toLowerCase();
+  if (!query) return true;
+
+  const title = (post.title || '').toLowerCase();
+  const text = (post.text || '').toLowerCase();
+  return title.includes(query) || text.includes(query);
+}
+
 export default function Daily({ isAdmin, posts, loading = false, activeDate, onActiveDateChange, onPublish, onDelete }) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState([]);
@@ -22,6 +32,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
   const [editingId, setEditingId] = useState(null);
   const [publishing, setPublishing] = useState(false);
   const [activeTag, setActiveTag] = useState(null);
+  const [keyword, setKeyword] = useState('');
   const [lastSyncKey, setLastSyncKey] = useState('');
   const { confirm, toast } = useDialog();
 
@@ -35,41 +46,66 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
   }, [posts]);
 
   const filteredPosts = useMemo(() => {
-    if (!activeTag) return posts;
-    return (posts || []).filter((p) => (p.tags || []).includes(activeTag));
-  }, [posts, activeTag]);
+    const tagFiltered = !activeTag ? posts || [] : (posts || []).filter((p) => (p.tags || []).includes(activeTag));
+    return tagFiltered.filter((post) => matchesKeyword(post, keyword));
+  }, [posts, activeTag, keyword]);
 
   const currentPost = useMemo(() => {
     if (!filteredPosts || filteredPosts.length === 0) return null;
     return filteredPosts.find((p) => p.id === activeDate) || filteredPosts[0];
   }, [filteredPosts, activeDate]);
 
-  // 同一天唯一：管理员默认进入“今天”的编辑模式；切换到历史条目时同步预填内容
-  const editorSource = editingId ? posts.find((p) => p.id === editingId) || null : todayPost;
-  const syncKey = `${isAdmin}-${editorSource?.id || 'new'}-${today}`;
-  if (isAdmin && syncKey !== lastSyncKey) {
-    setLastSyncKey(syncKey);
-    if (editorSource) {
-      setEditingId(editorSource.id);
-      setText(editorSource.text || '');
-      setTags(editorSource.tags || []);
-      setAttachments(
-        (editorSource.media || []).map((m) => ({
-          type: m.type,
-          url: m.url,
-          value: m.value || m.url,
-          isExisting: true,
-        }))
-      );
-    } else {
-      setEditingId(null);
-      setText('');
-      setTags([]);
-      setAttachments([]);
+  const emptyStateCopy = useMemo(() => {
+    if (keyword.trim()) {
+      return {
+        title: '没有找到相关日记',
+        description: activeTag ? `试试清空搜索词，或切换到其他标签“${activeTag}”` : '换个关键词试试看，也许会翻到那篇日记。',
+      };
+    }
+    if (activeTag) {
+      return {
+        title: `没有带 “${activeTag}” 标签的 Daily`,
+        description: '换个标签或点“全部”看看',
+      };
+    }
+    return {
+      title: '暂无 Daily',
+      description: '等博主慢慢补上吧～',
+    };
+  }, [activeTag, keyword]);
+
+  if (isAdmin) {
+    const editorSource = editingId ? posts.find((p) => p.id === editingId) || null : todayPost;
+    const syncKey = `${isAdmin}-${editorSource?.id || 'new'}-${today}`;
+    if (syncKey !== lastSyncKey) {
+      setLastSyncKey(syncKey);
+      if (editorSource) {
+        setEditingId(editorSource.id);
+        setText(editorSource.text || '');
+        setTags(editorSource.tags || []);
+        setAttachments(
+          (editorSource.media || []).map((m) => ({
+            type: m.type,
+            url: m.url,
+            value: m.value || m.url,
+            isExisting: true,
+          }))
+        );
+      } else {
+        setEditingId(null);
+        setText('');
+        setTags([]);
+        setAttachments([]);
+      }
     }
   }
 
   const handleSelectDate = (id) => onActiveDateChange(id);
+
+  const handleTagChange = (nextTag) => {
+    setActiveTag(nextTag);
+    setKeyword('');
+  };
 
   const handleFileSelect = (e, type) => {
     const files = Array.from(e.target.files || []);
@@ -140,24 +176,27 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
     <section id="daily" className="daily-section">
       <h2>Daily</h2>
 
-      {allTags.length > 0 ? (
-        <div className="daily-tag-filter">
-          <TagIcon size={12} className="daily-tag-filter-icon" />
-          <button type="button" className={`tag-chip ${!activeTag ? 'active' : ''}`} onClick={() => setActiveTag(null)}>
-            全部
-          </button>
-          {allTags.map((t) => (
-            <button
-              key={t}
-              type="button"
-              className={`tag-chip ${activeTag === t ? 'active' : ''}`}
-              onClick={() => setActiveTag(activeTag === t ? null : t)}
-            >
-              {t}
+      <div className="daily-toolbar">
+        <SearchBar value={keyword} onChange={setKeyword} onClear={() => setKeyword('')} />
+        {allTags.length > 0 ? (
+          <div className="daily-tag-filter">
+            <TagIcon size={12} className="daily-tag-filter-icon" />
+            <button type="button" className={`tag-chip ${!activeTag ? 'active' : ''}`} onClick={() => handleTagChange(null)}>
+              全部
             </button>
-          ))}
-        </div>
-      ) : null}
+            {allTags.map((t) => (
+              <button
+                key={t}
+                type="button"
+                className={`tag-chip ${activeTag === t ? 'active' : ''}`}
+                onClick={() => handleTagChange(activeTag === t ? null : t)}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
 
       <div className="layout-grid">
         {loading ? (
@@ -177,12 +216,16 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
             <Timeline posts={filteredPosts} activeDate={currentPost?.id} onSelect={handleSelectDate} />
             <main className="col-content">
               {currentPost ? (
-                <DailyEntry key={currentPost.id} post={currentPost} isAdmin={isAdmin} onEdit={startEdit} onDelete={handleDelete} />
-              ) : (
-                <EmptyState
-                  title={activeTag ? `没有带 “${activeTag}” 标签的 Daily` : '暂无 Daily'}
-                  description={activeTag ? '换个标签或点“全部”看看' : '等博主慢慢补上吧～'}
+                <DailyEntry
+                  key={currentPost.id}
+                  post={currentPost}
+                  isAdmin={isAdmin}
+                  onEdit={startEdit}
+                  onDelete={handleDelete}
+                  keyword={keyword}
                 />
+              ) : (
+                <EmptyState title={emptyStateCopy.title} description={emptyStateCopy.description} />
               )}
             </main>
           </>
