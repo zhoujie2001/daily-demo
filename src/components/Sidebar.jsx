@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
+import { Eye } from 'lucide-react';
 import { navItems } from '../data/nav';
 
-export default function Sidebar({ isAdmin, onRequestLogin, onLogout }) {
+export default function Sidebar({ isAdmin, viewCount, onRequestLogin, onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const closeMenu = () => setMenuOpen(false);
@@ -62,6 +63,12 @@ export default function Sidebar({ isAdmin, onRequestLogin, onLogout }) {
           title={!isAdmin ? 'Double click to login as admin' : ''}
         >
           周杰 / Dylan
+          {isAdmin ? (
+            <span className="view-count-badge">
+              <Eye size={14} />
+              <span>{viewCount ?? '-'}</span>
+            </span>
+          ) : null}
         </h2>
         <nav>
           {navItems.map((item) => (

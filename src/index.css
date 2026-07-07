@@ -30,6 +30,16 @@ body {
   margin-bottom: 20px;
 }
 
+.view-count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #999;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
 .sidebar nav a {
   display: block;
   margin-bottom: 8px;

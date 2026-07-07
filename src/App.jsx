@@ -30,6 +30,7 @@ function AppInner() {
   const [activePhoto, setActivePhoto] = useState(null);
   const [networkAlertOpen, setNetworkAlertOpen] = useState(false);
   const [networkRetrying, setNetworkRetrying] = useState(false);
+  const [viewCount, setViewCount] = useState(null);
   const hasShownNetworkAlertRef = useRef(false);
   const hasCheckedNetworkRef = useRef(false);
 
@@ -79,6 +80,26 @@ function AppInner() {
   );
 
   useEffect(() => {
+    let cancelled = false;
+
+    fetch(apiUrl('/api/views'))
+      .then((res) => {
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        if (!cancelled && typeof data?.count === 'number') {
+          setViewCount(data.count);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (hasCheckedNetworkRef.current) return;
     hasCheckedNetworkRef.current = true;
     runBackendCheck({ showDialogOnFail: true });
@@ -94,7 +115,7 @@ function AppInner() {
       />
       <AdminLogin open={showLogin} onClose={closeLogin} onLogin={handleLogin} />
 
-      <Sidebar isAdmin={isAdmin} onRequestLogin={openLogin} onLogout={handleLogout} />
+      <Sidebar isAdmin={isAdmin} viewCount={viewCount} onRequestLogin={openLogin} onLogout={handleLogout} />
 
       <main className="content">
         <About isAdmin={isAdmin} onRequestLogin={openLogin} />
