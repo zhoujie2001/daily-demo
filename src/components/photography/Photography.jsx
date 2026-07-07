@@ -6,6 +6,7 @@ import { useDialog } from '../../context/DialogContext';
 import { LoadingSpinner, LoadingBlock } from '../ui/Loading';
 import EmptyState from '../ui/EmptyState';
 import LazyImage from '../ui/LazyImage';
+import PhotoCardDeck from './PhotoCardDeck';
 
 export default function Photography({
   isAdmin,
@@ -108,55 +109,58 @@ export default function Photography({
         ) : showEmpty ? (
           <EmptyState title="暂无照片" description="等博主慢慢补上吧～" />
         ) : (
-          <div className="photo-grid">
-            {list.map((item, index) => (
-              <div
-                className="photo-card"
-                key={item.id ?? `static-${index}`}
-                onClick={() => handleCardClick(item)}
-                style={{ position: 'relative' }}
-              >
-                {isAdmin && isRealData && (
-                  <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      className="action-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEdit(item);
-                      }}
-                      title="Edit Photo"
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                    <button
-                      className="action-btn delete"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(item.id);
-                      }}
-                      title="Delete Photo"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+          <>
+            <PhotoCardDeck items={list} />
+            <div className="photo-grid">
+              {list.map((item, index) => (
+                <div
+                  className="photo-card"
+                  key={item.id ?? `static-${index}`}
+                  onClick={() => handleCardClick(item)}
+                  style={{ position: 'relative' }}
+                >
+                  {isAdmin && isRealData && (
+                    <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className="action-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEdit(item);
+                        }}
+                        title="Edit Photo"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        className="action-btn delete"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(item.id);
+                        }}
+                        title="Delete Photo"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  )}
+                  <div className="photo-img-wrapper">
+                    <LazyImage
+                      src={resolveMediaUrl(item.url)}
+                      alt={item.title}
+                      className="photo-lazy-wrapper"
+                      imgClassName="photo-lazy-img"
+                      skeletonClassName="photo-lazy-skeleton"
+                      errorText="照片加载失败"
+                    />
                   </div>
-                )}
-                <div className="photo-img-wrapper">
-                  <LazyImage
-                    src={resolveMediaUrl(item.url)}
-                    alt={item.title}
-                    className="photo-lazy-wrapper"
-                    imgClassName="photo-lazy-img"
-                    skeletonClassName="photo-lazy-skeleton"
-                    errorText="照片加载失败"
-                  />
+                  <div className="photo-info" style={{ position: 'relative' }}>
+                    <h3>{item.title}</h3>
+                    <p>{item.desc}</p>
+                  </div>
                 </div>
-                <div className="photo-info" style={{ position: 'relative' }}>
-                  <h3>{item.title}</h3>
-                  <p>{item.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </>
         )}
       </section>
     </section>
