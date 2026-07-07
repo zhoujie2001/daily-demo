@@ -48,7 +48,7 @@ function renderMediaItem(item, idx) {
           e.target.play().catch((err) => console.warn('Video playback prevented:', err));
         }}
         onMouseLeave={(e) => e.target.pause()}
-        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        style={{ width: '100%', height: 'auto', maxWidth: '100%', objectFit: 'contain' }}
       />
     );
   }
