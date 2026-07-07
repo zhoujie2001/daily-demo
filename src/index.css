@@ -359,6 +359,7 @@ h2 {
 }
 
 .video-card:hover .hover-actions,
+.photo-img-wrapper:hover .hover-actions,
 .photo-card:hover .hover-actions,
 .header-card:hover .hover-actions-header {
   opacity: 1;
@@ -488,115 +489,144 @@ h2 {
   opacity: 1;
 }
 
-/* ===== 摄影网格布局 ===== */
+/* ===== 摄影网格布局 (Editorial Masonry) ===== */
 
 .photo-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 28px;
-  margin-top: 30px;
-  padding-bottom: 20px;
+  grid-template-columns: repeat(12, 1fr); /* 使用 12 列网格以实现更灵活的非对称布局 */
+  grid-auto-flow: dense;
+  gap: 24px;
+  margin-top: 40px;
+  padding-bottom: 40px;
 }
 
-/* 卡片整体 */
+/* 卡片整体：去除边框和包裹感，让图片更纯粹 */
 .photo-card {
   position: relative;
-  background: #ffffff;
-  border-radius: 16px;
+  background: transparent;
+  border-radius: 0;
   overflow: hidden;
-  transition: transform 0.5s cubic-bezier(0.19, 1, 0.22, 1), box-shadow 0.5s cubic-bezier(0.19, 1, 0.22, 1);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
   cursor: pointer;
-  border: 1px solid rgba(0,0,0,0.03);
   display: flex;
   flex-direction: column;
+  /* 基础跨度：占据 4 列（三分之一宽） */
+  grid-column: span 4;
 }
 
-.photo-card:hover {
-  transform: translateY(-8px) scale(1.02);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
-  z-index: 2;
+/* 创造不规则的错落感：利用 nth-child 选择器改变部分图片的比例和跨度 */
+.photo-card:nth-child(5n + 1) {
+  grid-column: span 8; /* 大图占据两倍宽度 */
+}
+.photo-card:nth-child(5n + 1) .photo-img-wrapper {
+  aspect-ratio: 16 / 9; /* 大图使用宽幅比例 */
 }
 
-/* 图片部分 */
+.photo-card:nth-child(7n + 3) {
+  grid-column: span 6; /* 中图占据一半宽度 */
+}
+.photo-card:nth-child(7n + 3) .photo-img-wrapper {
+  aspect-ratio: 3 / 2;
+}
+
+.photo-card:nth-child(3n + 2) .photo-img-wrapper {
+  aspect-ratio: 4 / 5; /* 部分图片使用竖幅比例 */
+}
+
+/* 图片容器：取消纯圆角，保持边缘锐利 */
 .photo-img-wrapper {
   width: 100%;
   aspect-ratio: 4 / 3;
   overflow: hidden;
   position: relative;
+  background: var(--bg-secondary);
 }
 
-.photo-img-wrapper::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0) 30%);
-  opacity: 0;
-  transition: opacity 0.4s ease;
-  pointer-events: none;
+.photo-lazy-wrapper {
+  width: 100%;
+  height: 100%;
 }
 
-.photo-card:hover .photo-img-wrapper::after {
-  opacity: 1;
-}
-
-.photo-img-wrapper img {
+.photo-lazy-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.7s cubic-bezier(0.19, 1, 0.22, 1);
+  transition: transform 0.8s cubic-bezier(0.19, 1, 0.22, 1), filter 0.8s ease;
+  filter: saturate(0.95) contrast(0.95); /* 默认轻微降低饱和度，增加胶片感 */
 }
 
-.photo-card:hover img {
-  transform: scale(1.08);
+.photo-card:hover .photo-lazy-img {
+  transform: scale(1.03);
+  filter: saturate(1.05) contrast(1.05); /* hover 时恢复并略微提亮 */
 }
 
-/* 文字区域 */
+/* 文字区域：留白、简约 */
 .photo-info {
-  padding: 20px 20px;
-  background: #fff;
+  padding: 16px 0 8px;
+  background: transparent;
   z-index: 2;
   position: relative;
-  transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1);
-  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .photo-info h3 {
-  font-size: 16px;
-  margin: 0 0 8px;
-  font-weight: 600;
-  color: #111;
-  transition: color 0.3s ease;
-  letter-spacing: -0.01em;
-}
-
-.photo-card:hover .photo-info h3 {
-  color: #000;
+  font-size: 1rem;
+  margin: 0;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-family: var(--font-serif);
+  letter-spacing: 0.02em;
 }
 
 .photo-info p {
-  font-size: 13.5px;
-  color: #666;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
   margin: 0;
-  font-family: inherit;
-  line-height: 1.5;
+  font-family: var(--font-sans);
+  font-weight: 300;
 }
 
+/* 响应式适配 */
 @media (max-width: 1200px) {
   .photo-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(6, 1fr);
+  }
+  .photo-card {
+    grid-column: span 3;
+  }
+  .photo-card:nth-child(5n + 1) {
+    grid-column: span 6;
+  }
+  .photo-card:nth-child(7n + 3) {
+    grid-column: span 4;
   }
 }
 
 @media (max-width: 900px) {
   .photo-grid {
     grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+  .photo-card,
+  .photo-card:nth-child(5n + 1),
+  .photo-card:nth-child(7n + 3) {
+    grid-column: span 1;
+  }
+  .photo-card:nth-child(5n + 1) .photo-img-wrapper,
+  .photo-card:nth-child(7n + 3) .photo-img-wrapper,
+  .photo-card:nth-child(3n + 2) .photo-img-wrapper {
+    aspect-ratio: 4 / 3; /* 移动端统一比例，避免布局破碎 */
   }
 }
 
 @media (max-width: 600px) {
   .photo-grid {
     grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .photo-card {
+    grid-column: span 1 !important;
   }
 }
 
