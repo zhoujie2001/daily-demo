@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Eye } from 'lucide-react';
 import { navItems } from '../data/nav';
+import NowStatus from './NowStatus';
 
-export default function Sidebar({ isAdmin, viewCount, onRequestLogin, onLogout }) {
+export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin, onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const closeMenu = () => setMenuOpen(false);
@@ -42,6 +43,7 @@ export default function Sidebar({ isAdmin, viewCount, onRequestLogin, onLogout }
             ✕
           </button>
         </div>
+        <NowStatus isAdmin={isAdmin} adminToken={adminToken} />
         <nav className="mobile-nav-links">
           {navItems.map((item) => (
             <a key={item.id} href={`#${item.id}`} onClick={closeMenu}>
@@ -70,6 +72,7 @@ export default function Sidebar({ isAdmin, viewCount, onRequestLogin, onLogout }
             </span>
           ) : null}
         </h2>
+        <NowStatus isAdmin={isAdmin} adminToken={adminToken} />
         <nav>
           {navItems.map((item) => (
             <a key={item.id} href={`#${item.id}`}>

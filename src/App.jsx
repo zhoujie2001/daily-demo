@@ -115,7 +115,13 @@ function AppInner() {
       />
       <AdminLogin open={showLogin} onClose={closeLogin} onLogin={handleLogin} />
 
-      <Sidebar isAdmin={isAdmin} viewCount={viewCount} onRequestLogin={openLogin} onLogout={handleLogout} />
+      <Sidebar
+        isAdmin={isAdmin}
+        adminToken={token}
+        viewCount={viewCount}
+        onRequestLogin={openLogin}
+        onLogout={handleLogout}
+      />
 
       <main className="content">
         <About isAdmin={isAdmin} onRequestLogin={openLogin} />

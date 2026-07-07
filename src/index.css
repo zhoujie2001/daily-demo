@@ -27,7 +27,52 @@ body {
 
 .sidebar h2 {
   font-size: 18px;
-  margin-bottom: 20px;
+  margin-bottom: 8px;
+}
+
+.now-status {
+  margin: 12px 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.now-status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #666;
+}
+
+.now-status-text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.45;
+}
+
+.now-status-input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+  font: inherit;
+  color: #444;
+  background: #fff;
+}
+
+.now-status-edit-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #bbb;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.now-status-edit-btn:hover {
+  color: #666;
 }
 
 .view-count-badge {
@@ -2128,6 +2173,10 @@ h2 {
     display: flex;
     flex-direction: column;
     gap: 6px;
+  }
+
+  .mobile-nav-drawer .now-status {
+    margin: -4px 0 6px;
   }
 
   .mobile-nav-links a {
