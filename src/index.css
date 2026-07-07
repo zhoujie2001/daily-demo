@@ -2565,6 +2565,10 @@ h2 {
 }
 
 .song-track {
+  list-style: none;
+}
+
+.song-track-link {
   display: grid;
   grid-template-columns: 32px 1fr;
   gap: 10px;
@@ -2572,13 +2576,16 @@ h2 {
   padding: 8px 10px;
   border-radius: 12px;
   transition: background 200ms ease;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
 }
 
-.song-track:hover {
+.song-track-link:hover {
   background: rgba(0, 0, 0, 0.04);
 }
 
-.song-track:hover .song-track-name {
+.song-track-link:hover .song-track-name {
   color: #111;
 }
 

@@ -74,6 +74,7 @@ export default function Song() {
                 artist: song.singer || fallbackTracks[idx]?.artist || '',
                 cover: fallbackTracks[idx]?.cover || 'linear-gradient(135deg, #e5e7eb, #9ca3af)',
                 albumPic: song.albumPic || '',
+                mid: song.mid || '',
               }));
 
               return {
@@ -104,7 +105,6 @@ export default function Song() {
   return (
     <section id="song" className="song-section">
       <h2>Song</h2>
-      <p className="subtitle">每次刷新会从每个歌单随机抽取 5 首歌展示。</p>
 
       {loading ? (
         <div className="song-loading">

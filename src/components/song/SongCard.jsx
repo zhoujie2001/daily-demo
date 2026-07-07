@@ -10,28 +10,41 @@ export default function SongCard({ playlist, variant = 0, style, className = '' 
       </div>
 
       <ol className="song-track-list">
-        {tracks.map((t) => (
-          <li key={`${playlist.id}-${t.title}-${t.artist}`} className="song-track">
-            <span className="song-track-cover" style={{ background: t.cover }} aria-hidden="true">
-              {t.albumPic ? (
-                <img
-                  src={t.albumPic}
-                  alt=""
-                  className="song-track-cover-img"
-                  loading="lazy"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                  }}
-                />
-              ) : null}
-            </span>
-            <span className="song-track-text">
-              <span className="song-track-name">{t.title}</span>
-              <span className="song-track-sep"> - </span>
-              <span className="song-track-artist">{t.artist}</span>
-            </span>
-          </li>
-        ))}
+        {tracks.map((t) => {
+          const href = t.mid ? `https://y.qq.com/n/ryqq/songDetail/${t.mid}` : null;
+          return (
+            <li key={`${playlist.id}-${t.title}-${t.artist}`} className="song-track">
+              <a
+                className="song-track-link"
+                href={href || undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  if (!href) e.preventDefault();
+                }}
+              >
+                <span className="song-track-cover" style={{ background: t.cover }} aria-hidden="true">
+                  {t.albumPic ? (
+                    <img
+                      src={t.albumPic}
+                      alt=""
+                      className="song-track-cover-img"
+                      loading="lazy"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  ) : null}
+                </span>
+                <span className="song-track-text">
+                  <span className="song-track-name">{t.title}</span>
+                  <span className="song-track-sep"> - </span>
+                  <span className="song-track-artist">{t.artist}</span>
+                </span>
+              </a>
+            </li>
+          );
+        })}
       </ol>
     </div>
   );
