@@ -106,8 +106,10 @@ export default function Daily({ isAdmin, posts, activeDate, onActiveDateChange, 
     if (publishing) return;
     setPublishing(true);
     try {
+      const editingPost = editingId ? posts.find((p) => p.id === editingId) : null;
+      const editingDate = editingPost?.date || '';
       await onPublish({ text, attachments, editingId, tags });
-      toast.success(editingId ? '已更新今天的 Daily' : '已发布');
+      toast.success(editingId ? `已更新 ${editingDate} 的 Daily` : '已发布');
       resetEditorToToday();
     } catch (err) {
       toast.error(err.message || '发布失败');
