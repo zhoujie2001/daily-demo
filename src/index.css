@@ -1,13 +1,40 @@
 @import "tailwindcss";
-/* import { useEffect, useRef } from "react"; */
 
-/* 全局排版 */
+/* ===== CSS Variables (Color & Theme) ===== */
+:root {
+  /* 纸张质感背景：略带暖色调的白 */
+  --bg-primary: oklch(98% 0.005 80);
+  --bg-secondary: oklch(96% 0.008 80);
+  /* 带有温度的深炭黑，取代纯黑 */
+  --text-primary: oklch(25% 0.01 80);
+  /* 略浅的次要文字颜色 */
+  --text-secondary: oklch(50% 0.01 80);
+  /* 边框颜色，柔和自然 */
+  --border-color: oklch(90% 0.01 80);
+
+  /* 字体系统：标题使用优雅的现代衬线体，正文使用极简无衬线体 */
+  --font-serif: 'Cormorant Garamond', Georgia, "Times New Roman", serif;
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+}
+
+/* ===== 全局排版 ===== */
 
 body {
-  font-family: Georgia, "Times New Roman", serif;
-  color: #222;
-  background: #fff;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background: var(--bg-primary);
   line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 标题默认使用优雅的衬线体 */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif);
+  color: var(--text-primary);
+  font-weight: 500;
+  letter-spacing: -0.02em;
 }
 
 /* 整体布局 */
@@ -26,74 +53,24 @@ body {
 }
 
 .sidebar h2 {
-  font-size: 18px;
-  margin-bottom: 8px;
-}
-
-.now-status {
-  margin: 12px 0 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.now-status-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: #666;
-}
-
-.now-status-text {
-  flex: 1;
-  min-width: 0;
-  line-height: 1.45;
-}
-
-.now-status-input {
-  flex: 1;
-  min-width: 0;
-  padding: 2px 6px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 6px;
-  font: inherit;
-  color: #444;
-  background: #fff;
-}
-
-.now-status-edit-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #bbb;
-  padding: 0 2px;
-  line-height: 1;
-}
-
-.now-status-edit-btn:hover {
-  color: #666;
-}
-
-.view-count-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: #999;
-  margin-left: 8px;
-  vertical-align: middle;
+  font-size: clamp(1.2rem, 2vw, 1.5rem);
+  margin-top: 0;
+  margin-bottom: 24px;
 }
 
 .sidebar nav a {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
   text-decoration: none;
-  color: #444;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  transition: color 0.3s ease;
 }
 
 .sidebar nav a:hover {
-  text-decoration: underline;
+  text-decoration: none;
+  color: var(--text-primary);
 }
 
 /* 主体内容 */
@@ -103,6 +80,7 @@ body {
   margin: 0 auto;
   padding: 80px 20px;
   overflow: hidden;
+  max-width: 1200px;
 }
 
 .div_books{
@@ -114,31 +92,46 @@ body {
   overflow: hidden;
 }
 
-/* 让内容避开左侧目录 */
+/* 让内容避开左侧目录，采用不对称的留白 */
 @media (min-width: 1000px) {
   .content {
-    margin-left: 200px;
+    margin-left: 360px;
+    padding-right: 60px;
+  }
+}
+
+@media (min-width: 1400px) {
+  .content {
+    margin-left: 420px;
+    padding-right: 120px;
   }
 }
 
 /* 标题样式 */
 
 h1 {
-  font-size: 32px;
-  margin-bottom: 10px;
+  /* 使用 Fluid Typography 创造巨大的视觉张力 */
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  margin-bottom: 0.5rem;
+  line-height: 1.1;
+  font-style: italic; /* 杂志感通常喜欢用斜体主标题 */
 }
 
 h2 {
   margin-top: 60px;
   margin-bottom: 20px;
-  font-size: 20px;
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+  line-height: 1.2;
 }
 
 /* 副标题 */
 
 .subtitle {
-  color: #666;
+  color: var(--text-secondary);
+  font-size: 1.1rem;
   margin-bottom: 20px;
+  font-family: var(--font-sans);
+  font-weight: 300;
 }
 
 /* 悬挂缩进 */
