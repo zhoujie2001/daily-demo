@@ -1,5 +1,5 @@
-import React from 'react';
-import { Edit2, Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Edit2, Trash2, Play } from 'lucide-react';
 import LazyImage from '../ui/LazyImage';
 import EmojiReactions from './EmojiReactions';
 
@@ -32,6 +32,65 @@ function highlightText(content, keyword) {
 
     return <React.Fragment key={key}>{part}</React.Fragment>;
   });
+}
+
+function LazyVideo({ url }) {
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  if (isLoaded) {
+    return (
+      <video
+        src={url}
+        autoPlay
+        controls
+        playsInline
+        style={{ width: '100%', height: 'auto', maxWidth: '100%', objectFit: 'contain', borderRadius: '4px' }}
+      />
+    );
+  }
+
+  return (
+    <div
+      onClick={() => setIsLoaded(true)}
+      style={{
+        width: '100%',
+        aspectRatio: '16/9',
+        backgroundColor: 'var(--color-surface, rgba(128, 128, 128, 0.05))',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+        borderRadius: '4px',
+        position: 'relative',
+        overflow: 'hidden'
+      }}
+      className="lazy-video-placeholder"
+    >
+      <div
+        style={{
+          width: '64px',
+          height: '64px',
+          borderRadius: '50%',
+          backgroundColor: 'rgba(0, 0, 0, 0.4)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backdropFilter: 'blur(4px)',
+          transition: 'all 0.3s ease',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'scale(1.1)';
+          e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'scale(1)';
+          e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
+        }}
+      >
+        <Play size={28} color="#fff" fill="#fff" style={{ marginLeft: '4px' }} />
+      </div>
+    </div>
+  );
 }
 
 function renderMediaItem(item, idx) {
@@ -69,20 +128,7 @@ function renderMediaItem(item, idx) {
     );
   }
   if (item.type === 'video') {
-    return (
-      <video
-        key={idx}
-        src={item.url}
-        muted
-        loop
-        playsInline
-        onMouseEnter={(e) => {
-          e.target.play().catch(() => {});
-        }}
-        onMouseLeave={(e) => e.target.pause()}
-        style={{ width: '100%', height: 'auto', maxWidth: '100%', objectFit: 'contain' }}
-      />
-    );
+    return <LazyVideo key={idx} url={item.url} />;
   }
   return null;
 }
