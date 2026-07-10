@@ -2589,7 +2589,7 @@ h2 {
     border-radius: 16px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.03);
     border: none;
-    width: 100%;
+    width: calc(100vw - 32px); /* 屏幕宽度减去左右各 16px 的 padding */
     max-width: 100%;
     box-sizing: border-box;
     overflow: hidden;
@@ -2643,6 +2643,10 @@ h2 {
     max-width: 100vw;
     box-sizing: border-box;
     overflow-x: hidden;
+  }
+  .entry,
+  .entry:last-child {
+    width: calc(100vw - 28px); /* 移动端屏幕宽度减去左右各 14px 的 padding */
   }
 
   .daily-section .layout-grid {
