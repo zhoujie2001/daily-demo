@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Tag as TagIcon } from 'lucide-react';
 import Timeline from './Timeline';
 import DailyEntry from './DailyEntry';
@@ -34,7 +34,35 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
   const [activeTag, setActiveTag] = useState(null);
   const [keyword, setKeyword] = useState('');
   const lastSyncKeyRef = useRef('');
+  const objectUrlSetRef = useRef(new Set());
   const { confirm, toast } = useDialog();
+
+  const registerObjectUrl = useCallback((url) => {
+    if (typeof url === 'string' && url.startsWith('blob:')) {
+      objectUrlSetRef.current.add(url);
+    }
+  }, []);
+
+  const revokeObjectUrl = useCallback((url) => {
+    if (!objectUrlSetRef.current.has(url)) {
+      return;
+    }
+    URL.revokeObjectURL(url);
+    objectUrlSetRef.current.delete(url);
+  }, []);
+
+  const clearObjectUrls = useCallback(() => {
+    objectUrlSetRef.current.forEach((url) => {
+      URL.revokeObjectURL(url);
+    });
+    objectUrlSetRef.current.clear();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearObjectUrls();
+    };
+  }, [clearObjectUrls]);
 
   const today = todayLabel();
   const todayPost = useMemo(() => (posts || []).find((p) => p.date === today) || null, [posts, today]);
@@ -88,6 +116,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
 
     lastSyncKeyRef.current = syncKey;
     queueMicrotask(() => {
+      clearObjectUrls();
       if (editorSource) {
         setEditingId(editorSource.id);
         setText(editorSource.text || '');
@@ -108,7 +137,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
       setTags([]);
       setAttachments([]);
     });
-  }, [isAdmin, editingId, posts, today, todayPost]);
+  }, [clearObjectUrls, isAdmin, editingId, posts, today, todayPost]);
 
   const handleSelectDate = (id) => onActiveDateChange(id);
 
@@ -121,20 +150,31 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
     const files = Array.from(e.target.files || []);
     const newAtt = files.map((file) => {
       const url = URL.createObjectURL(file);
+      registerObjectUrl(url);
       return { file, type, url, value: url };
     });
     setAttachments((prev) => [...prev, ...newAtt]);
     e.target.value = '';
   };
 
-  const removeAttachment = (idx) => setAttachments((prev) => prev.filter((_, i) => i !== idx));
+  const removeAttachment = (idx) => {
+    setAttachments((prev) => {
+      const target = prev[idx];
+      if (target?.file) {
+        revokeObjectUrl(target.url);
+      }
+      return prev.filter((_, i) => i !== idx);
+    });
+  };
 
   const resetEditorToToday = () => {
+    clearObjectUrls();
     lastSyncKeyRef.current = '';
     setEditingId(null);
   };
 
   const startEdit = (post) => {
+    clearObjectUrls();
     lastSyncKeyRef.current = '';
     setEditingId(post.id);
     setText(post.text || '');

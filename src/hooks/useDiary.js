@@ -67,6 +67,25 @@ function pickPreferredMedia(existingMedia, nextMedia) {
   return existing.length > 0 ? existing : incoming;
 }
 
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(reader.error || new Error('读取文件失败'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function resolveAttachmentUrl(att, uploadedUrl) {
+  if (uploadedUrl) {
+    return uploadedUrl;
+  }
+  if (att.file) {
+    return readFileAsDataURL(att.file);
+  }
+  return att.url;
+}
+
 function dedupePostsByDate(list) {
   const map = new Map();
   (list || []).forEach((post) => {
@@ -136,21 +155,25 @@ export function useDiary(token) {
         }
 
         let uploadIdx = 0;
-        attachments.forEach((att) => {
+        for (const att of attachments) {
           if (att.isExisting) {
             finalMedia.push({ type: att.type, url: att.url, value: att.value || att.url });
-          } else if (att.file && uploadedUrls[uploadIdx]) {
-            const url = uploadedUrls[uploadIdx];
-            uploadIdx += 1;
-            finalMedia.push({ type: att.type, url, value: url });
-          } else {
-            finalMedia.push({ type: att.type, url: att.url, value: att.value || att.url });
+            continue;
           }
-        });
+
+          const uploadedUrl = att.file ? uploadedUrls[uploadIdx] : undefined;
+          if (att.file) {
+            uploadIdx += 1;
+          }
+
+          const resolvedUrl = await resolveAttachmentUrl(att, uploadedUrl);
+          finalMedia.push({ type: att.type, url: resolvedUrl, value: resolvedUrl });
+        }
       } else {
-        attachments.forEach((att) => {
-          finalMedia.push({ type: att.type, url: att.url, value: att.value || att.url });
-        });
+        for (const att of attachments) {
+          const resolvedUrl = await resolveAttachmentUrl(att);
+          finalMedia.push({ type: att.type, url: resolvedUrl, value: resolvedUrl });
+        }
       }
 
       const payload = {
