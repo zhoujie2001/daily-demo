@@ -2505,6 +2505,9 @@ h2 {
 
   .col-timeline {
     order: 1;
+    width: 100vw;
+    margin-left: -16px; /* 抵消外层的 padding 以实现全宽滑动 */
+    padding-left: 16px; /* 补偿视觉边距 */
   }
 
   .col-content {
@@ -2552,8 +2555,10 @@ h2 {
     max-height: none;
     overflow-x: auto;
     overflow-y: hidden;
-    padding-right: 0;
+    padding-right: 16px; /* 留出一点滑动边距 */
     scrollbar-width: none;
+    -webkit-overflow-scrolling: touch; /* 增强 iOS 上的滑动流畅度 */
+    scroll-snap-type: x mandatory; /* 增加吸附感 */
   }
 
   .timeline-track.scrollable-timeline::-webkit-scrollbar {
@@ -2567,6 +2572,7 @@ h2 {
     border: 1px solid var(--border-color);
     border-radius: 999px;
     background: #fff;
+    scroll-snap-align: start; /* 滑动停止时自动吸附对齐 */
   }
 
   .timeline-node::before,
