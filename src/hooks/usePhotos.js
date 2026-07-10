@@ -64,7 +64,15 @@ export function usePhotos(token) {
 
   const remove = useCallback(
     async (id) => {
-      if (token) await photosApi.deletePhoto(id, token);
+      if (token) {
+        try {
+          await photosApi.deletePhoto(id, token);
+        } catch (err) {
+          console.error('Delete photo failed:', err);
+          throw new Error('删除失败，请重试');
+        }
+      }
+
       setPhotos((prev) => prev.filter((p) => p.id !== id));
     },
     [token]

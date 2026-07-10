@@ -92,7 +92,11 @@ function AppInner() {
           setViewCount(data.count);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (import.meta.env.DEV) {
+          console.warn('Failed to fetch view count:', err);
+        }
+      });
 
     return () => {
       cancelled = true;

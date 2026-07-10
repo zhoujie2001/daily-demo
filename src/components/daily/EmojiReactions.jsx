@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiUrl } from '../../api/client';
+import { useDialog } from '../../context/DialogContext';
 
 const REACTION_EMOJIS = ['👍', '❤️', '🔥', '😂', '🤔'];
 
@@ -37,18 +38,13 @@ function persistReactedEmojis(diaryId, reactedSet) {
 }
 
 export default function EmojiReactions({ diaryId }) {
+  const { toast } = useDialog();
   const [counts, setCounts] = useState(() => createEmptyCounts());
   const [reacted, setReacted] = useState(() => readReactedEmojis(diaryId));
   const [pendingEmoji, setPendingEmoji] = useState('');
 
   useEffect(() => {
-    setReacted(readReactedEmojis(diaryId));
-  }, [diaryId]);
-
-  useEffect(() => {
     let cancelled = false;
-
-    setCounts(createEmptyCounts());
 
     const loadCounts = async () => {
       try {
@@ -119,6 +115,7 @@ export default function EmojiReactions({ diaryId }) {
       setCounts(previousCounts);
       setReacted(previousReacted);
       persistReactedEmojis(diaryId, previousReacted);
+      toast.error('操作失败，请重试');
     } finally {
       setPendingEmoji('');
     }

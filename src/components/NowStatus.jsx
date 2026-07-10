@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Check, Pencil } from 'lucide-react';
 import { apiUrl } from '../api/client';
+import { useDialog } from '../context/DialogContext';
 
 const DEFAULT_STATUS = {
   mood: '感觉不错',
@@ -14,6 +15,7 @@ const DEFAULT_WEATHER = {
 };
 
 export default function NowStatus({ isAdmin, adminToken }) {
+  const { toast } = useDialog();
   const [weather, setWeather] = useState(DEFAULT_WEATHER);
   const [status, setStatus] = useState(DEFAULT_STATUS);
   const [editingField, setEditingField] = useState('');
@@ -50,7 +52,10 @@ export default function NowStatus({ isAdmin, adminToken }) {
             });
           }
         }
-      } catch {
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.warn('Failed to load now status data:', err);
+        }
       }
     };
 
@@ -119,7 +124,12 @@ export default function NowStatus({ isAdmin, adminToken }) {
       });
       setEditingField('');
       setDraftValue('');
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('401')) {
+        toast.error('登录已过期');
+      } else {
+        toast.error('保存失败，请重试');
+      }
     } finally {
       setSaving(false);
     }

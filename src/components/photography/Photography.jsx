@@ -32,8 +32,7 @@ export default function Photography({
     try {
       await onUpload(file);
       toast.success('照片上传成功');
-    } catch (err) {
-      console.error(err);
+    } catch {
       toast.error('照片上传失败，请稍后重试');
     }
   };
@@ -61,8 +60,7 @@ export default function Photography({
     try {
       await onUpdate(item.id, { title: result.title, desc: result.desc });
       toast.success('已更新');
-    } catch (err) {
-      console.error(err);
+    } catch {
       toast.error('更新失败');
     }
   };
@@ -78,8 +76,7 @@ export default function Photography({
     try {
       await onDelete(id);
       toast.success('已删除');
-    } catch (err) {
-      console.error(err);
+    } catch {
       toast.error('删除失败');
     }
   };

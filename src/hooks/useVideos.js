@@ -60,7 +60,15 @@ export function useVideos(token) {
 
   const remove = useCallback(
     async (id) => {
-      if (token) await videosApi.deleteVideo(id, token);
+      if (token) {
+        try {
+          await videosApi.deleteVideo(id, token);
+        } catch (err) {
+          console.error('Delete video failed:', err);
+          throw new Error('删除失败，请重试');
+        }
+      }
+
       setVideos((prev) => prev.filter((v) => v.id !== id));
     },
     [token]

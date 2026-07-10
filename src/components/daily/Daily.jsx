@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Tag as TagIcon } from 'lucide-react';
 import Timeline from './Timeline';
 import DailyEntry from './DailyEntry';
@@ -33,7 +33,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
   const [publishing, setPublishing] = useState(false);
   const [activeTag, setActiveTag] = useState(null);
   const [keyword, setKeyword] = useState('');
-  const [lastSyncKey, setLastSyncKey] = useState('');
+  const lastSyncKeyRef = useRef('');
   const { confirm, toast } = useDialog();
 
   const today = todayLabel();
@@ -74,11 +74,20 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
     };
   }, [activeTag, keyword]);
 
-  if (isAdmin) {
+  useEffect(() => {
+    if (!isAdmin) {
+      return;
+    }
+
     const editorSource = editingId ? posts.find((p) => p.id === editingId) || null : todayPost;
     const syncKey = `${isAdmin}-${editorSource?.id || 'new'}-${today}`;
-    if (syncKey !== lastSyncKey) {
-      setLastSyncKey(syncKey);
+
+    if (syncKey === lastSyncKeyRef.current) {
+      return;
+    }
+
+    lastSyncKeyRef.current = syncKey;
+    queueMicrotask(() => {
       if (editorSource) {
         setEditingId(editorSource.id);
         setText(editorSource.text || '');
@@ -91,14 +100,15 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
             isExisting: true,
           }))
         );
-      } else {
-        setEditingId(null);
-        setText('');
-        setTags([]);
-        setAttachments([]);
+        return;
       }
-    }
-  }
+
+      setEditingId(null);
+      setText('');
+      setTags([]);
+      setAttachments([]);
+    });
+  }, [isAdmin, editingId, posts, today, todayPost]);
 
   const handleSelectDate = (id) => onActiveDateChange(id);
 
@@ -120,12 +130,12 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
   const removeAttachment = (idx) => setAttachments((prev) => prev.filter((_, i) => i !== idx));
 
   const resetEditorToToday = () => {
-    setLastSyncKey('');
+    lastSyncKeyRef.current = '';
     setEditingId(null);
   };
 
   const startEdit = (post) => {
-    setLastSyncKey('');
+    lastSyncKeyRef.current = '';
     setEditingId(post.id);
     setText(post.text || '');
     setTags(post.tags || []);

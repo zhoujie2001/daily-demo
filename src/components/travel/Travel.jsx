@@ -30,8 +30,7 @@ export default function Travel({
     try {
       await onUpload(file);
       toast.success('视频上传成功');
-    } catch (err) {
-      console.error(err);
+    } catch {
       toast.error('视频上传失败，请稍后重试');
     }
   };
@@ -48,8 +47,7 @@ export default function Travel({
     try {
       await onUpdate(video.id, { title: newTitle || video.title });
       toast.success('已更新');
-    } catch (err) {
-      console.error(err);
+    } catch {
       toast.error('更新失败');
     }
   };
@@ -65,8 +63,7 @@ export default function Travel({
     try {
       await onDelete(id);
       toast.success('已删除');
-    } catch (err) {
-      console.error(err);
+    } catch {
       toast.error('删除失败');
     }
   };
@@ -75,7 +72,7 @@ export default function Travel({
     <section id="travel">
       <div style={headerRowStyle}>
         <h2 style={{ margin: 0 }}>Travel</h2>
-        {isAdmin && (
+        {isAdmin ? (
           <label className={`upload-btn ${uploading ? 'disabled' : ''}`}>
             {uploading ? <LoadingSpinner size={12} /> : <Plus size={14} />}
             <span>{uploading ? 'Uploading...' : 'Upload Video'}</span>
@@ -87,7 +84,7 @@ export default function Travel({
               disabled={uploading}
             />
           </label>
-        )}
+        ) : null}
       </div>
       <p style={{ marginTop: 0, color: '#666', fontSize: '14px' }}>嘿！快看那边。</p>
 
@@ -104,14 +101,12 @@ export default function Travel({
                   loop
                   playsInline
                   onMouseEnter={(e) => {
-                    e.target.play().catch((err) =>
-                      console.warn('Video playback prevented:', err)
-                    );
+                    e.target.play().catch(() => {});
                   }}
                   onMouseLeave={(e) => e.target.pause()}
                   style={{ width: '200px', height: '280px', objectFit: 'cover' }}
                 />
-                {isAdmin && isRealData && !video._dup && (
+                {isAdmin && isRealData && !video._dup ? (
                   <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
                     <button
                       className="action-btn"
@@ -128,7 +123,7 @@ export default function Travel({
                       <Trash2 size={14} />
                     </button>
                   </div>
-                )}
+                ) : null}
               </div>
             ))}
           </div>

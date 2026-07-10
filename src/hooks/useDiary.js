@@ -214,11 +214,15 @@ export function useDiary(token) {
   const remove = useCallback(
     async (postId) => {
       const realId = postId.replace('post-', '');
-      try {
-        if (token) await diaryApi.deleteDiary(realId, token);
-      } catch (err) {
-        console.error('Delete diary failed:', err);
+      if (token) {
+        try {
+          await diaryApi.deleteDiary(realId, token);
+        } catch (err) {
+          console.error('Delete diary failed:', err);
+          throw new Error('删除失败，请重试');
+        }
       }
+
       setPosts((prev) => prev.filter((p) => p.id !== postId));
     },
     [token]

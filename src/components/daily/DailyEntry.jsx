@@ -77,7 +77,7 @@ function renderMediaItem(item, idx) {
         loop
         playsInline
         onMouseEnter={(e) => {
-          e.target.play().catch((err) => console.warn('Video playback prevented:', err));
+          e.target.play().catch(() => {});
         }}
         onMouseLeave={(e) => e.target.pause()}
         style={{ width: '100%', height: 'auto', maxWidth: '100%', objectFit: 'contain' }}

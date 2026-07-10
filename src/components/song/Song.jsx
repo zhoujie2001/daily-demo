@@ -105,8 +105,7 @@ export default function Song() {
                 title: data.name || meta.name,
                 tracks,
               };
-            } catch (err) {
-              console.error('Fetch playlist failed', meta.id, err);
+            } catch {
               return FALLBACK_PLAYLISTS[index];
             }
           })
@@ -124,10 +123,6 @@ export default function Song() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (currentIndex >= total) setCurrentIndex(0);
-  }, [currentIndex, total]);
 
   const animateTo = (direction) => {
     if (animatingRef.current || total <= 1) return;
