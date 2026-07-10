@@ -2559,6 +2559,10 @@ h2 {
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch; /* 增强 iOS 上的滑动流畅度 */
     scroll-snap-type: x mandatory; /* 增加吸附感 */
+    width: 100vw;
+    display: flex;
+    flex-wrap: nowrap;
+    padding-left: 16px;
   }
 
   .timeline-track.scrollable-timeline::-webkit-scrollbar {
