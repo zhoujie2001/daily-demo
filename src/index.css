@@ -1114,6 +1114,9 @@ h2 {
     max-width: 100%;
     overflow-wrap: break-word;
     word-break: break-word;
+    /* 确保文字不会因为宽度超出而导致裁切 */
+    width: 100%;
+    box-sizing: border-box;
   }
 }
 
@@ -1158,7 +1161,7 @@ h2 {
   }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 900px) {
   .entry {
     background: #fff;
     border: none;
@@ -1170,26 +1173,30 @@ h2 {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
+    /* 去除 overflow: hidden 防止文字被裁切 */
+    overflow: visible;
   }
   .entry-media {
     display: grid;
     gap: 4px;
-    border-radius: 10px;
+    border-radius: 8px; /* 恢复圆角 */
     overflow: hidden;
     margin-bottom: 0;
-    width: 100%;
-    max-width: 100%;
+    width: 100%; /* 恢复自适应宽度 */
+
+
+    max-width: 100%; /* 避免超出边界 */
     background: var(--bg-secondary);
     box-sizing: border-box;
     margin-top: 1rem;
   }
   .media-single { grid-template-columns: 1fr; aspect-ratio: auto; }
-  .media-single img { object-fit: contain; max-height: 70vh; max-width: 100%; width: 100%; display: block; margin: 0 auto; border-radius: 10px; }
+  .media-single img { object-fit: contain; max-height: 70vh; max-width: 100%; width: 100%; height: auto; display: block; margin: 0 auto; border-radius: 8px; }
   .media-grid-2 { grid-template-columns: 1fr 1fr; aspect-ratio: auto; }
-  .media-grid-2 img { object-fit: cover; aspect-ratio: 1/1; width: 100%; height: 100%; display: block; margin: 0 auto; border-radius: 10px; }
+  .media-grid-2 img { object-fit: cover; aspect-ratio: 1/1; width: 100%; height: 100%; display: block; margin: 0 auto; border-radius: 4px; }
   .media-grid-3 { grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; aspect-ratio: auto; }
   .media-grid-3 > div:first-child { grid-column: span 2; grid-row: span 2; }
-  .media-grid-3 img { object-fit: cover; aspect-ratio: 1/1; width: 100%; height: 100%; display: block; margin: 0 auto; border-radius: 10px; }
+  .media-grid-3 img { object-fit: cover; aspect-ratio: 1/1; width: 100%; height: 100%; display: block; margin: 0 auto; border-radius: 4px; }
 }
 
 /* 关键：grid 子项必须允许收缩到 0，否则子元素（图片/视频）的固有尺寸会撑爆容器，
@@ -1207,7 +1214,7 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: 0;
   overflow: hidden;
 }
 
@@ -1220,7 +1227,7 @@ h2 {
   height: 100%;
   object-fit: cover;
   margin: 0 auto;
-  border-radius: 10px;
+  border-radius: 0;
 }
 
 .media-single {
@@ -2494,7 +2501,8 @@ h2 {
   .content {
     margin-left: 0 !important;
     padding: 76px 16px calc(40px + env(safe-area-inset-bottom));
-    width: 100%;
+    width: 100vw;
+    max-width: 100%;
     box-sizing: border-box;
     overflow-x: hidden;
   }
@@ -2608,6 +2616,7 @@ h2 {
     border: none;
     max-width: 100%;
     box-sizing: border-box;
+    overflow: visible; /* 改为 visible 避免内部元素裁切 */
   }
 
   .editor-panel {
@@ -2654,7 +2663,8 @@ h2 {
   .content {
     padding: 72px 16px calc(32px + env(safe-area-inset-bottom));
     margin: 0 !important;
-    width: 100%;
+    width: 100vw;
+    max-width: 100%;
     box-sizing: border-box;
     overflow-x: hidden;
   }
@@ -2665,6 +2675,8 @@ h2 {
     padding: 1.25rem;
     border-radius: 16px;
     box-sizing: border-box;
+    /* 去除 overflow: hidden 防止文字被裁切 */
+    overflow: visible;
   }
 
   .daily-section .layout-grid {
@@ -2686,6 +2698,7 @@ h2 {
     overflow: visible;
     width: 100%;
     box-sizing: border-box;
+    padding-bottom: 2rem;
   }
 
   .col-editor {
