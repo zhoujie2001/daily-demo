@@ -2582,6 +2582,7 @@ h2 {
 
   .entry,
   .entry:last-child {
+    width: auto; /* 让它自然撑开，而不是被写死计算 */
     min-height: auto;
     margin: 0 0 1rem 0;
     padding: 1.25rem;
@@ -2589,7 +2590,6 @@ h2 {
     border-radius: 16px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.03);
     border: none;
-    width: calc(100vw - 32px); /* 屏幕宽度减去左右各 16px 的 padding */
     max-width: 100%;
     box-sizing: border-box;
     overflow: hidden;
@@ -2646,7 +2646,7 @@ h2 {
   }
   .entry,
   .entry:last-child {
-    width: calc(100vw - 28px); /* 移动端屏幕宽度减去左右各 14px 的 padding */
+    width: auto;
   }
 
   .daily-section .layout-grid {
