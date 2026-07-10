@@ -2492,8 +2492,10 @@ h2 {
   .daily-section .layout-grid {
     grid-template-columns: 1fr;
     height: auto;
-    overflow: visible;
+    overflow: hidden;
     gap: 1rem;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .col-timeline,
@@ -2511,7 +2513,9 @@ h2 {
   .col-content {
     order: 2;
     max-height: none;
-    overflow: visible;
+    overflow: hidden;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .col-editor {
