@@ -1,13 +1,40 @@
 @import "tailwindcss";
-/* import { useEffect, useRef } from "react"; */
 
-/* 全局排版 */
+/* ===== CSS Variables (Color & Theme) ===== */
+:root {
+  /* 纸张质感背景：略带暖色调的白 */
+  --bg-primary: oklch(98% 0.005 80);
+  --bg-secondary: oklch(96% 0.008 80);
+  /* 带有温度的深炭黑，取代纯黑 */
+  --text-primary: oklch(25% 0.01 80);
+  /* 略浅的次要文字颜色 */
+  --text-secondary: oklch(50% 0.01 80);
+  /* 边框颜色，柔和自然 */
+  --border-color: oklch(90% 0.01 80);
+
+  /* 字体系统：标题使用优雅的现代衬线体，正文使用极简无衬线体 */
+  --font-serif: 'Cormorant Garamond', Georgia, "Times New Roman", serif;
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+}
+
+/* ===== 全局排版 ===== */
 
 body {
-  font-family: Georgia, "Times New Roman", serif;
-  color: #222;
-  background: #fff;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background: var(--bg-primary);
   line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 标题默认使用优雅的衬线体 */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif);
+  color: var(--text-primary);
+  font-weight: 500;
+  letter-spacing: -0.02em;
 }
 
 /* 整体布局 */
@@ -26,74 +53,24 @@ body {
 }
 
 .sidebar h2 {
-  font-size: 18px;
-  margin-bottom: 8px;
-}
-
-.now-status {
-  margin: 12px 0 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.now-status-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: #666;
-}
-
-.now-status-text {
-  flex: 1;
-  min-width: 0;
-  line-height: 1.45;
-}
-
-.now-status-input {
-  flex: 1;
-  min-width: 0;
-  padding: 2px 6px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 6px;
-  font: inherit;
-  color: #444;
-  background: #fff;
-}
-
-.now-status-edit-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #bbb;
-  padding: 0 2px;
-  line-height: 1;
-}
-
-.now-status-edit-btn:hover {
-  color: #666;
-}
-
-.view-count-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: #999;
-  margin-left: 8px;
-  vertical-align: middle;
+  font-size: clamp(1.2rem, 2vw, 1.5rem);
+  margin-top: 0;
+  margin-bottom: 24px;
 }
 
 .sidebar nav a {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
   text-decoration: none;
-  color: #444;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  transition: color 0.3s ease;
 }
 
 .sidebar nav a:hover {
-  text-decoration: underline;
+  text-decoration: none;
+  color: var(--text-primary);
 }
 
 /* 主体内容 */
@@ -103,6 +80,7 @@ body {
   margin: 0 auto;
   padding: 80px 20px;
   overflow: hidden;
+  max-width: 1200px;
 }
 
 .div_books{
@@ -114,31 +92,46 @@ body {
   overflow: hidden;
 }
 
-/* 让内容避开左侧目录 */
+/* 让内容避开左侧目录，采用不对称的留白 */
 @media (min-width: 1000px) {
   .content {
-    margin-left: 200px;
+    margin-left: 360px;
+    padding-right: 60px;
+  }
+}
+
+@media (min-width: 1400px) {
+  .content {
+    margin-left: 420px;
+    padding-right: 120px;
   }
 }
 
 /* 标题样式 */
 
 h1 {
-  font-size: 32px;
-  margin-bottom: 10px;
+  /* 使用 Fluid Typography 创造巨大的视觉张力 */
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  margin-bottom: 0.5rem;
+  line-height: 1.1;
+  font-style: italic; /* 杂志感通常喜欢用斜体主标题 */
 }
 
 h2 {
   margin-top: 60px;
   margin-bottom: 20px;
-  font-size: 20px;
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+  line-height: 1.2;
 }
 
 /* 副标题 */
 
 .subtitle {
-  color: #666;
+  color: var(--text-secondary);
+  font-size: 1.1rem;
   margin-bottom: 20px;
+  font-family: var(--font-sans);
+  font-weight: 300;
 }
 
 /* 悬挂缩进 */
@@ -366,6 +359,7 @@ h2 {
 }
 
 .video-card:hover .hover-actions,
+.photo-img-wrapper:hover .hover-actions,
 .photo-card:hover .hover-actions,
 .header-card:hover .hover-actions-header {
   opacity: 1;
@@ -495,115 +489,144 @@ h2 {
   opacity: 1;
 }
 
-/* ===== 摄影网格布局 ===== */
+/* ===== 摄影网格布局 (Editorial Masonry) ===== */
 
 .photo-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 28px;
-  margin-top: 30px;
-  padding-bottom: 20px;
+  grid-template-columns: repeat(12, 1fr); /* 使用 12 列网格以实现更灵活的非对称布局 */
+  grid-auto-flow: dense;
+  gap: 24px;
+  margin-top: 40px;
+  padding-bottom: 40px;
 }
 
-/* 卡片整体 */
+/* 卡片整体：去除边框和包裹感，让图片更纯粹 */
 .photo-card {
   position: relative;
-  background: #ffffff;
-  border-radius: 16px;
+  background: transparent;
+  border-radius: 0;
   overflow: hidden;
-  transition: transform 0.5s cubic-bezier(0.19, 1, 0.22, 1), box-shadow 0.5s cubic-bezier(0.19, 1, 0.22, 1);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
   cursor: pointer;
-  border: 1px solid rgba(0,0,0,0.03);
   display: flex;
   flex-direction: column;
+  /* 基础跨度：占据 4 列（三分之一宽） */
+  grid-column: span 4;
 }
 
-.photo-card:hover {
-  transform: translateY(-8px) scale(1.02);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
-  z-index: 2;
+/* 创造不规则的错落感：利用 nth-child 选择器改变部分图片的比例和跨度 */
+.photo-card:nth-child(5n + 1) {
+  grid-column: span 8; /* 大图占据两倍宽度 */
+}
+.photo-card:nth-child(5n + 1) .photo-img-wrapper {
+  aspect-ratio: 16 / 9; /* 大图使用宽幅比例 */
 }
 
-/* 图片部分 */
+.photo-card:nth-child(7n + 3) {
+  grid-column: span 6; /* 中图占据一半宽度 */
+}
+.photo-card:nth-child(7n + 3) .photo-img-wrapper {
+  aspect-ratio: 3 / 2;
+}
+
+.photo-card:nth-child(3n + 2) .photo-img-wrapper {
+  aspect-ratio: 4 / 5; /* 部分图片使用竖幅比例 */
+}
+
+/* 图片容器：取消纯圆角，保持边缘锐利 */
 .photo-img-wrapper {
   width: 100%;
   aspect-ratio: 4 / 3;
   overflow: hidden;
   position: relative;
+  background: var(--bg-secondary);
 }
 
-.photo-img-wrapper::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0) 30%);
-  opacity: 0;
-  transition: opacity 0.4s ease;
-  pointer-events: none;
+.photo-lazy-wrapper {
+  width: 100%;
+  height: 100%;
 }
 
-.photo-card:hover .photo-img-wrapper::after {
-  opacity: 1;
-}
-
-.photo-img-wrapper img {
+.photo-lazy-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.7s cubic-bezier(0.19, 1, 0.22, 1);
+  transition: transform 0.8s cubic-bezier(0.19, 1, 0.22, 1), filter 0.8s ease;
+  filter: saturate(0.95) contrast(0.95); /* 默认轻微降低饱和度，增加胶片感 */
 }
 
-.photo-card:hover img {
-  transform: scale(1.08);
+.photo-card:hover .photo-lazy-img {
+  transform: scale(1.03);
+  filter: saturate(1.05) contrast(1.05); /* hover 时恢复并略微提亮 */
 }
 
-/* 文字区域 */
+/* 文字区域：留白、简约 */
 .photo-info {
-  padding: 20px 20px;
-  background: #fff;
+  padding: 16px 0 8px;
+  background: transparent;
   z-index: 2;
   position: relative;
-  transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1);
-  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .photo-info h3 {
-  font-size: 16px;
-  margin: 0 0 8px;
-  font-weight: 600;
-  color: #111;
-  transition: color 0.3s ease;
-  letter-spacing: -0.01em;
-}
-
-.photo-card:hover .photo-info h3 {
-  color: #000;
+  font-size: 1rem;
+  margin: 0;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-family: var(--font-serif);
+  letter-spacing: 0.02em;
 }
 
 .photo-info p {
-  font-size: 13.5px;
-  color: #666;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
   margin: 0;
-  font-family: inherit;
-  line-height: 1.5;
+  font-family: var(--font-sans);
+  font-weight: 300;
 }
 
+/* 响应式适配 */
 @media (max-width: 1200px) {
   .photo-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(6, 1fr);
+  }
+  .photo-card {
+    grid-column: span 3;
+  }
+  .photo-card:nth-child(5n + 1) {
+    grid-column: span 6;
+  }
+  .photo-card:nth-child(7n + 3) {
+    grid-column: span 4;
   }
 }
 
 @media (max-width: 900px) {
   .photo-grid {
     grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+  .photo-card,
+  .photo-card:nth-child(5n + 1),
+  .photo-card:nth-child(7n + 3) {
+    grid-column: span 1;
+  }
+  .photo-card:nth-child(5n + 1) .photo-img-wrapper,
+  .photo-card:nth-child(7n + 3) .photo-img-wrapper,
+  .photo-card:nth-child(3n + 2) .photo-img-wrapper {
+    aspect-ratio: 4 / 3; /* 移动端统一比例，避免布局破碎 */
   }
 }
 
 @media (max-width: 600px) {
   .photo-grid {
     grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .photo-card {
+    grid-column: span 1 !important;
   }
 }
 
@@ -677,7 +700,7 @@ h2 {
   }
 }
 
-/* ===== Daily Section (Refined Minimalism) ===== */
+/* ===== Daily Section (Editorial Layout) ===== */
 .daily-section {
   --bg-primary: #fff;
   --bg-secondary: #f9f9f9;
@@ -685,17 +708,17 @@ h2 {
   --text-secondary: #888;
   --border-color: #eaeaea;
   --accent-color: #222;
-  
+
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
 }
 
 .daily-section .layout-grid {
+  /* 抛弃传统左中右，采用无拘无束的宽网格布局，并在移动端外通过媒体查询覆盖 */
   display: grid;
-  grid-template-columns: 180px minmax(300px, 1fr) 300px;
-  gap: 3rem;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 4rem;
   align-items: start;
-  height: calc(100vh - 160px);
-  overflow: hidden;
+  min-height: calc(100vh - 160px);
 }
 
 .daily-toolbar {
@@ -769,6 +792,13 @@ h2 {
   background: rgba(34, 34, 34, 0.1);
   color: var(--text-primary);
   transform: translateY(-50%) scale(1.03);
+}
+
+/* 只在大于 900px（非手机端）隐藏时间线 */
+@media (min-width: 901px) {
+  .col-timeline {
+    display: none;
+  }
 }
 
 .col-timeline {
@@ -911,6 +941,12 @@ h2 {
   width: 1.5rem;
 }
 
+@media (min-width: 901px) {
+  .col-content {
+    gap: 6rem; /* 电脑端加大间距，形成极强的呼吸感 */
+  }
+}
+
 .col-content {
   display: flex;
   flex-direction: column;
@@ -945,30 +981,64 @@ h2 {
   background-color: rgba(0, 0, 0, 0.18);
 }
 
+/* 重新设计 Entry，采用杂志大片风格 */
 .entry {
-  position: relative; /* Ensure it serves as a containing block if needed */
-  padding-bottom: 2rem; /* Add padding to entries so they distance from each other consistently */
-  border-bottom: 1px solid var(--border-color); /* Optional: visual separation */
-  min-height: 50vh;
-}
-
-.entry:last-child {
+  position: relative;
+  padding-bottom: 0;
   border-bottom: none;
-  min-height: calc(100vh - 160px); /* Ensure last item can be scrolled to top */
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
 }
 
-.entry-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
+@media (min-width: 901px) {
+  .entry-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 0;
+  }
+}
+@media (max-width: 900px) {
+  .entry-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+  }
 }
 
-.entry-date {
-  display: block; /* Show the date in the entry for better context */
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  color: var(--text-secondary);
+/* 日期化身为主视觉元素 */
+@media (min-width: 901px) {
+  .entry-date {
+    display: block;
+    font-family: var(--font-serif);
+    font-size: 3rem; /* 巨大的字号 */
+    line-height: 1;
+    color: var(--text-primary);
+    font-weight: 300;
+    letter-spacing: -0.05em;
+    margin-bottom: -0.5rem; /* 让文字紧贴下方 */
+  }
+
+  /* 年份用小字号作为装饰 */
+  .entry-date::after {
+    content: attr(data-year);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-left: 12px;
+    vertical-align: middle;
+    letter-spacing: normal;
+  }
+}
+@media (max-width: 900px) {
+  .entry-date {
+    display: block; /* Show the date in the entry for better context */
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+  }
 }
 
 .entry-actions {
@@ -1009,25 +1079,84 @@ h2 {
   border-color: rgba(239, 68, 68, 0.25);
 }
 
-.entry-text {
-  display: block;
-  font-size: 1rem;
-  margin-bottom: 1.5rem;
-  color: var(--text-primary);
-  min-height: 1.5rem; /* Ensure empty text blocks don't collapse margins weirdly */
-  word-wrap: break-word; /* Ensure long links/words don't overflow */
-  white-space: pre-wrap;
-  line-height: 1.9;
+@media (min-width: 901px) {
+  .entry-text {
+    font-size: 1.15rem;
+    line-height: 1.8;
+    color: var(--text-primary);
+    font-family: var(--font-serif); /* 采用衬线体提升文学感 */
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-width: 80%; /* 限制文字行宽，提升阅读体验 */
+    margin-bottom: 1rem;
+  }
 }
 
-.entry-media {
-  display: grid;
-  gap: 0.5rem;
-  border-radius: 6px;
-  overflow: hidden;
-  margin-bottom: 2rem; /* Add margin below media so subsequent items space out correctly */
-  width: 100%;
-  max-width: 100%;
+@media (max-width: 900px) {
+  .entry-text {
+    display: block;
+    font-size: 1rem;
+    margin-bottom: 1.5rem;
+    color: var(--text-primary);
+    min-height: 1.5rem; /* Ensure empty text blocks don't collapse margins weirdly */
+    word-wrap: break-word; /* Ensure long links/words don't overflow */
+    white-space: pre-wrap;
+    line-height: 1.9;
+  }
+}
+
+@media (min-width: 901px) {
+  /* 媒体区域采用不对称排版 */
+  .entry-media {
+    display: grid;
+    gap: 12px;
+    border-radius: 0; /* 去除圆角，保持锐利 */
+    overflow: hidden;
+    margin-top: 1rem;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .media-single {
+    grid-template-columns: 1fr;
+    aspect-ratio: auto;
+  }
+  /* 单图时，宽度突破限制，拉满张力 */
+  .media-single img {
+    width: 100%;
+    height: auto;
+    max-height: 80vh;
+    object-fit: cover;
+  }
+
+  .media-grid-2 {
+    grid-template-columns: 2fr 1fr; /* 不对称双栏 */
+    aspect-ratio: 21/9;
+  }
+
+  .media-grid-3 {
+    grid-template-columns: 1fr 1fr 1fr;
+    aspect-ratio: 21/9;
+  }
+  .media-grid-3 > div:first-child {
+    grid-column: span 2;
+    grid-row: span 2;
+  }
+}
+
+@media (max-width: 900px) {
+  .entry-media {
+    display: grid;
+    gap: 0.5rem;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 2rem; /* Add margin below media so subsequent items space out correctly */
+    width: 100%;
+    max-width: 100%;
+  }
+  .media-single { grid-template-columns: 1fr; max-height: 500px; min-height: 200px; }
+  .media-grid-2 { grid-template-columns: 1fr 1fr; aspect-ratio: 16/9; }
+  .media-grid-3 { grid-template-columns: 1fr 1fr 1fr; aspect-ratio: 21/9; }
 }
 
 /* 关键：grid 子项必须允许收缩到 0，否则子元素（图片/视频）的固有尺寸会撑爆容器，
