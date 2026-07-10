@@ -105,31 +105,6 @@ export default function Travel({
                   onClick={() => setExpandedVideo(video)}
                   style={{ width: '200px', height: '280px', objectFit: 'cover', cursor: 'pointer' }}
                 />
-                <div
-                  className="video-play-hint"
-                  onClick={() => setExpandedVideo(video)}
-                  style={{
-                    position: 'absolute',
-                    bottom: '12px',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    backgroundColor: 'rgba(0,0,0,0.5)',
-                    color: 'white',
-                    padding: '4px 10px',
-                    borderRadius: '20px',
-                    fontSize: '11px',
-                    backdropFilter: 'blur(4px)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    transition: 'background 0.2s',
-                    opacity: 0,
-                    pointerEvents: 'none'
-                  }}
-                >
-                  <Play size={10} fill="white" /> 放大
-                </div>
                 {isAdmin && isRealData && !video._dup ? (
                   <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
                     <button
