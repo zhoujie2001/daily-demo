@@ -1158,7 +1158,7 @@ h2 {
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 600px) {
   .entry {
     background: #fff;
     border: none;
@@ -1170,7 +1170,6 @@ h2 {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
-    overflow: hidden;
   }
   .entry-media {
     display: grid;
@@ -1187,10 +1186,10 @@ h2 {
   .media-single { grid-template-columns: 1fr; aspect-ratio: auto; }
   .media-single img { object-fit: contain; max-height: 70vh; max-width: 100%; width: 100%; display: block; margin: 0 auto; border-radius: 10px; }
   .media-grid-2 { grid-template-columns: 1fr 1fr; aspect-ratio: auto; }
-  .media-grid-2 img { object-fit: cover; aspect-ratio: 1/1; width: 100%; height: 100%; }
+  .media-grid-2 img { object-fit: cover; aspect-ratio: 1/1; width: 100%; height: 100%; display: block; margin: 0 auto; border-radius: 10px; }
   .media-grid-3 { grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; aspect-ratio: auto; }
   .media-grid-3 > div:first-child { grid-column: span 2; grid-row: span 2; }
-  .media-grid-3 img { object-fit: cover; aspect-ratio: 1/1; width: 100%; height: 100%; }
+  .media-grid-3 img { object-fit: cover; aspect-ratio: 1/1; width: 100%; height: 100%; display: block; margin: 0 auto; border-radius: 10px; }
 }
 
 /* 关键：grid 子项必须允许收缩到 0，否则子元素（图片/视频）的固有尺寸会撑爆容器，
@@ -2503,7 +2502,6 @@ h2 {
   .daily-section .layout-grid {
     grid-template-columns: 1fr;
     height: auto;
-    overflow: hidden;
     gap: 1rem;
     width: 100%;
     box-sizing: border-box;
@@ -2524,7 +2522,6 @@ h2 {
   .col-content {
     order: 2;
     max-height: none;
-    overflow: hidden;
     width: 100%;
     box-sizing: border-box;
   }
@@ -2611,7 +2608,6 @@ h2 {
     border: none;
     max-width: 100%;
     box-sizing: border-box;
-    overflow: hidden;
   }
 
   .editor-panel {
@@ -2669,7 +2665,6 @@ h2 {
     padding: 1.25rem;
     border-radius: 16px;
     box-sizing: border-box;
-    overflow: hidden;
   }
 
   .daily-section .layout-grid {
@@ -2678,7 +2673,6 @@ h2 {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
-    overflow: hidden;
   }
 
   .col-timeline {
