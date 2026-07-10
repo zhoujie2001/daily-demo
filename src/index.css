@@ -1004,7 +1004,7 @@ h2 {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
   }
 }
 
@@ -1034,10 +1034,12 @@ h2 {
 }
 @media (max-width: 900px) {
   .entry-date {
-    display: block; /* Show the date in the entry for better context */
+    display: block;
     font-family: var(--font-mono);
     font-size: 0.8rem;
     color: var(--text-secondary);
+    font-weight: 500;
+    letter-spacing: 0.05em;
   }
 }
 
@@ -1096,12 +1098,13 @@ h2 {
   .entry-text {
     display: block;
     font-size: 1rem;
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
     color: var(--text-primary);
-    min-height: 1.5rem; /* Ensure empty text blocks don't collapse margins weirdly */
-    word-wrap: break-word; /* Ensure long links/words don't overflow */
+    min-height: 1.5rem;
+    word-wrap: break-word;
     white-space: pre-wrap;
-    line-height: 1.9;
+    line-height: 1.7;
+    font-family: var(--font-sans);
   }
 }
 
@@ -1145,18 +1148,29 @@ h2 {
 }
 
 @media (max-width: 900px) {
+  .entry {
+    background: #fff;
+    border: none;
+    padding: 1.25rem;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+    margin-bottom: 1.25rem;
+    backdrop-filter: none;
+  }
   .entry-media {
     display: grid;
-    gap: 0.5rem;
-    border-radius: 6px;
+    gap: 4px;
+    border-radius: 10px;
     overflow: hidden;
-    margin-bottom: 2rem; /* Add margin below media so subsequent items space out correctly */
+    margin-bottom: 0;
     width: 100%;
     max-width: 100%;
+    background: var(--bg-secondary);
   }
-  .media-single { grid-template-columns: 1fr; max-height: 500px; min-height: 200px; }
-  .media-grid-2 { grid-template-columns: 1fr 1fr; aspect-ratio: 16/9; }
-  .media-grid-3 { grid-template-columns: 1fr 1fr 1fr; aspect-ratio: 21/9; }
+  .media-single { grid-template-columns: 1fr; aspect-ratio: 4/5; }
+  .media-grid-2 { grid-template-columns: 1fr 1fr; aspect-ratio: 1/1; }
+  .media-grid-3 { grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; aspect-ratio: 1/1; }
+  .media-grid-3 > div:first-child { grid-column: span 2; grid-row: span 2; }
 }
 
 /* 关键：grid 子项必须允许收缩到 0，否则子元素（图片/视频）的固有尺寸会撑爆容器，
@@ -1177,9 +1191,9 @@ h2 {
 .entry-media video {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
   max-width: 100%;
-  object-fit: contain;
+  object-fit: cover;
 }
 
 .media-single {
@@ -1854,9 +1868,9 @@ h2 {
 
 .daily-lazy-img {
   width: 100%;
-  height: auto;
+  height: 100%;
   display: block;
-  object-fit: contain;
+  object-fit: cover;
 }
 
 .photo-lazy-skeleton,
@@ -2458,7 +2472,7 @@ h2 {
     grid-template-columns: 1fr;
     height: auto;
     overflow: visible;
-    gap: 1.5rem;
+    gap: 1rem;
   }
 
   .col-timeline,
@@ -2541,6 +2555,12 @@ h2 {
   .entry,
   .entry:last-child {
     min-height: auto;
+    margin-bottom: 1rem;
+    padding: 1.25rem;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+    border: none;
   }
 
   .editor-panel {
