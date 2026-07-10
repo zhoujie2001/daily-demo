@@ -330,6 +330,11 @@ h2 {
   opacity: 1;
 }
 
+.video-track .video-card:hover .video-play-hint {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
 .video-track video {
   width: 200px;
   height: 280px;

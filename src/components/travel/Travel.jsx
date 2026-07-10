@@ -1,5 +1,5 @@
-import React from 'react';
-import { Edit2, Plus, Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Edit2, Plus, Trash2, Play } from 'lucide-react';
 import { fallbackVideos } from '../../data/fallbackPhotos';
 import { resolveMediaUrl } from '../../utils/media';
 import { useDialog } from '../../context/DialogContext';
@@ -15,6 +15,7 @@ export default function Travel({
   onDelete,
 }) {
   const { confirm, prompt, toast } = useDialog();
+  const [expandedVideo, setExpandedVideo] = useState(null);
 
   const isRealData = videos.length > 0;
   const list = isRealData ? videos : fallbackVideos;
@@ -99,13 +100,36 @@ export default function Travel({
                   src={resolveMediaUrl(video.url)}
                   muted
                   loop
+                  autoPlay
                   playsInline
-                  onMouseEnter={(e) => {
-                    e.target.play().catch(() => {});
-                  }}
-                  onMouseLeave={(e) => e.target.pause()}
-                  style={{ width: '200px', height: '280px', objectFit: 'cover' }}
+                  onClick={() => setExpandedVideo(video)}
+                  style={{ width: '200px', height: '280px', objectFit: 'cover', cursor: 'pointer' }}
                 />
+                <div
+                  className="video-play-hint"
+                  onClick={() => setExpandedVideo(video)}
+                  style={{
+                    position: 'absolute',
+                    bottom: '12px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    color: 'white',
+                    padding: '4px 10px',
+                    borderRadius: '20px',
+                    fontSize: '11px',
+                    backdropFilter: 'blur(4px)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'background 0.2s',
+                    opacity: 0,
+                    pointerEvents: 'none'
+                  }}
+                >
+                  <Play size={10} fill="white" /> 放大
+                </div>
                 {isAdmin && isRealData && !video._dup ? (
                   <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
                     <button
@@ -126,6 +150,48 @@ export default function Travel({
                 ) : null}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {expandedVideo && (
+        <div
+          className="lightbox"
+          onClick={() => setExpandedVideo(null)}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <button
+            className="lightbox-close"
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpandedVideo(null);
+            }}
+            style={{ zIndex: 1000 }}
+          >
+            ×
+          </button>
+          <div
+            className="lightbox-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: '90%', maxWidth: '1200px', backgroundColor: '#000', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 24px 60px rgba(0,0,0,0.4)' }}
+          >
+            <video
+              src={resolveMediaUrl(expandedVideo.url)}
+              autoPlay
+              controls
+              playsInline
+              style={{ width: '100%', height: 'auto', maxHeight: '85vh', display: 'block', objectFit: 'contain' }}
+            />
+            {expandedVideo.title && (
+              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '20px', background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)', color: 'white' }}>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '500' }}>{expandedVideo.title}</h3>
+              </div>
+            )}
           </div>
         </div>
       )}
