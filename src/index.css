@@ -2582,7 +2582,7 @@ h2 {
 
   .entry,
   .entry:last-child {
-    width: auto; /* 让它自然撑开，而不是被写死计算 */
+    width: 100%;
     min-height: auto;
     margin: 0 0 1rem 0;
     padding: 1.25rem;
@@ -2638,7 +2638,7 @@ h2 {
 @media (max-width: 600px) {
   .content {
     padding: 72px 14px calc(32px + env(safe-area-inset-bottom));
-    margin-left: 0 !important;
+    margin: 0 auto !important;
     width: 100%;
     max-width: 100vw;
     box-sizing: border-box;
@@ -2646,20 +2646,31 @@ h2 {
   }
   .entry,
   .entry:last-child {
-    width: auto;
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+    box-sizing: border-box;
   }
 
   .daily-section .layout-grid {
     gap: 1.25rem;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
   }
 
   .col-timeline {
     overflow: visible;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .col-content {
     max-height: none;
     overflow: visible;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .col-editor {
