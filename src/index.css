@@ -2504,8 +2504,7 @@ h2 {
 
   .col-timeline {
     order: 1;
-    width: 100vw;
-    margin-left: -16px; /* 抵消外层的 padding 以实现全宽滑动 */
+    width: 100%;
     padding-left: 0; /* 移除内边距，让内部元素自己控制边距 */
   }
 
@@ -2559,10 +2558,10 @@ h2 {
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch; /* 增强 iOS 上的滑动流畅度 */
     scroll-snap-type: x mandatory; /* 增加吸附感 */
-    width: 100vw;
+    width: 100%;
     display: flex;
     flex-wrap: nowrap;
-    padding-left: 16px;
+    padding-left: 0;
     box-sizing: border-box;
   }
 
