@@ -1163,7 +1163,7 @@ h2 {
     padding: 1.25rem;
     border-radius: 16px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
-    margin: 0 auto 1.25rem auto;
+    margin: 0 0 1.25rem 0;
     backdrop-filter: none;
     width: 100%;
     max-width: 100%;
@@ -2485,7 +2485,6 @@ h2 {
     margin-left: 0 !important;
     padding: 76px 16px calc(40px + env(safe-area-inset-bottom));
     width: 100%;
-    max-width: 100vw;
     box-sizing: border-box;
     overflow-x: hidden;
   }
@@ -2590,7 +2589,7 @@ h2 {
   .entry:last-child {
     width: 100%;
     min-height: auto;
-    margin: 0 auto 1rem auto;
+    margin: 0 0 1rem 0;
     padding: 1.25rem;
     background: #fff;
     border-radius: 16px;
@@ -2644,16 +2643,15 @@ h2 {
 @media (max-width: 600px) {
   .content {
     padding: 72px 14px calc(32px + env(safe-area-inset-bottom));
-    margin: 0 auto !important;
+    margin: 0 !important;
     width: 100%;
-    max-width: 100vw;
     box-sizing: border-box;
     overflow-x: hidden;
   }
   .entry,
   .entry:last-child {
     width: 100%;
-    margin: 0 auto 1rem auto;
+    margin: 0;
     box-sizing: border-box;
   }
 
