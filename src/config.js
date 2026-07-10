@@ -3,4 +3,4 @@
 // - 本地：在项目根目录创建 .env.local，写入 VITE_API_URL=http://localhost:3000
 // - 生产：默认走线上 Vercel 部署地址
 export const API_BASE =
-  import.meta.env.VITE_API_URL || 'https://daily-demo-backend.vercel.app';
+  import.meta.env.VITE_API_URL || 'https://api.littlearisa88.com';
