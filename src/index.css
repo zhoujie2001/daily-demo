@@ -2507,7 +2507,7 @@ h2 {
     order: 1;
     width: 100vw;
     margin-left: -16px; /* 抵消外层的 padding 以实现全宽滑动 */
-    padding-left: 16px; /* 补偿视觉边距 */
+    padding-left: 0; /* 移除内边距，让内部元素自己控制边距 */
   }
 
   .col-content {
@@ -2549,6 +2549,7 @@ h2 {
     padding-bottom: 0.2rem;
     flex-direction: row;
     gap: 0.75rem;
+    margin: 0;
   }
 
   .timeline-track.scrollable-timeline {
@@ -2563,6 +2564,7 @@ h2 {
     display: flex;
     flex-wrap: nowrap;
     padding-left: 16px;
+    box-sizing: border-box;
   }
 
   .timeline-track.scrollable-timeline::-webkit-scrollbar {
