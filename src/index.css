@@ -714,6 +714,8 @@ h2 {
   --text-secondary: #888;
   --border-color: #eaeaea;
   --accent-color: #222;
+  --daily-card-radius: 16px;
+  --daily-media-radius: 12px;
 
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
 }
@@ -1112,9 +1114,12 @@ h2 {
     line-height: 1.7;
     font-family: var(--font-sans);
     max-width: 100%;
+    overflow: visible;
     overflow-wrap: break-word;
     word-break: break-word;
-    /* 确保文字不会因为宽度超出而导致裁切 */
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+    max-height: none;
     width: 100%;
     box-sizing: border-box;
   }
@@ -1166,37 +1171,47 @@ h2 {
     background: #fff;
     border: none;
     padding: 1.25rem;
-    border-radius: 16px;
+    border-radius: var(--daily-card-radius);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
     margin: 0;
     backdrop-filter: none;
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
-    /* 去除 overflow: hidden 防止文字被裁切 */
     overflow: visible;
   }
   .entry-media {
     display: grid;
-    gap: 4px;
-    border-radius: 8px; /* 恢复圆角 */
+    gap: 6px;
+    border-radius: var(--daily-media-radius);
     overflow: hidden;
     margin-bottom: 0;
-    width: 100%; /* 取消负边距逻辑 */
+    width: 100%;
     margin-left: 0;
     margin-right: 0;
-    max-width: none;
+    max-width: 100%;
     background: var(--bg-secondary);
     box-sizing: border-box;
     margin-top: 1rem;
   }
+  .entry-media > *,
+  .entry-media div,
+  .entry-media img,
+  .entry-media video,
+  .daily-lazy-wrapper,
+  .daily-lazy-img {
+    border-radius: var(--daily-media-radius);
+  }
   .media-single { grid-template-columns: 1fr; aspect-ratio: auto; }
-  .media-single img { object-fit: contain; max-height: 70vh; max-width: 100%; width: 100%; height: auto; display: block; margin: 0 auto; border-radius: 8px; } /* 恢复内部圆角 */
-  .media-grid-2 { grid-template-columns: 1fr 1fr; aspect-ratio: auto; }
-  .media-grid-2 img { object-fit: cover; aspect-ratio: 1/1; width: 100%; height: 100%; display: block; margin: 0 auto; border-radius: 0; }
-  .media-grid-3 { grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; aspect-ratio: auto; }
-  .media-grid-3 > div:first-child { grid-column: span 2; grid-row: span 2; }
-  .media-grid-3 img { object-fit: cover; aspect-ratio: 1/1; width: 100%; height: 100%; display: block; margin: 0 auto; border-radius: 0; }
+  .media-single img,
+  .media-single .daily-lazy-img { object-fit: contain; max-height: 70vh; max-width: 100%; width: 100%; height: auto; display: block; margin: 0 auto; }
+  .media-grid-2 { grid-template-columns: 1fr; aspect-ratio: auto; }
+  .media-grid-2 img,
+  .media-grid-2 .daily-lazy-img { object-fit: contain; aspect-ratio: auto; max-width: 100%; width: 100%; height: auto; display: block; margin: 0 auto; }
+  .media-grid-3 { grid-template-columns: 1fr; grid-auto-rows: auto; aspect-ratio: auto; }
+  .media-grid-3 > div:first-child { grid-column: auto; grid-row: auto; }
+  .media-grid-3 img,
+  .media-grid-3 .daily-lazy-img { object-fit: contain; aspect-ratio: auto; max-width: 100%; width: 100%; height: auto; display: block; margin: 0 auto; }
 }
 
 /* 关键：grid 子项必须允许收缩到 0，否则子元素（图片/视频）的固有尺寸会撑爆容器，
@@ -2524,7 +2539,8 @@ h2 {
   .col-timeline {
     order: 1;
     width: 100%;
-    padding-left: 0; /* 移除内边距，让内部元素自己控制边距 */
+    padding: 0;
+    box-sizing: border-box;
   }
 
   .col-content {
@@ -2574,14 +2590,13 @@ h2 {
     max-height: none;
     overflow-x: auto;
     overflow-y: hidden;
-    padding-right: 16px; /* 留出一点滑动边距 */
+    padding: 0 16px 0.2rem;
     scrollbar-width: none;
-    -webkit-overflow-scrolling: touch; /* 增强 iOS 上的滑动流畅度 */
-    scroll-snap-type: x mandatory; /* 增加吸附感 */
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
     width: 100%;
     display: flex;
     flex-wrap: nowrap;
-    padding-left: 0;
     box-sizing: border-box;
   }
 
@@ -2611,22 +2626,22 @@ h2 {
     margin: 0;
     padding: 1.25rem;
     background: #fff;
-    border-radius: 16px;
+    border-radius: var(--daily-card-radius);
     box-shadow: 0 4px 20px rgba(0,0,0,0.03);
     border: none;
     max-width: 100%;
     box-sizing: border-box;
-    overflow: visible; /* 改为 visible 避免内部元素裁切 */
+    overflow: visible;
   }
 
   .entry-media {
     width: 100%;
     margin-left: 0;
     margin-right: 0;
-    border-radius: 8px; /* 恢复内部元素的圆角 */
+    border-radius: var(--daily-media-radius);
   }
   .media-single img {
-    border-radius: 8px;
+    border-radius: var(--daily-media-radius);
   }
 
   .editor-panel {
