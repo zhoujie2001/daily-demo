@@ -658,7 +658,7 @@ h2 {
 }
 
 .lightbox-content img {
-  max-
+  max-width: 100%;
   max-height: 70vh;
   border-radius: 8px;
   display: block;
@@ -2517,7 +2517,7 @@ h2 {
     margin-left: 0 !important;
     padding: 76px 16px calc(40px + env(safe-area-inset-bottom));
     width: 100vw;
-    max-
+    max-width: 100%;
     box-sizing: border-box;
     overflow-x: hidden;
   }
@@ -2592,17 +2592,11 @@ h2 {
     overflow-y: hidden;
     padding: 0 16px 0.2rem;
     scrollbar-width: none;
-
-    
-    
-    
-
-     /* 增强 iOS 上的滑动流畅度 */
-     /* 增加吸附感 */
-    width: 100vw; /* 改为 100vw 确保可以突破父容器限制 */
-    margin-left: -16px; /* 负边距抵消父容器的 padding */
-    padding-left: 16px; /* 内部再补回 padding，让第一个元素正常显示 */
-
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+    width: 100vw;
+    margin-left: -16px;
+    padding-left: 16px;
     display: flex;
     flex-wrap: nowrap;
     box-sizing: border-box;
@@ -2638,7 +2632,7 @@ h2 {
     border-radius: var(--daily-card-radius);
     box-shadow: 0 4px 20px rgba(0,0,0,0.03);
     border: none;
-    max-
+    max-width: 100%;
     box-sizing: border-box;
     overflow: visible;
   }
@@ -2698,7 +2692,7 @@ h2 {
     padding: 72px 16px calc(32px + env(safe-area-inset-bottom));
     margin: 0 !important;
     width: 100vw;
-    max-
+    max-width: 100%;
     box-sizing: border-box;
     overflow-x: hidden;
   }
