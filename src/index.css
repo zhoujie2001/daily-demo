@@ -81,7 +81,7 @@ h1, h2, h3, h4, h5, h6 {
 /* 主体内容 */
 
 .content {
-  width: 100%;
+  
   margin: 0 auto;
   padding: 80px 20px;
   overflow-x: hidden;
@@ -90,8 +90,8 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .div_books{
-  width: 100%;
-  max-width: 100%;
+  
+  max-
   height: auto;
   margin-left: 0;
   display: block;
@@ -182,7 +182,7 @@ h2 {
 }
 
 .video-slide video {
-  width: 100%;
+  
   height: 100%;
   object-fit: cover;
   transition: transform 0.4s ease;
@@ -202,7 +202,7 @@ h2 {
 
 
 .photo-grid img {
-  width: 100%;
+  
   height: 100%;
   object-fit: cover;
 }
@@ -233,7 +233,7 @@ h2 {
 /* .video-slider {
   display: flex;
   overflow: hidden;
-  width: 100%;
+  
   white-space: nowrap;
   position: relative;
 } */
@@ -246,7 +246,7 @@ h2 {
 } */
 
 /* .video-item video {
-  width: 100%;
+  
   height: 100%;
   object-fit: cover;
 }
@@ -265,14 +265,14 @@ h2 {
 }
 
 .travel-video-row video {
-  width: 100%;
+  
   max-width: 300px;
   height: auto;
 } */
 /* 外层裁切容器 */
 .slider-wrapper {
   overflow: hidden;
-  width: 100%;
+  
   transform: translateZ(0);
 }
 
@@ -457,7 +457,7 @@ h2 {
 }
 
 .video-wrapper video {
-  width: 100%;
+  
   height: auto;
   display: block;
   object-fit: cover;
@@ -540,7 +540,7 @@ h2 {
 
 /* 图片容器：取消纯圆角，保持边缘锐利 */
 .photo-img-wrapper {
-  width: 100%;
+  
   aspect-ratio: 4 / 3;
   overflow: hidden;
   position: relative;
@@ -548,12 +548,12 @@ h2 {
 }
 
 .photo-lazy-wrapper {
-  width: 100%;
+  
   height: 100%;
 }
 
 .photo-lazy-img {
-  width: 100%;
+  
   height: 100%;
   object-fit: cover;
   transition: transform 0.8s cubic-bezier(0.19, 1, 0.22, 1), filter 0.8s ease;
@@ -658,7 +658,7 @@ h2 {
 }
 
 .lightbox-content img {
-  max-width: 100%;
+  max-
   max-height: 70vh;
   border-radius: 8px;
   display: block;
@@ -755,7 +755,7 @@ h2 {
 }
 
 .daily-search-input {
-  width: 100%;
+  
   height: 42px;
   padding: 0 2.5rem 0 2.55rem;
   font: inherit;
@@ -839,7 +839,7 @@ h2 {
 }
 
 .timeline-search-input {
-  width: 100%;
+  
   padding: 0.4rem 1.9rem 0.4rem 1.9rem;
   font-family: var(--font-mono);
   font-size: 0.8rem;
@@ -1113,14 +1113,14 @@ h2 {
     white-space: pre-wrap;
     line-height: 1.7;
     font-family: var(--font-sans);
-    max-width: 100%;
+    max-
     overflow: visible;
     overflow-wrap: break-word;
     word-break: break-word;
     -webkit-line-clamp: unset;
     line-clamp: unset;
     max-height: none;
-    width: 100%;
+    
     box-sizing: border-box;
   }
 }
@@ -1133,8 +1133,8 @@ h2 {
     border-radius: 0; /* 去除圆角，保持锐利 */
     overflow: hidden;
     margin-top: 1rem;
-    width: 100%;
-    max-width: 100%;
+    
+    max-
   }
 
   .media-single {
@@ -1143,9 +1143,9 @@ h2 {
   }
   /* 单图时，宽度突破限制，拉满张力 */
   .media-single img {
-    width: 100%;
+    
     height: auto;
-    max-width: 100%;
+    max-
     max-height: 80vh;
     object-fit: contain;
     margin: 0 auto;
@@ -1175,8 +1175,8 @@ h2 {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
     margin: 0;
     backdrop-filter: none;
-    width: 100%;
-    max-width: 100%;
+    
+    max-
     box-sizing: border-box;
     overflow: visible;
   }
@@ -1186,10 +1186,10 @@ h2 {
     border-radius: var(--daily-media-radius);
     overflow: hidden;
     margin-bottom: 0;
-    width: 100%;
+    
     margin-left: 0;
     margin-right: 0;
-    max-width: 100%;
+    max-
     background: var(--bg-secondary);
     box-sizing: border-box;
     margin-top: 1rem;
@@ -1204,14 +1204,14 @@ h2 {
   }
   .media-single { grid-template-columns: 1fr; aspect-ratio: auto; }
   .media-single img,
-  .media-single .daily-lazy-img { object-fit: contain; max-height: 70vh; max-width: 100%; width: 100%; height: auto; display: block; margin: 0 auto; }
+  .media-single .daily-lazy-img { object-fit: contain; max-height: 70vh; max- width: 100%; height: auto; display: block; margin: 0 auto; }
   .media-grid-2 { grid-template-columns: 1fr; aspect-ratio: auto; }
   .media-grid-2 img,
-  .media-grid-2 .daily-lazy-img { object-fit: contain; aspect-ratio: auto; max-width: 100%; width: 100%; height: auto; display: block; margin: 0 auto; }
+  .media-grid-2 .daily-lazy-img { object-fit: contain; aspect-ratio: auto; max- width: 100%; height: auto; display: block; margin: 0 auto; }
   .media-grid-3 { grid-template-columns: 1fr; grid-auto-rows: auto; aspect-ratio: auto; }
   .media-grid-3 > div:first-child { grid-column: auto; grid-row: auto; }
   .media-grid-3 img,
-  .media-grid-3 .daily-lazy-img { object-fit: contain; aspect-ratio: auto; max-width: 100%; width: 100%; height: auto; display: block; margin: 0 auto; }
+  .media-grid-3 .daily-lazy-img { object-fit: contain; aspect-ratio: auto; max- width: 100%; height: auto; display: block; margin: 0 auto; }
 }
 
 /* 关键：grid 子项必须允许收缩到 0，否则子元素（图片/视频）的固有尺寸会撑爆容器，
@@ -1223,7 +1223,7 @@ h2 {
 }
 
 .entry-media div {
-  width: 100%;
+  
   height: 100%;
   background-color: var(--bg-secondary);
   display: flex;
@@ -1236,9 +1236,9 @@ h2 {
 .entry-media img,
 .entry-media video {
   display: block;
-  max-width: 100%;
+  max-
   max-height: 100%;
-  width: 100%;
+  
   height: 100%;
   object-fit: cover;
   margin: 0 auto;
@@ -1247,17 +1247,17 @@ h2 {
 
 .media-single {
   grid-template-columns: 1fr;
-  max-width: 100%;
+  max-
 }
 
 .media-grid-2 {
   grid-template-columns: 1fr 1fr;
-  max-width: 100%;
+  max-
 }
 
 .media-grid-3 {
   grid-template-columns: 1fr 1fr 1fr;
-  max-width: 100%;
+  max-
 }
 
 .col-editor {
@@ -1295,8 +1295,8 @@ h2 {
 
 /* ===== Reading (P3) ===== */
 .reading-section {
-  width: 100%;
-  max-width: 100%;
+  
+  max-
   overflow: hidden;
 }
 
@@ -1337,7 +1337,7 @@ h2 {
 }
 
 .reading-search-input {
-  width: 100%;
+  
   padding: 0.5rem 2rem 0.5rem 2rem;
   font-family: var(--font-mono);
   font-size: 0.85rem;
@@ -1389,8 +1389,8 @@ h2 {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 1rem;
-  width: 100%;
-  max-width: 100%;
+  
+  max-
 }
 
 .book-card {
@@ -1423,7 +1423,7 @@ h2 {
 }
 
 .book-cover img {
-  width: 100%;
+  
   height: 100%;
   object-fit: cover;
   display: block;
@@ -1599,7 +1599,7 @@ h2 {
   border-radius: 4px;
   outline: none;
   transition: border-color 0.2s ease;
-  width: 100%;
+  
   box-sizing: border-box;
 }
 
@@ -1827,7 +1827,7 @@ h2 {
 /* ===== Lazy Image / Skeleton ===== */
 .lazy-image {
   position: relative;
-  width: 100%;
+  
   height: 100%;
   min-width: 0;
   min-height: 0;
@@ -1856,7 +1856,7 @@ h2 {
 
 .lazy-image-img {
   display: block;
-  width: 100%;
+  
   height: 100%;
   object-fit: cover;
   opacity: 0;
@@ -1897,7 +1897,7 @@ h2 {
 
 .photo-img-wrapper {
   position: relative;
-  width: 100%;
+  
   aspect-ratio: 4 / 3;
   overflow: hidden;
 }
@@ -1909,7 +1909,7 @@ h2 {
 
 .daily-lazy-wrapper {
   position: relative;
-  width: 100%;
+  
 }
 
 .photo-lazy-img {
@@ -1917,7 +1917,7 @@ h2 {
 }
 
 .daily-lazy-img {
-  width: 100%;
+  
   height: 100%;
   display: block;
   object-fit: cover;
@@ -1973,7 +1973,7 @@ h2 {
 }
 
 .editor-textarea {
-  width: 100%;
+  
   min-height: 140px;
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 12px;
@@ -2011,7 +2011,7 @@ h2 {
 
 .editor-attachment img,
 .editor-attachment-video {
-  width: 100%;
+  
   height: 100%;
   object-fit: cover;
 }
@@ -2223,7 +2223,7 @@ h2 {
 }
 
 .editor-textarea {
-  width: 100%;
+  
   min-height: 148px;
   border: none;
   background: transparent;
@@ -2270,7 +2270,7 @@ h2 {
 
 .editor-attachment img,
 .editor-attachment-video {
-  width: 100%;
+  
   height: 100%;
   object-fit: cover;
 }
@@ -2517,7 +2517,7 @@ h2 {
     margin-left: 0 !important;
     padding: 76px 16px calc(40px + env(safe-area-inset-bottom));
     width: 100vw;
-    max-width: 100%;
+    max-
     box-sizing: border-box;
     overflow-x: hidden;
   }
@@ -2526,7 +2526,7 @@ h2 {
     grid-template-columns: 1fr;
     height: auto;
     gap: 1rem;
-    width: 100%;
+    
     box-sizing: border-box;
   }
 
@@ -2538,7 +2538,7 @@ h2 {
 
   .col-timeline {
     order: 1;
-    width: 100%;
+    
     padding: 0;
     box-sizing: border-box;
   }
@@ -2546,7 +2546,7 @@ h2 {
   .col-content {
     order: 2;
     max-height: none;
-    width: 100%;
+    
     box-sizing: border-box;
   }
 
@@ -2561,7 +2561,7 @@ h2 {
   }
 
   .daily-search-shell {
-    width: 100%;
+    
   }
 
   .timeline-header {
@@ -2592,9 +2592,17 @@ h2 {
     overflow-y: hidden;
     padding: 0 16px 0.2rem;
     scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-    scroll-snap-type: x mandatory;
-    width: 100%;
+
+    
+    
+    
+
+     /* 增强 iOS 上的滑动流畅度 */
+     /* 增加吸附感 */
+    width: 100vw; /* 改为 100vw 确保可以突破父容器限制 */
+    margin-left: -16px; /* 负边距抵消父容器的 padding */
+    padding-left: 16px; /* 内部再补回 padding，让第一个元素正常显示 */
+
     display: flex;
     flex-wrap: nowrap;
     box-sizing: border-box;
@@ -2612,6 +2620,7 @@ h2 {
     border-radius: 999px;
     background: #fff;
     scroll-snap-align: start; /* 滑动停止时自动吸附对齐 */
+    margin-right: 0.5rem; /* 添加元素之间的间距 */
   }
 
   .timeline-node::before,
@@ -2621,7 +2630,7 @@ h2 {
 
   .entry,
   .entry:last-child {
-    width: 100%;
+    
     min-height: auto;
     margin: 0;
     padding: 1.25rem;
@@ -2629,13 +2638,13 @@ h2 {
     border-radius: var(--daily-card-radius);
     box-shadow: 0 4px 20px rgba(0,0,0,0.03);
     border: none;
-    max-width: 100%;
+    max-
     box-sizing: border-box;
     overflow: visible;
   }
 
   .entry-media {
-    width: 100%;
+    
     margin-left: 0;
     margin-right: 0;
     border-radius: var(--daily-media-radius);
@@ -2689,13 +2698,13 @@ h2 {
     padding: 72px 16px calc(32px + env(safe-area-inset-bottom));
     margin: 0 !important;
     width: 100vw;
-    max-width: 100%;
+    max-
     box-sizing: border-box;
     overflow-x: hidden;
   }
   .entry,
   .entry:last-child {
-    width: 100%;
+    
     margin: 0;
     padding: 1.25rem;
     border-radius: 16px;
@@ -2706,7 +2715,7 @@ h2 {
 
   /* 覆盖 max-width: 900px 中的 entry-media 负边距，使其在手机端不贴边 */
   .entry-media {
-    width: 100%;
+    
     margin-left: 0;
     margin-right: 0;
     border-radius: 8px; /* 内部内容使用圆角 */
@@ -2714,7 +2723,7 @@ h2 {
 
   .daily-section .layout-grid {
     gap: 1.25rem;
-    width: 100%;
+    
     margin: 0;
     padding: 0;
     box-sizing: border-box;
@@ -2722,14 +2731,14 @@ h2 {
 
   .col-timeline {
     overflow: visible;
-    width: 100%;
+    
     box-sizing: border-box;
   }
 
   .col-content {
     max-height: none;
     overflow: visible;
-    width: 100%;
+    
     box-sizing: border-box;
     padding-bottom: 2rem;
   }
@@ -2745,7 +2754,7 @@ h2 {
   }
 
   .editor-actions {
-    width: 100%;
+    
     justify-content: space-between;
   }
 
@@ -2814,7 +2823,7 @@ h2 {
 }
 
 .deck-card-media {
-  width: 100%;
+  
   aspect-ratio: 4 / 5;
   overflow: hidden;
   background: #f3f3f3;
@@ -2822,12 +2831,12 @@ h2 {
 
 .deck-lazy-wrapper {
   position: relative;
-  width: 100%;
+  
   height: 100%;
 }
 
 .deck-lazy-img {
-  width: 100%;
+  
   height: 100%;
   display: block;
   object-fit: cover;
@@ -2933,14 +2942,14 @@ h2 {
 
 .deck-expanded-lazy-wrapper {
   position: relative;
-  width: 100%;
+  
   aspect-ratio: 4 / 5;
   min-height: 280px;
   background: #f3f3f3;
 }
 
 .deck-expanded-lazy-img {
-  width: 100%;
+  
   height: auto;
   display: block;
   object-fit: cover;
@@ -3005,7 +3014,7 @@ h2 {
 
 .song-deck-cards {
   position: relative;
-  width: 100%;
+  
   min-height: 520px;
 }
 
@@ -3119,7 +3128,7 @@ h2 {
 }
 
 .song-track-cover-img {
-  width: 100%;
+  
   height: 100%;
   display: block;
   object-fit: cover;
