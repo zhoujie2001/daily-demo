@@ -540,11 +540,19 @@ h2 {
 
 /* 图片容器：取消纯圆角，保持边缘锐利 */
 .photo-img-wrapper {
-  
+
   aspect-ratio: 4 / 3;
   overflow: hidden;
   position: relative;
   background: var(--bg-secondary);
+  border-radius: 4px; /* 添加微小圆角让边缘不那么生硬 */
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04), 0 1px 4px rgba(0, 0, 0, 0.02); /* 添加更加柔和克制的阴影 */
+  transition: box-shadow 0.4s cubic-bezier(0.19, 1, 0.22, 1), transform 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+.photo-card:hover .photo-img-wrapper {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.04); /* hover时加深阴影 */
+  transform: translateY(-4px) scale(1.01); /* hover时轻微上浮和放大 */
 }
 
 .photo-lazy-wrapper {
@@ -2624,14 +2632,14 @@ h2 {
 
   .entry,
   .entry:last-child {
-    
+
     min-height: auto;
     margin: 0;
     padding: 1.25rem;
     background: #fff;
     border-radius: var(--daily-card-radius);
-    box-shadow: 0 4px 20px rgba(0,0,0,0.03);
-    border: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.02);
+    border: 1px solid rgba(0, 0, 0, 0.03);
     max-width: 100%;
     box-sizing: border-box;
     overflow: visible;
@@ -2804,7 +2812,7 @@ h2 {
   padding: 0;
   background: #fff;
   border-radius: 18px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04), 0 1px 4px rgba(0, 0, 0, 0.02);
   overflow: hidden;
   cursor: pointer;
   transform-origin: bottom center;
@@ -2813,7 +2821,7 @@ h2 {
 }
 
 .deck-card.top-card {
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.04);
 }
 
 .deck-card-media {
@@ -2914,7 +2922,7 @@ h2 {
   overflow: auto;
   border-radius: 20px;
   background: #fff;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.16), 0 8px 16px rgba(0, 0, 0, 0.08);
 }
 
 .deck-expanded-close {
