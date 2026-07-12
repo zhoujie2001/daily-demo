@@ -52,30 +52,64 @@ h1, h2, h3, h4, h5, h6 {
 
 .sidebar {
   position: fixed;
-  left: 24px;
+  left: 48px;
   top: 80px;
-  width: 120px;
+  width: 180px; /* Wider sidebar */
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
 }
 
 .sidebar h2 {
-  font-size: clamp(1.2rem, 2vw, 1.5rem);
-  margin-top: 0;
-  margin-bottom: 24px;
+  font-size: clamp(1.4rem, 2.5vw, 1.8rem);
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 16px; /* Space between links */
 }
 
 .sidebar nav a {
-  display: block;
-  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
   text-decoration: none;
   color: var(--text-secondary);
   font-family: var(--font-sans);
-  font-size: 0.95rem;
-  transition: color 0.3s ease;
+  font-size: 1rem; /* Larger font size */
+  font-weight: 300;
+  transition: all 0.3s cubic-bezier(0.19, 1, 0.22, 1);
+  position: relative;
+  padding: 4px 0;
+}
+
+.sidebar nav a::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.19, 1, 0.22, 1);
 }
 
 .sidebar nav a:hover {
   text-decoration: none;
   color: var(--text-primary);
+  transform: translateX(8px); /* Hover slide interaction */
+}
+
+.sidebar nav a:hover::before {
+  opacity: 1;
+  transform: translateY(-50%) scale(1);
 }
 
 /* 主体内容 */
@@ -108,7 +142,7 @@ h1, h2, h3, h4, h5, h6 {
 
 @media (min-width: 1400px) {
   .content {
-    margin-left: 420px;
+    margin-left: 480px; /* Increased margin to accommodate wider sidebar */
     padding-right: 120px;
   }
 }
