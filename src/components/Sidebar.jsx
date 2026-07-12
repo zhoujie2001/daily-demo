@@ -11,33 +11,40 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
 
   // Intersection Observer for scroll spy
   useEffect(() => {
-    const observers = [];
+    // 页面中的所有模块容器
+    const sections = navItems.map((item) => document.getElementById(item.id)).filter(Boolean);
+    if (sections.length === 0) return;
 
-    // Set up observer for each section
-    navItems.forEach(item => {
-      const element = document.getElementById(item.id);
-      if (!element) return;
+    // 创建 IntersectionObserver
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Find all currently intersecting entries
+        const visibleEntries = entries.filter((entry) => entry.isIntersecting);
 
-      const observer = new IntersectionObserver(
-        (entries) => {
-          entries.forEach(entry => {
-            // When a section comes into view, set it as active
-            // We use a threshold of 0.2 (20% visible) to trigger early
-            if (entry.isIntersecting) {
-              setActiveSection(item.id);
-            }
+        if (visibleEntries.length > 0) {
+          // If multiple sections are visible, sort them by how much of them is visible
+          // or pick the one closest to the top of the viewport
+          const activeEntry = visibleEntries.reduce((prev, current) => {
+            return current.intersectionRatio > prev.intersectionRatio ? current : prev;
           });
-        },
-        { rootMargin: '-10% 0px -80% 0px', threshold: 0.1 }
-      );
+          setActiveSection(activeEntry.target.id);
+        }
+      },
+      {
+        root: null,
+        rootMargin: '-100px 0px -40% 0px', // Trigger when section is in the top 60% of viewport
+        threshold: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], // Check visibility at multiple thresholds
+      }
+    );
 
-      observer.observe(element);
-      observers.push({ element, observer });
+    sections.forEach((section) => {
+      observer.observe(section);
     });
 
+    // Cleanup observer
     return () => {
-      observers.forEach(({ element, observer }) => {
-        observer.unobserve(element);
+      sections.forEach((section) => {
+        observer.unobserve(section);
       });
     };
   }, []);

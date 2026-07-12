@@ -25,7 +25,7 @@
 
 html {
   scroll-behavior: smooth;
-  scroll-padding-top: 80px; /* 预留顶部空间，防止锚点跳转被遮挡 */
+  scroll-padding-top: 100px; /* 预留顶部空间，防止锚点跳转被遮挡，适应 observer margin */
 }
 
 /* ===== 全局排版 ===== */
