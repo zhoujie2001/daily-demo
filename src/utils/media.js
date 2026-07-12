@@ -9,7 +9,22 @@ import { API_BASE } from '../config';
 export function resolveMediaUrl(url) {
   if (!url) return url;
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  if (url.startsWith('images/') || url.startsWith('videos/') || url.startsWith('/images/') || url.startsWith('/videos/')) return url;
+  if (url.startsWith('/images/') || url.startsWith('/videos/')) {
+    // Determine the base path based on environment
+    // In production, GitHub Pages requires the repo name as the base path
+    const isProduction = import.meta.env.PROD;
+    const basePath = isProduction && window.location.hostname.includes('github.io')
+      ? '/personal-site'
+      : '';
+    return `${basePath}${url}`;
+  }
+  if (url.startsWith('images/') || url.startsWith('videos/')) {
+    const isProduction = import.meta.env.PROD;
+    const basePath = isProduction && window.location.hostname.includes('github.io')
+      ? '/personal-site'
+      : '';
+    return `${basePath}/${url}`;
+  }
   const prefix = url.startsWith('/') ? '' : '/';
   return `${API_BASE}${prefix}${url}`;
 }
