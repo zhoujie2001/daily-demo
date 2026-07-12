@@ -557,12 +557,14 @@ h2 {
 }
 
 .photo-lazy-wrapper {
-  
+  position: absolute;
+  inset: 0;
+  width: 100%;
   height: 100%;
 }
 
 .photo-lazy-img {
-  
+  width: 100%;
   height: 100%;
   object-fit: cover;
   transition: transform 0.8s cubic-bezier(0.19, 1, 0.22, 1), filter 0.8s ease;
@@ -1910,14 +1912,18 @@ h2 {
 .photo-lazy-wrapper {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .daily-lazy-wrapper {
   position: relative;
-  
+
 }
 
 .photo-lazy-img {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
 }
 
