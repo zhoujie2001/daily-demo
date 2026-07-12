@@ -10,19 +10,17 @@ export function resolveMediaUrl(url) {
   if (!url) return url;
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
   if (url.startsWith('/images/') || url.startsWith('/videos/')) {
-    // Determine the base path based on environment
-    // In production, GitHub Pages requires the repo name as the base path
+    // Vercel deployment uses root mapping, so we don't need the repository prefix
+    // Only add prefix if it's deployed to GitHub Pages non-custom domain
     const isProduction = import.meta.env.PROD;
-    const basePath = isProduction && window.location.hostname.includes('github.io')
-      ? '/personal-site'
-      : '';
+    const isGithubPagesUrl = isProduction && window.location.hostname === 'zhoujie2001.github.io';
+    const basePath = isGithubPagesUrl ? '/personal-site' : '';
     return `${basePath}${url}`;
   }
   if (url.startsWith('images/') || url.startsWith('videos/')) {
     const isProduction = import.meta.env.PROD;
-    const basePath = isProduction && window.location.hostname.includes('github.io')
-      ? '/personal-site'
-      : '';
+    const isGithubPagesUrl = isProduction && window.location.hostname === 'zhoujie2001.github.io';
+    const basePath = isGithubPagesUrl ? '/personal-site' : '';
     return `${basePath}/${url}`;
   }
   const prefix = url.startsWith('/') ? '' : '/';
