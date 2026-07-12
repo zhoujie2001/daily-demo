@@ -510,7 +510,7 @@ h2 {
 .photo-card {
   position: relative;
   background: transparent;
-  border-radius: 4px; /* Card itself should have the border radius */
+  border-radius: 8px; /* Matching the new larger wrapper border-radius */
   overflow: visible; /* Allowing shadow to be visible */
   cursor: pointer;
   display: flex;
@@ -546,14 +546,14 @@ h2 {
   position: relative;
   background: var(--bg-secondary);
   border-radius: 8px; /* 添加稍大一点的圆角 */
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04); /* 加深基础阴影，且在wrapper上生效 */
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08); /* 网页端阴影依然不明显，极大幅度加深基础阴影 */
   transition: box-shadow 0.4s cubic-bezier(0.19, 1, 0.22, 1), transform 0.4s cubic-bezier(0.19, 1, 0.22, 1);
-  border: 1px solid rgba(0, 0, 0, 0.04); /* 添加极淡的边框帮助凸显阴影 */
+  border: 1px solid rgba(0, 0, 0, 0.08); /* 加深边框，配合极浅的灰色背景凸显立体感 */
 }
 
 .photo-card:hover .photo-img-wrapper {
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.14), 0 8px 24px rgba(0, 0, 0, 0.08); /* hover时加深阴影 */
-  transform: translateY(-6px) scale(1.01); /* hover时轻微上浮和放大 */
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.2), 0 12px 24px rgba(0, 0, 0, 0.12); /* hover时加深阴影 */
+  transform: translateY(-8px) scale(1.02); /* hover时轻微上浮和放大 */
 }
 
 .photo-lazy-wrapper {
