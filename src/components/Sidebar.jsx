@@ -1,12 +1,46 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Eye } from 'lucide-react';
 import { navItems } from '../data/nav';
 import NowStatus from './NowStatus';
 
 export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin, onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState('about');
 
   const closeMenu = () => setMenuOpen(false);
+
+  // Intersection Observer for scroll spy
+  useEffect(() => {
+    const observers = [];
+
+    // Set up observer for each section
+    navItems.forEach(item => {
+      const element = document.getElementById(item.id);
+      if (!element) return;
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach(entry => {
+            // When a section comes into view, set it as active
+            // We use a threshold of 0.2 (20% visible) to trigger early
+            if (entry.isIntersecting) {
+              setActiveSection(item.id);
+            }
+          });
+        },
+        { rootMargin: '-10% 0px -80% 0px', threshold: 0.1 }
+      );
+
+      observer.observe(element);
+      observers.push({ element, observer });
+    });
+
+    return () => {
+      observers.forEach(({ element, observer }) => {
+        observer.unobserve(element);
+      });
+    };
+  }, []);
 
   return (
     <>
@@ -46,7 +80,21 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
         <NowStatus isAdmin={isAdmin} adminToken={adminToken} />
         <nav className="mobile-nav-links">
           {navItems.map((item) => (
-            <a key={item.id} href={`#${item.id}`} onClick={closeMenu}>
+            <a
+              key={item.id}
+              href={`#${item.id}`}
+              className={activeSection === item.id ? 'active' : ''}
+              onClick={(e) => {
+                e.preventDefault();
+                closeMenu();
+                const target = document.getElementById(item.id);
+                if (target) {
+                  target.scrollIntoView({ behavior: 'smooth' });
+                  setActiveSection(item.id);
+                  window.history.pushState(null, '', `#${item.id}`);
+                }
+              }}
+            >
               {item.label}
             </a>
           ))}
@@ -75,7 +123,22 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
         <NowStatus isAdmin={isAdmin} adminToken={adminToken} />
         <nav>
           {navItems.map((item) => (
-            <a key={item.id} href={`#${item.id}`}>
+            <a
+              key={item.id}
+              href={`#${item.id}`}
+              className={activeSection === item.id ? 'active' : ''}
+              onClick={(e) => {
+                // Smooth scroll via JS to prevent URL hash change jumping immediately
+                e.preventDefault();
+                const target = document.getElementById(item.id);
+                if (target) {
+                  target.scrollIntoView({ behavior: 'smooth' });
+                  setActiveSection(item.id);
+                  // Update URL hash without jumping
+                  window.history.pushState(null, '', `#${item.id}`);
+                }
+              }}
+            >
               {item.label}
             </a>
           ))}

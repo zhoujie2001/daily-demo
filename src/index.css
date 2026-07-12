@@ -23,6 +23,11 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 80px; /* 预留顶部空间，防止锚点跳转被遮挡 */
+}
+
 /* ===== 全局排版 ===== */
 
 body {
@@ -80,7 +85,7 @@ h1, h2, h3, h4, h5, h6 {
   text-decoration: none;
   color: var(--text-secondary);
   font-family: var(--font-sans);
-  font-size: 1rem; /* Larger font size */
+  font-size: 1.05rem; /* Larger font size */
   font-weight: 300;
   transition: all 0.3s cubic-bezier(0.19, 1, 0.22, 1);
   position: relative;
@@ -93,21 +98,24 @@ h1, h2, h3, h4, h5, h6 {
   left: -16px;
   top: 50%;
   transform: translateY(-50%);
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--text-primary);
   opacity: 0;
   transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.19, 1, 0.22, 1);
 }
 
-.sidebar nav a:hover {
+.sidebar nav a:hover,
+.sidebar nav a.active {
   text-decoration: none;
   color: var(--text-primary);
   transform: translateX(8px); /* Hover slide interaction */
+  font-weight: 400; /* Active/hover state weight */
 }
 
-.sidebar nav a:hover::before {
+.sidebar nav a:hover::before,
+.sidebar nav a.active::before {
   opacity: 1;
   transform: translateY(-50%) scale(1);
 }
@@ -2556,6 +2564,13 @@ h2 {
     color: #333;
     text-decoration: none;
     border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    transition: color 0.2s ease, padding-left 0.2s ease;
+  }
+
+  .mobile-nav-links a.active {
+    font-weight: 600;
+    color: var(--text-primary);
+    padding-left: 8px; /* Visual feedback for active state on mobile */
   }
 
   .content {
