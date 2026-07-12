@@ -510,8 +510,8 @@ h2 {
 .photo-card {
   position: relative;
   background: transparent;
-  border-radius: 0;
-  overflow: hidden;
+  border-radius: 4px; /* Card itself should have the border radius */
+  overflow: visible; /* Allowing shadow to be visible */
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -519,24 +519,24 @@ h2 {
   grid-column: span 4;
 }
 
-/* 创造不规则的错落感：利用 nth-child 选择器改变部分图片的比例和跨度 */
-.photo-card:nth-child(5n + 1) {
-  grid-column: span 8; /* 大图占据两倍宽度 */
-}
-.photo-card:nth-child(5n + 1) .photo-img-wrapper {
-  aspect-ratio: 16 / 9; /* 大图使用宽幅比例 */
-}
+  /* 创造不规则的错落感：利用 nth-child 选择器改变部分图片的比例和跨度 */
+  .photo-card:nth-child(5n + 1) {
+    grid-column: span 8; /* 大图占据两倍宽度 */
+  }
+  .photo-card:nth-child(5n + 1) .photo-img-wrapper {
+    aspect-ratio: 16 / 9; /* 大图使用宽幅比例 */
+  }
 
-.photo-card:nth-child(7n + 3) {
-  grid-column: span 6; /* 中图占据一半宽度 */
-}
-.photo-card:nth-child(7n + 3) .photo-img-wrapper {
-  aspect-ratio: 3 / 2;
-}
+  .photo-card:nth-child(7n + 3) {
+    grid-column: span 6; /* 中图占据一半宽度 */
+  }
+  .photo-card:nth-child(7n + 3) .photo-img-wrapper {
+    aspect-ratio: 3 / 2;
+  }
 
-.photo-card:nth-child(3n + 2) .photo-img-wrapper {
-  aspect-ratio: 4 / 5; /* 部分图片使用竖幅比例 */
-}
+  .photo-card:nth-child(3n + 2) .photo-img-wrapper {
+    aspect-ratio: 4 / 5; /* 部分图片使用竖幅比例 */
+  }
 
 /* 图片容器：取消纯圆角，保持边缘锐利 */
 .photo-img-wrapper {
@@ -545,14 +545,15 @@ h2 {
   overflow: hidden;
   position: relative;
   background: var(--bg-secondary);
-  border-radius: 4px; /* 添加微小圆角让边缘不那么生硬 */
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04), 0 1px 4px rgba(0, 0, 0, 0.02); /* 添加更加柔和克制的阴影 */
+  border-radius: 8px; /* 添加稍大一点的圆角 */
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04); /* 加深基础阴影，且在wrapper上生效 */
   transition: box-shadow 0.4s cubic-bezier(0.19, 1, 0.22, 1), transform 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+  border: 1px solid rgba(0, 0, 0, 0.04); /* 添加极淡的边框帮助凸显阴影 */
 }
 
 .photo-card:hover .photo-img-wrapper {
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.04); /* hover时加深阴影 */
-  transform: translateY(-4px) scale(1.01); /* hover时轻微上浮和放大 */
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.14), 0 8px 24px rgba(0, 0, 0, 0.08); /* hover时加深阴影 */
+  transform: translateY(-6px) scale(1.01); /* hover时轻微上浮和放大 */
 }
 
 .photo-lazy-wrapper {
@@ -621,6 +622,7 @@ h2 {
   .photo-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 16px;
+    padding: 0 16px; /* 移动端增加两边 padding 避免卡片贴边 */
   }
   .photo-card,
   .photo-card:nth-child(5n + 1),
@@ -638,6 +640,7 @@ h2 {
   .photo-grid {
     grid-template-columns: 1fr;
     gap: 24px;
+    padding: 0 16px; /* 移动端增加两边 padding 避免卡片贴边 */
   }
   .photo-card {
     grid-column: span 1 !important;
