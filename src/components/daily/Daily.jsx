@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Tag as TagIcon } from 'lucide-react';
 import Timeline from './Timeline';
+import CalendarWidget from './CalendarWidget';
 import DailyEntry from './DailyEntry';
 import DailyEditor from './DailyEditor';
 import SearchBar from './SearchBar';
@@ -258,6 +259,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
                 <EmptyState title={emptyStateCopy.title} description={emptyStateCopy.description} />
               )}
             </main>
+            <CalendarWidget posts={filteredPosts} onSelect={handleSelectDate} />
           </>
         )}
         {isAdmin ? (
