@@ -894,13 +894,6 @@ h2 {
   transform: translateY(-50%) scale(1.03);
 }
 
-/* 只在大于 900px（非手机端）隐藏时间线 */
-@media (min-width: 901px) {
-  .col-timeline {
-    display: none;
-  }
-}
-
 .col-timeline {
   position: relative;
   height: 100%;
