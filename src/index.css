@@ -3516,13 +3516,13 @@ h2 {
   border: 1px solid rgba(34, 34, 34, 0.1);
   border-radius: 999px;
   cursor: pointer;
-  transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+  transition: background 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
 }
 
 .cal-widget-nav:hover {
-  background: rgba(255, 255, 255, 0.95);
-  border-color: rgba(34, 34, 34, 0.14);
-  transform: translateY(-1px);
+  background: rgba(34, 34, 34, 0.07);
+  border-color: rgba(34, 34, 34, 0.12);
+  transform: scale(1.05);
 }
 
 .cal-widget-weekdays,
@@ -3552,9 +3552,9 @@ h2 {
   font: inherit;
   background: transparent;
   border: none;
-  border-radius: 12px;
+  border-radius: 8px;
   cursor: default;
-  transition: opacity 0.2s ease, transform 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  transition: background 0.15s ease, transform 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .cal-widget-day.is-outside {
@@ -3565,8 +3565,12 @@ h2 {
   cursor: pointer;
 }
 
+.cal-widget-day:not(.is-outside):hover {
+  background: rgba(34, 34, 34, 0.05);
+}
+
 .cal-widget-day.has-post:hover {
-  opacity: 0.82;
+  background: rgba(34, 34, 34, 0.08);
 }
 
 .cal-widget-day.is-today {
@@ -3593,10 +3597,16 @@ h2 {
   height: 4px;
   border-radius: 50%;
   background: transparent;
-  transform: translateX(-50%);
+  transform: translateX(-50%) scale(1);
+  transform-origin: center;
   z-index: 2;
+  transition: transform 0.15s ease, background 0.15s ease;
 }
 
 .cal-widget-day.has-post .cal-widget-day-dot {
   background: rgba(34, 34, 34, 0.7);
+}
+
+.cal-widget-day.has-post:hover .cal-widget-day-dot {
+  transform: translateX(-50%) scale(1.3);
 }

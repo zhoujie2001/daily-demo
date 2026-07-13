@@ -214,7 +214,7 @@ export default function CalendarWidget({ posts = [], onSelect }) {
                     .filter(Boolean)
                     .join(' ')}
                   onClick={() => handleDaySelect(date)}
-                  disabled={!hasPost}
+                  disabled={outsideMonth}
                   aria-label={date.toLocaleDateString('en-US', {
                     month: 'long',
                     day: 'numeric',
