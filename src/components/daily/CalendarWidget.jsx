@@ -37,7 +37,8 @@ function buildMonthDays(monthDate) {
 export default function CalendarWidget({ posts = [], onSelect }) {
   const containerRef = useRef(null);
   const today = useMemo(() => new Date(), []);
-  const [visibleMonth, setVisibleMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const todayMonthStart = useMemo(() => new Date(today.getFullYear(), today.getMonth(), 1), [today]);
+  const [visibleMonth, setVisibleMonth] = useState(todayMonthStart);
   const [expanded, setExpanded] = useState(false);
 
   const postDateMap = useMemo(() => {
@@ -116,8 +117,13 @@ export default function CalendarWidget({ posts = [], onSelect }) {
           aria-haspopup="dialog"
           aria-expanded={expanded}
         >
-          <span className="cal-widget-trigger-label">Today</span>
-          <span className="cal-widget-trigger-date">{todayLabel}</span>
+          <span className="cal-widget-trigger-icon" aria-hidden="true">
+            📅
+          </span>
+          <span className="cal-widget-trigger-content">
+            <span className="cal-widget-trigger-label">Today</span>
+            <span className="cal-widget-trigger-date">{todayLabel}</span>
+          </span>
         </button>
 
         <div className={`cal-widget-popover ${expanded ? 'is-open' : ''}`} role="dialog" aria-hidden={!expanded}>
@@ -128,7 +134,7 @@ export default function CalendarWidget({ posts = [], onSelect }) {
               aria-label="Previous month"
               onClick={() => setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
             >
-              ←
+              ‹
             </button>
             <div className="cal-widget-title">{monthLabel}</div>
             <button
@@ -137,7 +143,7 @@ export default function CalendarWidget({ posts = [], onSelect }) {
               aria-label="Next month"
               onClick={() => setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
             >
-              →
+              ›
             </button>
           </div>
 
