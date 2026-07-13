@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { navItems } from '../data/nav';
 import NowStatus from './NowStatus';
@@ -9,31 +9,47 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
 
   const closeMenu = () => setMenuOpen(false);
 
-  // Intersection Observer for scroll spy
+  const observerStateRef = useRef(new Map());
+
   useEffect(() => {
-    // 页面中的所有模块容器
     const sections = navItems.map((item) => document.getElementById(item.id)).filter(Boolean);
     if (sections.length === 0) return;
 
-    // 创建 IntersectionObserver
+    const observerState = observerStateRef.current;
+    const lastSectionId = sections[sections.length - 1]?.id;
+    const bottomThresholdPx = 20;
+
+    const syncActiveFromObserverState = () => {
+      const candidates = Array.from(observerState.entries())
+        .map(([id, state]) => ({ id, ...state }))
+        .filter((item) => item.isIntersecting);
+
+      if (candidates.length === 0) return;
+
+      candidates.sort((a, b) => {
+        if (b.ratio !== a.ratio) return b.ratio - a.ratio;
+        return a.top - b.top;
+      });
+
+      setActiveSection(candidates[0].id);
+    };
+
     const observer = new IntersectionObserver(
       (entries) => {
-        // Find all currently intersecting entries
-        const visibleEntries = entries.filter((entry) => entry.isIntersecting);
-
-        if (visibleEntries.length > 0) {
-          // If multiple sections are visible, sort them by how much of them is visible
-          // or pick the one closest to the top of the viewport
-          const activeEntry = visibleEntries.reduce((prev, current) => {
-            return current.intersectionRatio > prev.intersectionRatio ? current : prev;
+        entries.forEach((entry) => {
+          observerState.set(entry.target.id, {
+            isIntersecting: entry.isIntersecting,
+            ratio: entry.intersectionRatio,
+            top: entry.boundingClientRect.top,
           });
-          setActiveSection(activeEntry.target.id);
-        }
+        });
+
+        syncActiveFromObserverState();
       },
       {
         root: null,
-        rootMargin: '-100px 0px -40% 0px', // Trigger when section is in the top 60% of viewport
-        threshold: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], // Check visibility at multiple thresholds
+        rootMargin: '-96px 0px -20% 0px',
+        threshold: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
       }
     );
 
@@ -41,11 +57,36 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
       observer.observe(section);
     });
 
-    // Cleanup observer
-    return () => {
-      sections.forEach((section) => {
-        observer.unobserve(section);
+    let ticking = false;
+    const updateActiveOnBottom = () => {
+      const doc = document.documentElement;
+      const atBottom = window.scrollY + window.innerHeight >= doc.scrollHeight - bottomThresholdPx;
+
+      if (atBottom && lastSectionId) {
+        setActiveSection(lastSectionId);
+      }
+    };
+
+    const onScrollOrResize = () => {
+      if (ticking) return;
+      ticking = true;
+
+      window.requestAnimationFrame(() => {
+        ticking = false;
+        updateActiveOnBottom();
       });
+    };
+
+    window.addEventListener('scroll', onScrollOrResize, { passive: true });
+    window.addEventListener('resize', onScrollOrResize);
+
+    updateActiveOnBottom();
+
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize);
+      window.removeEventListener('resize', onScrollOrResize);
+      observer.disconnect();
+      observerState.clear();
     };
   }, []);
 
@@ -107,7 +148,14 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
           ))}
         </nav>
         {isAdmin ? (
-          <button type="button" onClick={() => { closeMenu(); onLogout(); }} style={logoutBtnStyle}>
+          <button
+            type="button"
+            onClick={() => {
+              closeMenu();
+              onLogout();
+            }}
+            style={logoutBtnStyle}
+          >
             Logout
           </button>
         ) : null}
@@ -135,13 +183,11 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
               href={`#${item.id}`}
               className={activeSection === item.id ? 'active' : ''}
               onClick={(e) => {
-                // Smooth scroll via JS to prevent URL hash change jumping immediately
                 e.preventDefault();
                 const target = document.getElementById(item.id);
                 if (target) {
                   target.scrollIntoView({ behavior: 'smooth' });
                   setActiveSection(item.id);
-                  // Update URL hash without jumping
                   window.history.pushState(null, '', `#${item.id}`);
                 }
               }}
