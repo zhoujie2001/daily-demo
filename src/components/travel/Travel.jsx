@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Edit2, Plus, Trash2, Play } from 'lucide-react';
+import { Edit2, Plus, Trash2 } from 'lucide-react';
 import { fallbackVideos } from '../../data/fallbackPhotos';
 import { resolveMediaUrl } from '../../utils/media';
 import { useDialog } from '../../context/DialogContext';
 import { LoadingSpinner, LoadingBlock } from '../ui/Loading';
+import TravelVideo from './TravelVideo';
 
 export default function Travel({
   isAdmin,
@@ -96,11 +97,10 @@ export default function Travel({
           <div className="video-track video-track-infinite">
             {displayList.map((video) => (
               <div key={video._key} className="video-card">
-                <video
+                <TravelVideo
                   src={resolveMediaUrl(video.url)}
                   muted
                   loop
-                  autoPlay
                   playsInline
                   onClick={() => setExpandedVideo(video)}
                   style={{ width: '200px', height: '280px', objectFit: 'cover', cursor: 'pointer' }}
@@ -155,9 +155,8 @@ export default function Travel({
             onClick={(e) => e.stopPropagation()}
             style={{ width: '90%', maxWidth: '1200px', backgroundColor: '#000', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 24px 60px rgba(0,0,0,0.4)' }}
           >
-            <video
+            <TravelVideo
               src={resolveMediaUrl(expandedVideo.url)}
-              autoPlay
               controls
               playsInline
               style={{ width: '100%', height: 'auto', maxHeight: '85vh', display: 'block', objectFit: 'contain' }}
