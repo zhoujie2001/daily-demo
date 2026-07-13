@@ -400,11 +400,10 @@ h2 {
   align-items: center;
   justify-content: center;
   background: linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.35) 100%);
-  pointer-events: none;
+  cursor: pointer;
 }
 
 .travel-play-btn {
-  pointer-events: auto;
   width: 52px;
   height: 52px;
   border-radius: 999px;
