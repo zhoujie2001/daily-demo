@@ -1,13 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Search, X } from 'lucide-react';
 
 export default function SearchBar({ value, onChange, onClear }) {
-  const [draft, setDraft] = useState(value);
+  const composingValueRef = useRef(value);
   const [isComposing, setIsComposing] = useState(false);
+  const [composingValue, setComposingValue] = useState(value);
 
-  useEffect(() => {
-    setDraft(value);
-  }, [value]);
+  const displayValue = isComposing ? composingValue : value;
 
   return (
     <div className="daily-search-shell">
@@ -17,27 +16,37 @@ export default function SearchBar({ value, onChange, onClear }) {
           type="text"
           className="daily-search-input"
           placeholder="搜索日记..."
-          value={draft}
-          onCompositionStart={() => setIsComposing(true)}
+          value={displayValue}
+          onCompositionStart={() => {
+            composingValueRef.current = value;
+            setComposingValue(value);
+            setIsComposing(true);
+          }}
           onCompositionEnd={(e) => {
             setIsComposing(false);
-            setDraft(e.target.value);
+            composingValueRef.current = '';
+            setComposingValue('');
             onChange(e.target.value);
           }}
           onChange={(e) => {
             const nextValue = e.target.value;
-            setDraft(nextValue);
-            if (isComposing) return;
+            if (isComposing) {
+              composingValueRef.current = nextValue;
+              setComposingValue(nextValue);
+              return;
+            }
             onChange(nextValue);
           }}
         />
       </label>
-      {draft ? (
+      {displayValue ? (
         <button
           type="button"
           className="daily-search-clear"
           onClick={() => {
-            setDraft('');
+            composingValueRef.current = '';
+            setComposingValue('');
+            setIsComposing(false);
             onClear();
           }}
           aria-label="清空搜索"

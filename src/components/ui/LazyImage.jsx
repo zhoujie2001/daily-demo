@@ -17,41 +17,45 @@ export default function LazyImage({
   ...imgProps
 }) {
   const wrapperRef = useRef(null);
-  const [shouldLoad, setShouldLoad] = useState(() => typeof IntersectionObserver === 'undefined');
-  const [loaded, setLoaded] = useState(false);
-  const [errored, setErrored] = useState(false);
 
-  useEffect(() => {
-    setLoaded(false);
-    setErrored(false);
-    setShouldLoad(typeof IntersectionObserver === 'undefined');
-  }, [src]);
+  const [shouldLoadSrc, setShouldLoadSrc] = useState(() =>
+    typeof IntersectionObserver === 'undefined' ? src : null
+  );
+
+  const [loadedSrc, setLoadedSrc] = useState(null);
+  const [erroredSrc, setErroredSrc] = useState(null);
+
+  const shouldLoad = typeof IntersectionObserver === 'undefined' ? true : shouldLoadSrc === src;
+  const loaded = loadedSrc === src;
+  const errored = erroredSrc === src;
 
   useEffect(() => {
     const node = wrapperRef.current;
     if (!node || shouldLoad || typeof IntersectionObserver === 'undefined') return;
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            setShouldLoad(true);
+            setShouldLoadSrc(src);
             observer.disconnect();
           }
         });
       },
       { threshold, rootMargin }
     );
+
     observer.observe(node);
     return () => observer.disconnect();
   }, [threshold, rootMargin, src, shouldLoad]);
 
   const handleLoad = (event) => {
-    setLoaded(true);
+    setLoadedSrc(src);
     onLoad?.(event);
   };
 
   const handleError = (event) => {
-    setErrored(true);
+    setErroredSrc(src);
     onError?.(event);
   };
 
