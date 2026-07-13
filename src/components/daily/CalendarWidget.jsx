@@ -36,9 +36,12 @@ function buildMonthDays(monthDate) {
 
 export default function CalendarWidget({ posts = [], onSelect }) {
   const containerRef = useRef(null);
+  const closeTimerRef = useRef(null);
   const today = useMemo(() => new Date(), []);
-  const todayMonthStart = useMemo(() => new Date(today.getFullYear(), today.getMonth(), 1), [today]);
-  const [visibleMonth, setVisibleMonth] = useState(todayMonthStart);
+  const [visibleMonth, setVisibleMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const [expanded, setExpanded] = useState(false);
 
   const postDateMap = useMemo(() => {
@@ -92,14 +95,50 @@ export default function CalendarWidget({ posts = [], onSelect }) {
     };
   }, [expanded]);
 
-  const openCalendar = () => setExpanded(true);
-  const closeCalendar = () => setExpanded(false);
+  useEffect(
+    () => () => {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+      }
+    },
+    []
+  );
+
+  const openCalendar = () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    setExpanded(true);
+  };
+
+  const closeCalendar = () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+    }
+    closeTimerRef.current = setTimeout(() => {
+      setExpanded(false);
+      closeTimerRef.current = null;
+    }, 180);
+  };
+
+  const toggleCalendar = () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    setExpanded((current) => !current);
+  };
 
   const handleDaySelect = (date) => {
     const postId = postDateMap.get(formatDayKey(date));
     if (!postId) return;
     onSelect(postId);
-    closeCalendar();
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    setExpanded(false);
   };
 
   return (
@@ -113,7 +152,7 @@ export default function CalendarWidget({ posts = [], onSelect }) {
         <button
           type="button"
           className="cal-widget-trigger"
-          onClick={() => setExpanded((current) => !current)}
+          onClick={toggleCalendar}
           aria-haspopup="dialog"
           aria-expanded={expanded}
         >
