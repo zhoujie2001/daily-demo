@@ -6,6 +6,7 @@ import DailyEntry from './DailyEntry';
 import DailyEditor from './DailyEditor';
 import SearchBar from './SearchBar';
 import { useDialog } from '../../context/DialogContext';
+import { compressVideo } from '../../utils/compressVideo';
 import EmptyState from '../ui/EmptyState';
 import { SkeletonCard, SkeletonText } from '../Skeleton';
 
@@ -41,6 +42,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
   const [tags, setTags] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [publishing, setPublishing] = useState(false);
+  const [compressingCount, setCompressingCount] = useState(0);
   const [activeTag, setActiveTag] = useState(null);
   const [keyword, setKeyword] = useState('');
   const lastSyncKeyRef = useRef('');
@@ -138,9 +140,49 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
       const previewUrls = await Promise.all(files.map((file) => readFileAsDataUrl(file)));
       const newAtt = files.map((file, index) => {
         const previewUrl = previewUrls[index];
-        return { file, type, url: previewUrl, value: previewUrl };
+        const id = `${type}-${Date.now()}-${index}-${file.name}`;
+        return { id, file, type, url: previewUrl, value: previewUrl };
       });
       setAttachments((prev) => [...prev, ...newAtt]);
+
+      if (type !== 'video') {
+        return;
+      }
+
+      await Promise.all(
+        newAtt.map(async (attachment) => {
+          setCompressingCount((count) => count + 1);
+          setAttachments((prev) =>
+            prev.map((att) => (att.id === attachment.id ? { ...att, compressing: true, compressionProgress: 0 } : att))
+          );
+
+          try {
+            const compressedFile = await compressVideo(attachment.file, (percent) => {
+              setAttachments((prev) =>
+                prev.map((att) =>
+                  att.id === attachment.id ? { ...att, compressionProgress: Math.round(percent) } : att
+                )
+              );
+            });
+            setAttachments((prev) =>
+              prev.map((att) =>
+                att.id === attachment.id
+                  ? { ...att, file: compressedFile, compressing: false, compressionProgress: 100 }
+                  : att
+              )
+            );
+          } catch {
+            toast.error('视频压缩失败，将尝试直接上传');
+            setAttachments((prev) =>
+              prev.map((att) =>
+                att.id === attachment.id ? { ...att, compressing: false, compressionProgress: null } : att
+              )
+            );
+          } finally {
+            setCompressingCount((count) => Math.max(0, count - 1));
+          }
+        })
+      );
     } catch (err) {
       toast.error(err.message || '文件读取失败');
     }
@@ -171,7 +213,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
   };
 
   const handlePublish = async () => {
-    if (publishing) return;
+    if (publishing || compressingCount > 0) return;
     setPublishing(true);
     try {
       const editingPost = editingId ? posts.find((p) => p.id === editingId) : null;
@@ -268,7 +310,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
             text={text}
             attachments={attachments}
             tags={tags}
-            publishing={publishing}
+            publishing={publishing || compressingCount > 0}
             onTextChange={setText}
             onTagsChange={setTags}
             onFilesSelected={handleFileSelect}

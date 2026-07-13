@@ -68,7 +68,13 @@ export default function DailyEditor({
                   <img src={att.url} alt="" />
                 ) : (
                   <div className="editor-attachment-video">
-                    <Film size={14} /> video
+                    {att.compressing ? (
+                      <span>🎬 压缩中 {att.compressionProgress || 0}%…</span>
+                    ) : (
+                      <>
+                        <Film size={14} /> video
+                      </>
+                    )}
                   </div>
                 )}
                 <button
@@ -162,11 +168,11 @@ export default function DailyEditor({
           </div>
 
           <div className="editor-actions">
-            {editingId && (
+            {editingId ? (
               <button className="editor-cancel" onClick={onCancelEdit} disabled={publishing}>
                 取消
               </button>
-            )}
+            ) : null}
             <button
               className={`editor-publish ${canPublish ? '' : 'disabled'}`}
               onClick={onPublish}
