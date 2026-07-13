@@ -1,54 +1,74 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Play } from 'lucide-react';
+import React, { useEffect, useMemo, useRef } from 'react';
 
-export default function TravelVideo({ src, className, style, muted, loop, controls, playsInline, onClick }) {
+export default function TravelVideo({
+  src,
+  className,
+  style,
+  muted,
+  loop,
+  controls,
+  playsInline,
+  autoPlay,
+  onClick,
+}) {
   const videoRef = useRef(null);
-  const [hasStarted, setHasStarted] = useState(false);
+
+  const canHover = useMemo(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+    return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  }, []);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    const handlePlay = () => setHasStarted(true);
+    if (!canHover) return;
 
-    video.addEventListener('play', handlePlay);
-    return () => {
-      video.removeEventListener('play', handlePlay);
+    const handleMouseEnter = async () => {
+      video.muted = true;
+      video.controls = false;
+
+      try {
+        await video.play();
+      } catch {
+        // Ignore autoplay policy issues; hover intent may still fail on some browsers.
+      }
     };
-  }, []);
 
-  const requestPlay = async (e) => {
-    e.stopPropagation();
-    const video = videoRef.current;
-    if (!video) return;
+    const handleMouseLeave = () => {
+      video.pause();
 
-    try {
-      await video.play();
-    } catch {
-      // Ignore play() rejections. User can still use native controls.
-    }
-  };
+      try {
+        video.currentTime = 0;
+      } catch {
+        // Some browsers may throw if video isn't seekable yet.
+      }
+    };
+
+    video.addEventListener('mouseenter', handleMouseEnter);
+    video.addEventListener('mouseleave', handleMouseLeave);
+
+    return () => {
+      video.removeEventListener('mouseenter', handleMouseEnter);
+      video.removeEventListener('mouseleave', handleMouseLeave);
+    };
+  }, [canHover]);
+
+  const effectiveMuted = canHover ? true : muted;
 
   return (
-    <div className={`travel-video-shell ${className || ''}`} onClick={onClick}>
-      <video
-        ref={videoRef}
-        src={src}
-        muted={muted}
-        loop={loop}
-        controls={controls}
-        playsInline={playsInline}
-        preload="metadata"
-        style={style}
-      />
-
-      {!hasStarted ? (
-        <div className="travel-video-overlay" onClick={requestPlay}>
-          <button className="travel-play-btn" type="button" aria-label="Play video" onClick={requestPlay}>
-            <Play size={18} />
-          </button>
-        </div>
-      ) : null}
-    </div>
+    <video
+      ref={videoRef}
+      src={src}
+      preload="metadata"
+      muted={effectiveMuted}
+      loop={loop}
+      controls={controls}
+      playsInline={playsInline}
+      autoPlay={autoPlay}
+      className={className}
+      style={style}
+      onClick={onClick}
+    />
   );
 }

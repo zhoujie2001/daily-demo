@@ -102,6 +102,7 @@ export default function Travel({
                   muted
                   loop
                   playsInline
+                  controls={false}
                   onClick={() => setExpandedVideo(video)}
                   style={{ width: '200px', height: '280px', objectFit: 'cover', cursor: 'pointer' }}
                 />
@@ -157,7 +158,9 @@ export default function Travel({
           >
             <TravelVideo
               src={resolveMediaUrl(expandedVideo.url)}
+              autoPlay
               controls
+              muted={false}
               playsInline
               style={{ width: '100%', height: 'auto', maxHeight: '85vh', display: 'block', objectFit: 'contain' }}
             />
