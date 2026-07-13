@@ -393,6 +393,19 @@ h2 {
   opacity: 0.9;
 }
 
+/* 强制隐藏 video 原生控件（WebKit 系） */
+.video-track video::-webkit-media-controls,
+.video-track video::-webkit-media-controls-enclosure,
+.video-track video::-webkit-media-controls-panel {
+  display: none !important;
+}
+
+.lightbox video::-webkit-media-controls,
+.lightbox video::-webkit-media-controls-enclosure,
+.lightbox video::-webkit-media-controls-panel {
+  display: flex !important;
+}
+
 .hover-actions, .hover-actions-header {
   position: absolute;
   top: 12px;

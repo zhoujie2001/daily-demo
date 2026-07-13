@@ -105,6 +105,7 @@ export default function Travel({
                   controls={false}
                   onClick={() => setExpandedVideo(video)}
                   style={{ width: '200px', height: '280px', objectFit: 'cover', cursor: 'pointer' }}
+                  className="travel-video"
                 />
                 {isAdmin && isRealData && !video._dup ? (
                   <div className="hover-actions" onClick={(e) => e.stopPropagation()}>
@@ -161,6 +162,7 @@ export default function Travel({
               autoPlay
               controls
               muted={false}
+              disableHover
               playsInline
               style={{ width: '100%', height: 'auto', maxHeight: '85vh', display: 'block', objectFit: 'contain' }}
             />

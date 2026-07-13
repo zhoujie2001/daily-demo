@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useMemo, useRef } from 'react';
 
 export default function TravelVideo({
   src,
@@ -9,66 +9,81 @@ export default function TravelVideo({
   controls,
   playsInline,
   autoPlay,
+  disableHover,
   onClick,
 }) {
   const videoRef = useRef(null);
 
   const canHover = useMemo(() => {
+    if (disableHover) return false;
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
     return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-  }, []);
+  }, [disableHover]);
 
-  useEffect(() => {
+  const handleMouseEnter = async () => {
+    if (!canHover) return;
     const video = videoRef.current;
     if (!video) return;
 
+    video.muted = true;
+
+    try {
+      await video.play();
+    } catch {
+      // Ignore autoplay policy issues.
+    }
+  };
+
+  const handleMouseLeave = () => {
     if (!canHover) return;
+    const video = videoRef.current;
+    if (!video) return;
 
-    const handleMouseEnter = async () => {
-      video.muted = true;
-      video.controls = false;
+    video.pause();
 
-      try {
-        await video.play();
-      } catch {
-        // Ignore autoplay policy issues; hover intent may still fail on some browsers.
-      }
-    };
+    try {
+      video.currentTime = 0;
+    } catch {
+      // Some browsers may throw if video isn't seekable yet.
+    }
+  };
 
-    const handleMouseLeave = () => {
-      video.pause();
+  const wrapperStyle = {
+    position: 'relative',
+    display: 'inline-block',
+    lineHeight: 0,
+    ...style,
+  };
 
-      try {
-        video.currentTime = 0;
-      } catch {
-        // Some browsers may throw if video isn't seekable yet.
-      }
-    };
+  const videoStyle = {
+    width: '100%',
+    height: '100%',
+    objectFit: style?.objectFit,
+    display: 'block',
+  };
 
-    video.addEventListener('mouseenter', handleMouseEnter);
-    video.addEventListener('mouseleave', handleMouseLeave);
-
-    return () => {
-      video.removeEventListener('mouseenter', handleMouseEnter);
-      video.removeEventListener('mouseleave', handleMouseLeave);
-    };
-  }, [canHover]);
-
+  const effectiveControls = canHover ? false : controls;
   const effectiveMuted = canHover ? true : muted;
 
   return (
-    <video
-      ref={videoRef}
-      src={src}
-      preload="metadata"
-      muted={effectiveMuted}
-      loop={loop}
-      controls={controls}
-      playsInline={playsInline}
-      autoPlay={autoPlay}
-      className={className}
-      style={style}
+    <div
+      style={wrapperStyle}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       onClick={onClick}
-    />
+    >
+      <video
+        ref={videoRef}
+        src={src}
+        preload="metadata"
+        muted={effectiveMuted}
+        loop={loop}
+        controls={effectiveControls}
+        playsInline={playsInline}
+        autoPlay={autoPlay}
+        className={className}
+        style={videoStyle}
+      />
+    </div>
   );
 }
