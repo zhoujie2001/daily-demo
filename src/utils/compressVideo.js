@@ -1,26 +1,52 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile } from '@ffmpeg/util';
+import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
 export const VIDEO_COMPRESSION_THRESHOLD = 20 * 1024 * 1024;
+const FFMPEG_CORE_SOURCES = [
+  'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm',
+  'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm',
+];
 let ffmpeg;
 let loadingPromise;
 let compressionQueue = Promise.resolve();
 let jobSequence = 0;
 
 async function loadFFmpeg() {
-  if (!ffmpeg) {
-    ffmpeg = new FFmpeg({ log: true });
-  }
+  if (ffmpeg?.loaded) return ffmpeg;
 
-  if (!ffmpeg.loaded) {
-    loadingPromise ||= ffmpeg.load().catch((error) => {
+  if (!loadingPromise) {
+    loadingPromise = (async () => {
+      let lastError;
+
+      for (const baseURL of FFMPEG_CORE_SOURCES) {
+        let coreURL;
+        let wasmURL;
+        const candidate = new FFmpeg({ log: true });
+
+        try {
+          coreURL = await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript');
+          wasmURL = await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm');
+          await candidate.load({ coreURL, wasmURL });
+          ffmpeg = candidate;
+          return ffmpeg;
+        } catch (error) {
+          lastError = error;
+          candidate.terminate();
+          console.warn(`Failed to load FFmpeg core from ${baseURL}:`, error);
+        } finally {
+          if (coreURL) URL.revokeObjectURL(coreURL);
+          if (wasmURL) URL.revokeObjectURL(wasmURL);
+        }
+      }
+
+      throw new Error(`视频压缩组件加载失败：${lastError?.message || 'CDN 资源不可用'}`, { cause: lastError });
+    })().catch((error) => {
       loadingPromise = undefined;
       throw error;
     });
-    await loadingPromise;
   }
 
-  return ffmpeg;
+  return loadingPromise;
 }
 
 // A single FFmpeg instance owns one worker and one virtual filesystem. Queue
