@@ -6,7 +6,7 @@ import DailyEntry from './DailyEntry';
 import DailyEditor from './DailyEditor';
 import SearchBar from './SearchBar';
 import { useDialog } from '../../context/DialogContext';
-import { compressVideo } from '../../utils/compressVideo';
+import { compressVideo, VIDEO_COMPRESSION_THRESHOLD } from '../../utils/compressVideo';
 import EmptyState from '../ui/EmptyState';
 import { SkeletonCard, SkeletonText } from '../Skeleton';
 
@@ -141,7 +141,17 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
       const newAtt = files.map((file, index) => {
         const previewUrl = previewUrls[index];
         const id = `${type}-${Date.now()}-${index}-${file.name}`;
-        return { id, file, type, url: previewUrl, value: previewUrl };
+        return {
+          id,
+          file,
+          originalFile: file,
+          type,
+          url: previewUrl,
+          value: previewUrl,
+          compressionStatus: type === 'video' && file.size >= VIDEO_COMPRESSION_THRESHOLD ? 'queued' : 'ready',
+          originalSize: file.size,
+          compressedSize: type === 'video' && file.size < VIDEO_COMPRESSION_THRESHOLD ? file.size : null,
+        };
       });
       setAttachments((prev) => [...prev, ...newAtt]);
 
@@ -151,31 +161,54 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
 
       await Promise.all(
         newAtt.map(async (attachment) => {
+          if (attachment.compressionStatus !== 'queued') return;
           setCompressingCount((count) => count + 1);
           setAttachments((prev) =>
-            prev.map((att) => (att.id === attachment.id ? { ...att, compressing: true, compressionProgress: 0 } : att))
+            prev.map((att) =>
+              att.id === attachment.id
+                ? { ...att, compressing: true, compressionStatus: 'queued', compressionProgress: 0, compressionError: null }
+                : att
+            )
           );
 
           try {
-            const compressedFile = await compressVideo(attachment.file, (percent) => {
+            const compressedFile = await compressVideo(attachment.originalFile || attachment.file, (percent) => {
               setAttachments((prev) =>
                 prev.map((att) =>
-                  att.id === attachment.id ? { ...att, compressionProgress: Math.round(percent) } : att
+                  att.id === attachment.id
+                    ? { ...att, compressionStatus: 'compressing', compressionProgress: Math.round(percent) }
+                    : att
                 )
               );
             });
             setAttachments((prev) =>
               prev.map((att) =>
                 att.id === attachment.id
-                  ? { ...att, file: compressedFile, compressing: false, compressionProgress: 100 }
+                  ? {
+                      ...att,
+                      file: compressedFile,
+                      compressing: false,
+                      compressionStatus: 'ready',
+                      compressionProgress: 100,
+                      compressedSize: compressedFile.size,
+                      compressionError: null,
+                    }
                   : att
               )
             );
-          } catch {
-            toast.error('视频压缩失败，将尝试直接上传');
+          } catch (err) {
+            toast.error(`${attachment.file.name} 压缩失败，请重试或移除`);
             setAttachments((prev) =>
               prev.map((att) =>
-                att.id === attachment.id ? { ...att, compressing: false, compressionProgress: null } : att
+                att.id === attachment.id
+                  ? {
+                      ...att,
+                      compressing: false,
+                      compressionStatus: 'error',
+                      compressionProgress: null,
+                      compressionError: err.message || '视频压缩失败',
+                    }
+                  : att
               )
             );
           } finally {
@@ -185,6 +218,57 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
       );
     } catch (err) {
       toast.error(err.message || '文件读取失败');
+    }
+  };
+
+  const retryCompression = async (attachmentId) => {
+    const attachment = attachments.find((att) => att.id === attachmentId);
+    if (!attachment || attachment.type !== 'video' || attachment.compressionStatus !== 'error') return;
+
+    setCompressingCount((count) => count + 1);
+    setAttachments((prev) =>
+      prev.map((att) =>
+        att.id === attachmentId
+          ? { ...att, compressing: true, compressionStatus: 'queued', compressionProgress: 0, compressionError: null }
+          : att
+      )
+    );
+
+    try {
+      const compressedFile = await compressVideo(attachment.originalFile || attachment.file, (percent) => {
+        setAttachments((prev) =>
+          prev.map((att) =>
+            att.id === attachmentId
+              ? { ...att, compressionStatus: 'compressing', compressionProgress: Math.round(percent) }
+              : att
+          )
+        );
+      });
+      setAttachments((prev) =>
+        prev.map((att) =>
+          att.id === attachmentId
+            ? {
+                ...att,
+                file: compressedFile,
+                compressing: false,
+                compressionStatus: 'ready',
+                compressionProgress: 100,
+                compressedSize: compressedFile.size,
+              }
+            : att
+        )
+      );
+    } catch (err) {
+      setAttachments((prev) =>
+        prev.map((att) =>
+          att.id === attachmentId
+            ? { ...att, compressing: false, compressionStatus: 'error', compressionError: err.message || '视频压缩失败' }
+            : att
+        )
+      );
+      toast.error(`${attachment.file.name} 压缩仍然失败`);
+    } finally {
+      setCompressingCount((count) => Math.max(0, count - 1));
     }
   };
 
@@ -214,6 +298,10 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
 
   const handlePublish = async () => {
     if (publishing || compressingCount > 0) return;
+    if (attachments.some((att) => att.compressionStatus === 'error')) {
+      toast.error('请先重试或移除压缩失败的视频');
+      return;
+    }
     setPublishing(true);
     try {
       const editingPost = editingId ? posts.find((p) => p.id === editingId) : null;
@@ -311,10 +399,12 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
             attachments={attachments}
             tags={tags}
             publishing={publishing || compressingCount > 0}
+            hasAttachmentErrors={attachments.some((att) => att.compressionStatus === 'error')}
             onTextChange={setText}
             onTagsChange={setTags}
             onFilesSelected={handleFileSelect}
             onRemoveAttachment={removeAttachment}
+            onRetryCompression={retryCompression}
             onPublish={handlePublish}
             onCancelEdit={resetEditorToToday}
           />
