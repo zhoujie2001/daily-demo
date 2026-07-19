@@ -144,26 +144,22 @@ export function useDiary(token) {
       const finalMedia = [];
 
       if (attachments.length > 0 && token) {
-        const filesToUpload = attachments.filter((a) => a.file).map((a) => a.file);
-        let uploadedUrls = [];
-        if (filesToUpload.length > 0) {
-          uploadedUrls = await uploadApi.uploadFiles(filesToUpload, token);
-        }
-
-        let uploadIdx = 0;
         for (const att of attachments) {
           if (att.isExisting) {
             finalMedia.push({ type: att.type, url: att.url, value: att.value || att.url });
             continue;
           }
 
-          const uploadedUrl = att.file ? uploadedUrls[uploadIdx] : undefined;
-          if (att.file) {
-            uploadIdx += 1;
+          if (!att.file) {
+            throw new Error('附件文件已失效，请移除后重新选择');
           }
 
-          const resolvedUrl = await resolveAttachmentUrl(att, uploadedUrl);
-          finalMedia.push({ type: att.type, url: resolvedUrl, value: resolvedUrl });
+          try {
+            const [uploadedUrl] = await uploadApi.uploadFiles(att.file, token);
+            finalMedia.push({ type: att.type, url: uploadedUrl, value: uploadedUrl });
+          } catch (err) {
+            throw new Error(`${att.file.name} 上传失败：${err.message || '未知错误'}`, { cause: err });
+          }
         }
       } else {
         for (const att of attachments) {
