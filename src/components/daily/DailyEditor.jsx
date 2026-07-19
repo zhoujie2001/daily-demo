@@ -157,6 +157,7 @@ export default function DailyEditor({
               <input
                 type="file"
                 accept="video/*"
+                multiple
                 hidden
                 onChange={(e) => onFilesSelected(e, 'video')}
               />
