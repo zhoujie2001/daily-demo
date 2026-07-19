@@ -3,13 +3,29 @@ import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
 export const VIDEO_COMPRESSION_THRESHOLD = 20 * 1024 * 1024;
 const FFMPEG_CORE_SOURCES = [
-  'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm',
-  'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm',
+  { baseURL: new URL(`${import.meta.env.BASE_URL}ffmpeg`, window.location.origin).href, useBlob: false },
+  { baseURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm', useBlob: true },
+  { baseURL: 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm', useBlob: true },
 ];
 let ffmpeg;
 let loadingPromise;
 let compressionQueue = Promise.resolve();
 let jobSequence = 0;
+
+async function createLocalWasmURL(baseURL) {
+  const partURLs = [`${baseURL}/ffmpeg-core.wasm.part1`, `${baseURL}/ffmpeg-core.wasm.part2`];
+  const parts = [];
+
+  for (const partURL of partURLs) {
+    const response = await fetch(partURL);
+    if (!response.ok) {
+      throw new Error(`FFmpeg 核心分片加载失败 (${response.status})`);
+    }
+    parts.push(await response.arrayBuffer());
+  }
+
+  return URL.createObjectURL(new Blob(parts, { type: 'application/wasm' }));
+}
 
 async function loadFFmpeg() {
   if (ffmpeg?.loaded) return ffmpeg;
@@ -18,14 +34,18 @@ async function loadFFmpeg() {
     loadingPromise = (async () => {
       let lastError;
 
-      for (const baseURL of FFMPEG_CORE_SOURCES) {
+      for (const { baseURL, useBlob } of FFMPEG_CORE_SOURCES) {
         let coreURL;
         let wasmURL;
         const candidate = new FFmpeg({ log: true });
 
         try {
-          coreURL = await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript');
-          wasmURL = await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm');
+          coreURL = useBlob
+            ? await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript')
+            : `${baseURL}/ffmpeg-core.js`;
+          wasmURL = useBlob
+            ? await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
+            : await createLocalWasmURL(baseURL);
           await candidate.load({ coreURL, wasmURL });
           ffmpeg = candidate;
           return ffmpeg;
@@ -34,8 +54,8 @@ async function loadFFmpeg() {
           candidate.terminate();
           console.warn(`Failed to load FFmpeg core from ${baseURL}:`, error);
         } finally {
-          if (coreURL) URL.revokeObjectURL(coreURL);
-          if (wasmURL) URL.revokeObjectURL(wasmURL);
+          if (useBlob && coreURL) URL.revokeObjectURL(coreURL);
+          if (wasmURL?.startsWith('blob:')) URL.revokeObjectURL(wasmURL);
         }
       }
 
