@@ -197,7 +197,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
               )
             );
           } catch (err) {
-            toast.error(`${attachment.file.name} 压缩失败，请重试或移除`);
+            toast.error(`${attachment.file.name} 压缩失败：${err.message || '未知错误'}`);
             setAttachments((prev) =>
               prev.map((att) =>
                 att.id === attachment.id
@@ -266,7 +266,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
             : att
         )
       );
-      toast.error(`${attachment.file.name} 压缩仍然失败`);
+      toast.error(`${attachment.file.name} 压缩仍然失败：${err.message || '未知错误'}`);
     } finally {
       setCompressingCount((count) => Math.max(0, count - 1));
     }
