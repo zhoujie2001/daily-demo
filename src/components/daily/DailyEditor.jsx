@@ -10,14 +10,16 @@ export default function DailyEditor({
   attachments,
   tags = [],
   publishing = false,
+  hasAttachmentErrors = false,
   onTextChange,
   onTagsChange,
   onFilesSelected,
   onRemoveAttachment,
+  onRetryCompression,
   onPublish,
   onCancelEdit,
 }) {
-  const canPublish = (text.trim().length > 0 || attachments.length > 0) && !publishing;
+  const canPublish = (text.trim().length > 0 || attachments.length > 0) && !publishing && !hasAttachmentErrors;
   const [tagInput, setTagInput] = useState('');
 
   const toggleTag = (t) => {
@@ -68,15 +70,31 @@ export default function DailyEditor({
                   <img src={att.url} alt="" />
                 ) : (
                   <div className="editor-attachment-video">
-                    {att.compressing ? (
+                    {att.compressionStatus === 'queued' ? (
+                      <span>🎬 等待压缩…</span>
+                    ) : att.compressing ? (
                       <span>🎬 压缩中 {att.compressionProgress || 0}%…</span>
+                    ) : att.compressionStatus === 'error' ? (
+                      <span title={att.compressionError}>⚠️ 压缩失败</span>
                     ) : (
                       <>
                         <Film size={14} /> video
+                        {att.originalSize && att.compressedSize && att.compressedSize < att.originalSize
+                          ? ` ${(att.originalSize / 1024 / 1024).toFixed(1)} → ${(att.compressedSize / 1024 / 1024).toFixed(1)} MB`
+                          : ''}
                       </>
                     )}
                   </div>
                 )}
+                {att.compressionStatus === 'error' ? (
+                  <button
+                    type="button"
+                    className="editor-cancel editor-attachment-retry"
+                    onClick={() => onRetryCompression?.(att.id)}
+                  >
+                    重试
+                  </button>
+                ) : null}
                 <button
                   className="editor-attachment-remove"
                   onClick={() => onRemoveAttachment(i)}
