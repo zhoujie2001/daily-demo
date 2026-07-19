@@ -1,7 +1,7 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
 
-const SKIP_COMPRESS_SIZE = 20 * 1024 * 1024;
+export const VIDEO_COMPRESSION_THRESHOLD = 20 * 1024 * 1024;
 let ffmpeg;
 let loadingPromise;
 let compressionQueue = Promise.resolve();
@@ -37,7 +37,7 @@ function createJobId() {
 }
 
 export async function compressVideo(file, onProgress) {
-  if (!file || file.size < SKIP_COMPRESS_SIZE) {
+  if (!file || file.size < VIDEO_COMPRESSION_THRESHOLD) {
     onProgress?.(100);
     return file;
   }
@@ -80,13 +80,20 @@ export async function compressVideo(file, onProgress) {
       }
 
       const data = await instance.readFile(outputName);
+      if (!(data instanceof Uint8Array) || data.byteLength === 0) {
+        throw new Error('FFmpeg produced an empty video file');
+      }
       const compressedFile = new File([data], `${file.name.replace(/\.[^.]+$/, '') || 'video'}-compressed.mp4`, {
         type: 'video/mp4',
         lastModified: Date.now(),
       });
 
+      if (compressedFile.size >= file.size) {
+        throw new Error('压缩后文件没有变小，请缩短视频或降低源视频画质后重试');
+      }
+
       onProgress?.(100);
-      return compressedFile.size < file.size ? compressedFile : file;
+      return compressedFile;
     } finally {
       instance.off('progress', handleProgress);
       await Promise.allSettled([instance.deleteFile(inputName), instance.deleteFile(outputName)]);
