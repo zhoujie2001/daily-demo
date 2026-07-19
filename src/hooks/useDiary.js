@@ -147,11 +147,7 @@ export function useDiary(token) {
         const filesToUpload = attachments.filter((a) => a.file).map((a) => a.file);
         let uploadedUrls = [];
         if (filesToUpload.length > 0) {
-          try {
-            uploadedUrls = await uploadApi.uploadFiles(filesToUpload, token);
-          } catch (err) {
-            console.warn('Upload failed, falling back to local URLs.', err);
-          }
+          uploadedUrls = await uploadApi.uploadFiles(filesToUpload, token);
         }
 
         let uploadIdx = 0;
