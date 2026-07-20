@@ -1,70 +1,148 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile } from '@ffmpeg/util';
+import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
-const SKIP_COMPRESS_SIZE = 20 * 1024 * 1024;
-const INPUT_NAME = 'input-video';
-const OUTPUT_NAME = 'output.mp4';
-
+export const VIDEO_COMPRESSION_THRESHOLD = 20 * 1024 * 1024;
+const FFMPEG_CORE_SOURCES = [
+  { baseURL: new URL(`${import.meta.env.BASE_URL}ffmpeg`, window.location.origin).href, useBlob: false },
+  { baseURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm', useBlob: true },
+  { baseURL: 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm', useBlob: true },
+];
 let ffmpeg;
 let loadingPromise;
+let compressionQueue = Promise.resolve();
+let jobSequence = 0;
+
+async function createLocalWasmURL(baseURL) {
+  const partURLs = [`${baseURL}/ffmpeg-core.wasm.part1`, `${baseURL}/ffmpeg-core.wasm.part2`];
+  const parts = [];
+
+  for (const partURL of partURLs) {
+    const response = await fetch(partURL);
+    if (!response.ok) {
+      throw new Error(`FFmpeg 核心分片加载失败 (${response.status})`);
+    }
+    parts.push(await response.arrayBuffer());
+  }
+
+  return URL.createObjectURL(new Blob(parts, { type: 'application/wasm' }));
+}
 
 async function loadFFmpeg() {
-  if (!ffmpeg) {
-    ffmpeg = new FFmpeg({ log: true });
+  if (ffmpeg?.loaded) return ffmpeg;
+
+  if (!loadingPromise) {
+    loadingPromise = (async () => {
+      let lastError;
+
+      for (const { baseURL, useBlob } of FFMPEG_CORE_SOURCES) {
+        let coreURL;
+        let wasmURL;
+        const candidate = new FFmpeg({ log: true });
+
+        try {
+          coreURL = useBlob
+            ? await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript')
+            : `${baseURL}/ffmpeg-core.js`;
+          wasmURL = useBlob
+            ? await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
+            : await createLocalWasmURL(baseURL);
+          await candidate.load({ coreURL, wasmURL });
+          ffmpeg = candidate;
+          return ffmpeg;
+        } catch (error) {
+          lastError = error;
+          candidate.terminate();
+          console.warn(`Failed to load FFmpeg core from ${baseURL}:`, error);
+        } finally {
+          if (useBlob && coreURL) URL.revokeObjectURL(coreURL);
+          if (wasmURL?.startsWith('blob:')) URL.revokeObjectURL(wasmURL);
+        }
+      }
+
+      throw new Error(`视频压缩组件加载失败：${lastError?.message || 'CDN 资源不可用'}`, { cause: lastError });
+    })().catch((error) => {
+      loadingPromise = undefined;
+      throw error;
+    });
   }
 
-  if (!ffmpeg.loaded) {
-    loadingPromise ||= ffmpeg.load();
-    await loadingPromise;
-  }
+  return loadingPromise;
+}
 
-  return ffmpeg;
+// A single FFmpeg instance owns one worker and one virtual filesystem. Queue
+// jobs so concurrent selections cannot run exec/read/delete against each other.
+function enqueueCompression(task) {
+  const queuedTask = compressionQueue.then(task, task);
+  compressionQueue = queuedTask.catch(() => undefined);
+  return queuedTask;
+}
+
+function createJobId() {
+  jobSequence += 1;
+  return `${Date.now()}-${jobSequence}`;
 }
 
 export async function compressVideo(file, onProgress) {
-  if (!file || file.size < SKIP_COMPRESS_SIZE) {
+  if (!file || file.size < VIDEO_COMPRESSION_THRESHOLD) {
     onProgress?.(100);
     return file;
   }
 
-  const instance = await loadFFmpeg();
-  onProgress?.(0);
+  return enqueueCompression(async () => {
+    const instance = await loadFFmpeg();
+    const jobId = createJobId();
+    const inputName = `input-video-${jobId}`;
+    const outputName = `output-video-${jobId}.mp4`;
+    const handleProgress = ({ progress }) => {
+      const percent = Math.min(99, Math.max(0, Math.round((progress || 0) * 100)));
+      onProgress?.(percent);
+    };
 
-  const inputName = `${INPUT_NAME}-${Date.now()}`;
-  instance.on('progress', ({ progress }) => {
-    const percent = Math.min(99, Math.max(0, Math.round((progress || 0) * 100)));
-    onProgress?.(percent);
+    onProgress?.(0);
+    instance.on('progress', handleProgress);
+
+    try {
+      await instance.writeFile(inputName, await fetchFile(file));
+      const exitCode = await instance.exec([
+        '-i',
+        inputName,
+        '-vf',
+        'scale=-2:720',
+        '-c:v',
+        'libx264',
+        '-b:v',
+        '1500k',
+        '-c:a',
+        'aac',
+        '-b:a',
+        '128k',
+        '-movflags',
+        'faststart',
+        outputName,
+      ]);
+
+      if (exitCode !== 0) {
+        throw new Error(`FFmpeg compression failed with exit code ${exitCode}`);
+      }
+
+      const data = await instance.readFile(outputName);
+      if (!(data instanceof Uint8Array) || data.byteLength === 0) {
+        throw new Error('FFmpeg produced an empty video file');
+      }
+      const compressedFile = new File([data], `${file.name.replace(/\.[^.]+$/, '') || 'video'}-compressed.mp4`, {
+        type: 'video/mp4',
+        lastModified: Date.now(),
+      });
+
+      if (compressedFile.size >= file.size) {
+        throw new Error('压缩后文件没有变小，请缩短视频或降低源视频画质后重试');
+      }
+
+      onProgress?.(100);
+      return compressedFile;
+    } finally {
+      instance.off('progress', handleProgress);
+      await Promise.allSettled([instance.deleteFile(inputName), instance.deleteFile(outputName)]);
+    }
   });
-
-  try {
-    await instance.writeFile(inputName, await fetchFile(file));
-    await instance.exec([
-      '-i',
-      inputName,
-      '-vf',
-      'scale=-2:720',
-      '-c:v',
-      'libx264',
-      '-b:v',
-      '1500k',
-      '-c:a',
-      'aac',
-      '-b:a',
-      '128k',
-      '-movflags',
-      'faststart',
-      OUTPUT_NAME,
-    ]);
-
-    const data = await instance.readFile(OUTPUT_NAME);
-    const compressedFile = new File([data.buffer], `${file.name.replace(/\.[^.]+$/, '') || 'video'}-compressed.mp4`, {
-      type: 'video/mp4',
-      lastModified: Date.now(),
-    });
-
-    onProgress?.(100);
-    return compressedFile;
-  } finally {
-    await Promise.allSettled([instance.deleteFile(inputName), instance.deleteFile(OUTPUT_NAME)]);
-  }
 }
