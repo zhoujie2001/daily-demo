@@ -828,6 +828,20 @@ h2 {
   margin-bottom: 1.6rem;
 }
 
+.daily-heading-row {
+  width: min(100%, 520px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  margin-top: 60px;
+  margin-bottom: 20px;
+}
+
+.daily-heading-row h2 {
+  margin: 0;
+}
+
 .daily-search-shell {
   position: relative;
   width: min(100%, 240px);
@@ -3609,4 +3623,561 @@ h2 {
 
 .cal-widget-day.has-post:hover .cal-widget-day-dot {
   transform: translateX(-50%) scale(1.3);
+}
+
+/* ===== Daily Time Machine ===== */
+.daily-toolbar-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.daily-entry-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.time-machine-control {
+  position: relative;
+  z-index: 30;
+}
+
+.time-machine-button-group {
+  display: inline-flex;
+  height: 32px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  overflow: hidden;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.time-machine-button-group:hover {
+  color: var(--text-primary);
+  background: rgba(34, 34, 34, 0.035);
+}
+
+.time-machine-trigger,
+.time-machine-menu-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.time-machine-trigger {
+  gap: 0.38rem;
+  padding: 0 0.35rem 0 0.55rem;
+  font: 400 0.76rem/1 var(--font-sans);
+  letter-spacing: 0;
+}
+
+.time-machine-trigger > svg {
+  width: 14px;
+  height: 14px;
+  opacity: 0.72;
+}
+
+.time-machine-menu-toggle {
+  width: 24px;
+  border-left: none;
+}
+
+.time-machine-menu-toggle > svg {
+  width: 13px;
+  height: 13px;
+  opacity: 0.68;
+  transition: transform 0.18s ease;
+}
+
+.time-machine-menu-toggle[aria-expanded="true"] > svg {
+  transform: rotate(180deg);
+}
+
+.time-machine-trigger:disabled,
+.time-machine-menu-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.time-machine-trigger:focus-visible,
+.time-machine-menu-toggle:focus-visible,
+.time-machine-option:focus-visible,
+.time-arrival button:focus-visible,
+.time-arrival-mini:focus-visible {
+  outline: 2px solid rgba(34, 34, 34, 0.48);
+  outline-offset: 2px;
+}
+
+.time-machine-label-short {
+  display: none;
+}
+
+.time-machine-menu {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  left: auto;
+  right: 0;
+  width: min(292px, calc(100vw - 32px));
+  padding: 0.4rem;
+  background: rgba(250, 249, 246, 0.98);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 16px 42px rgba(34, 32, 28, 0.11);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  animation: time-menu-in 0.18s ease-out both;
+}
+
+.time-machine-menu-heading {
+  padding: 0.55rem 0.65rem 0.5rem;
+  color: var(--text-secondary);
+  font: 400 0.72rem/1.2 var(--font-sans);
+  letter-spacing: 0.02em;
+}
+
+.time-machine-option {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  align-items: start;
+  gap: 0.6rem;
+  padding: 0.68rem 0.65rem;
+  text-align: left;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.16s ease;
+}
+
+.time-machine-option:hover,
+.time-machine-option.active {
+  background: rgba(34, 34, 34, 0.045);
+}
+
+.time-machine-option-dot {
+  width: 7px;
+  height: 7px;
+  margin-top: 0.35rem;
+  border: 1px solid rgba(34, 34, 34, 0.32);
+  border-radius: 50%;
+}
+
+.time-machine-option.active .time-machine-option-dot {
+  background: var(--text-primary);
+  box-shadow: inset 0 0 0 1.5px var(--bg-primary);
+}
+
+.time-machine-option strong,
+.time-machine-option small {
+  display: block;
+}
+
+.time-machine-option strong {
+  margin-bottom: 0.2rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.time-machine-option small {
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.time-travel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  color: var(--text-primary);
+  background: rgba(249, 248, 245, 0.92);
+  backdrop-filter: blur(18px) saturate(0.7);
+  -webkit-backdrop-filter: blur(18px) saturate(0.7);
+  overflow: hidden;
+  animation: time-overlay-in 0.22s ease-out both;
+}
+
+.time-travel-portal {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(72vw, 620px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+}
+
+.time-travel-portal span {
+  position: absolute;
+  inset: 18%;
+  border: 1px solid rgba(34, 34, 34, 0.12);
+  border-radius: 50%;
+  animation: time-ring 1.6s ease-in-out infinite;
+}
+
+.time-travel-portal span:nth-child(2) {
+  inset: 8%;
+  animation-delay: -0.45s;
+}
+
+.time-travel-portal span:nth-child(3) {
+  inset: -2%;
+  animation-delay: -0.9s;
+}
+
+.time-travel-content {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 620px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  text-align: center;
+}
+
+.time-travel-content > svg {
+  color: var(--text-secondary);
+  animation: time-clock-turn 0.75s linear infinite;
+}
+
+.time-travel-content p {
+  margin: 0;
+  color: var(--text-secondary);
+  font: 0.75rem/1.5 var(--font-mono);
+  letter-spacing: 0.08em;
+}
+
+.time-travel-date {
+  font-family: var(--font-serif);
+  font-size: clamp(2rem, 7vw, 5.8rem);
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: -0.055em;
+  animation: time-date-flip 0.12s ease-out both;
+}
+
+.time-travel-track {
+  position: relative;
+  width: min(280px, 70vw);
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.65rem;
+}
+
+.time-travel-track::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: rgba(34, 34, 34, 0.16);
+}
+
+.time-travel-track i {
+  position: relative;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  box-shadow: 0 0 0 5px rgba(34, 34, 34, 0.045);
+  animation: time-dot 0.7s ease-in-out infinite alternate;
+}
+
+.time-travel-track i:nth-child(2) { animation-delay: 0.1s; }
+.time-travel-track i:nth-child(3) { animation-delay: 0.2s; }
+.time-travel-track i:nth-child(4) { animation-delay: 0.3s; }
+.time-travel-track i:nth-child(5) { animation-delay: 0.4s; }
+
+.time-arrival {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.38);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(34, 32, 28, 0.05);
+  animation: time-arrival-in 0.45s cubic-bezier(0.19, 1, 0.22, 1) both;
+}
+
+.time-arrival:focus {
+  outline: none;
+}
+
+.time-arrival-copy,
+.time-arrival-actions {
+  display: flex;
+  align-items: center;
+}
+
+.time-arrival-copy {
+  min-width: 0;
+  gap: 0.7rem;
+}
+
+.time-arrival-icon {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  background: rgba(34, 34, 34, 0.035);
+  border: none;
+  border-radius: 50%;
+}
+
+.time-arrival-copy strong,
+.time-arrival-copy span {
+  display: block;
+}
+
+.time-arrival-copy strong {
+  margin-bottom: 0.2rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.time-arrival-copy span {
+  color: var(--text-secondary);
+  font: 0.68rem/1.3 var(--font-mono);
+}
+
+.time-arrival-actions {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.time-arrival-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  min-height: 32px;
+  padding: 0.35rem 0.58rem;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.28);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font: 400 0.68rem/1 var(--font-sans);
+  cursor: pointer;
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.time-arrival-actions button:hover {
+  color: var(--text-primary);
+  background: rgba(34, 34, 34, 0.04);
+}
+
+.time-arrival-mini {
+  display: none;
+}
+
+.entry.time-capsule-active {
+  isolation: isolate;
+}
+
+.entry.time-capsule-active::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -1rem;
+  pointer-events: none;
+  border: 1px solid rgba(161, 112, 39, 0);
+  border-radius: 22px;
+  background: rgba(252, 244, 222, 0);
+  animation: time-capsule-flash 1.8s ease-out both;
+}
+
+@keyframes time-menu-in {
+  from { opacity: 0; transform: translateY(-5px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes time-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes time-ring {
+  0%, 100% { opacity: 0.3; transform: scale(0.88); }
+  50% { opacity: 0.8; transform: scale(1.03); }
+}
+
+@keyframes time-clock-turn {
+  to { transform: rotate(-360deg); }
+}
+
+@keyframes time-date-flip {
+  from { opacity: 0.25; transform: translateY(9px) rotateX(45deg); }
+  to { opacity: 1; transform: translateY(0) rotateX(0); }
+}
+
+@keyframes time-dot {
+  to { opacity: 0.3; transform: scale(0.7); }
+}
+
+@keyframes time-arrival-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes time-capsule-flash {
+  0% {
+    background: rgba(34, 34, 34, 0.065);
+    border-color: rgba(34, 34, 34, 0.22);
+    box-shadow: 0 0 0 0 rgba(34, 34, 34, 0.08), 0 18px 48px rgba(34, 32, 28, 0.07);
+  }
+  65% {
+    background: rgba(34, 34, 34, 0.018);
+    border-color: rgba(34, 34, 34, 0.08);
+  }
+  100% {
+    background: rgba(34, 34, 34, 0);
+    border-color: rgba(34, 34, 34, 0);
+    box-shadow: 0 0 0 16px rgba(34, 34, 34, 0), 0 18px 48px rgba(34, 32, 28, 0);
+  }
+}
+
+@media (max-width: 900px) {
+  .time-arrival {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .time-arrival-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 600px) {
+  .daily-heading-row {
+    gap: 1rem;
+  }
+
+  .daily-toolbar-row {
+    flex-wrap: nowrap;
+  }
+
+  .daily-toolbar-row .daily-search-shell {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+  }
+
+  .daily-toolbar-row .daily-search-input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .time-machine-control {
+    flex: 0 0 auto;
+  }
+
+  .time-machine-label-full {
+    display: none;
+  }
+
+  .time-machine-label-short {
+    display: inline;
+  }
+
+  .time-machine-trigger {
+    padding-left: 0.5rem;
+    padding-right: 0.3rem;
+  }
+
+  .time-machine-menu {
+    position: absolute;
+    top: calc(100% + 0.45rem);
+    left: auto;
+    right: 0;
+    width: min(320px, calc(100vw - 32px));
+  }
+
+  .time-travel-portal {
+    width: 115vw;
+  }
+
+  .time-travel-content {
+    transform: translateY(-4vh);
+  }
+
+  .time-travel-date {
+    font-size: clamp(2rem, 12vw, 3.5rem);
+  }
+
+  .time-arrival {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    z-index: 1250;
+    padding: 0.85rem;
+    border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(34, 32, 28, 0.16);
+  }
+
+  .time-arrival-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .time-arrival-actions button {
+    justify-content: center;
+  }
+
+  .time-arrival-actions button:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .time-arrival-mini {
+    position: fixed;
+    right: 14px;
+    bottom: calc(14px + env(safe-area-inset-bottom));
+    z-index: 1250;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 38px;
+    padding: 0.45rem 0.7rem;
+    color: var(--text-secondary);
+    background: rgba(249, 248, 245, 0.96);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    box-shadow: 0 12px 35px rgba(34, 32, 28, 0.14);
+    font: 400 0.72rem/1 var(--font-sans);
+    cursor: pointer;
+    animation: time-arrival-in 0.3s ease-out both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .time-machine-button-group,
+  .time-machine-menu,
+  .time-arrival,
+  .time-arrival-mini,
+  .entry.time-capsule-active::before {
+    animation: none;
+    transition: none;
+  }
 }

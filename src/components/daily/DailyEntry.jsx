@@ -210,9 +210,13 @@ function renderMediaItem(item, idx) {
   return null;
 }
 
-export default function DailyEntry({ post, isAdmin, onEdit, onDelete, keyword = '' }) {
+export default function DailyEntry({ post, isAdmin, onEdit, onDelete, keyword = '', timeMachineActive = false }) {
   return (
-    <article className="entry" id={post.id}>
+    <article
+      className={`entry ${timeMachineActive ? 'time-capsule-active' : ''}`}
+      id={post.id}
+      data-time-machine-active={timeMachineActive || undefined}
+    >
       <div className="entry-header">
         <div className="entry-date">{post.date}</div>
         {isAdmin ? (
