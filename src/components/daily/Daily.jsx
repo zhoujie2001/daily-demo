@@ -570,16 +570,18 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
 
   return (
     <section id="daily" className="daily-section">
-      <h2>Daily</h2>
+      <div className="daily-heading-row">
+        <h2>Daily</h2>
+        <TimeMachineControls
+          disabled={loading || !posts?.length}
+          isTraveling={isTraveling}
+          onTravel={startTimeTravel}
+        />
+      </div>
 
       <div className="daily-toolbar">
         <div className="daily-toolbar-row">
           <SearchBar value={keyword} onChange={handleKeywordChange} onClear={() => handleKeywordChange('')} />
-          <TimeMachineControls
-            disabled={loading || !posts?.length}
-            isTraveling={isTraveling}
-            onTravel={startTimeTravel}
-          />
         </div>
         {allTags.length > 0 ? (
           <div className="daily-tag-filter">
