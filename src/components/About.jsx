@@ -8,7 +8,7 @@ export default function About({ isAdmin, onRequestLogin }) {
         style={{ cursor: isAdmin ? 'default' : 'pointer' }}
         title={!isAdmin ? 'Double click to login as admin' : ''}
       >
-        周杰 / Dylan
+        四十四次日落 / Dylan
       </h1>
       <p className="subtitle">
         A pessimist in the third quadrant, yet passionate about movement.
