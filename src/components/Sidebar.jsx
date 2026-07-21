@@ -99,7 +99,7 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
           onDoubleClick={() => !isAdmin && onRequestLogin()}
           title={!isAdmin ? 'Double click to login as admin' : ''}
         >
-          四十四次日落 / Dylan
+          Dylan
         </button>
         <button
           type="button"
@@ -120,7 +120,7 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
 
       <aside className={`mobile-nav-drawer ${menuOpen ? 'open' : ''}`}>
         <div className="mobile-nav-header">
-          <div className="mobile-nav-brand">四十四次日落 / Dylan</div>
+          <div className="mobile-nav-brand">Dylan</div>
           <button type="button" className="mobile-menu-toggle" onClick={closeMenu} aria-label="关闭导航">
             ✕
           </button>
@@ -167,7 +167,7 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
           style={{ cursor: isAdmin ? 'default' : 'pointer' }}
           title={!isAdmin ? 'Double click to login as admin' : ''}
         >
-          四十四次日落 / Dylan
+          Dylan
           {isAdmin ? (
             <span className="view-count-badge">
               <Eye size={14} />
