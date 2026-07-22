@@ -85,7 +85,6 @@ export default function Photography({
   return (
     <section id="photography" className="photography-section">
       <SectionHeading
-        index="04"
         title="Photography"
         description="光线落下时，替记忆按一次快门。"
         action={isAdmin ? (

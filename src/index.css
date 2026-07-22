@@ -330,7 +330,7 @@ h2 {
     transform: translate3d(0, 0, 0);
   }
   100% {
-    transform: translate3d(-50%, 0, 0);
+    transform: translate3d(calc(-50% - var(--travel-seam-offset, 9px)), 0, 0);
   }
 }
 

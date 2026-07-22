@@ -142,22 +142,6 @@ select {
   background: linear-gradient(transparent, var(--line) 12%, var(--line) 88%, transparent);
 }
 
-.sidebar-kicker,
-.about-kicker,
-.section-heading-index {
-  color: var(--accent);
-  font-family: var(--font-sans);
-  font-size: 0.68rem;
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
-.sidebar-kicker {
-  margin-bottom: 10px;
-}
-
 .sidebar h2 {
   margin: 0 0 26px;
   font-size: clamp(1.7rem, 2.2vw, 2.15rem);
@@ -190,14 +174,12 @@ select {
 }
 
 .sidebar nav {
-  counter-reset: section-nav;
   gap: 4px;
 }
 
 .sidebar nav a {
-  counter-increment: section-nav;
   min-height: 38px;
-  gap: 10px;
+  gap: 0;
   padding: 7px 10px;
   color: var(--ink-muted);
   border-radius: var(--radius-sm);
@@ -206,21 +188,6 @@ select {
   line-height: 1;
   transform: none;
   transition: color 180ms ease, background 180ms ease, transform 180ms var(--ease-out);
-}
-
-.sidebar nav a::before {
-  content: counter(section-nav, decimal-leading-zero);
-  position: static;
-  width: 22px;
-  height: auto;
-  flex: 0 0 22px;
-  color: var(--ink-muted);
-  background: transparent;
-  border-radius: 0;
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  opacity: 0.66;
-  transform: none;
 }
 
 .sidebar nav a:hover,
@@ -233,13 +200,6 @@ select {
 
 .sidebar nav a.active {
   box-shadow: inset 2px 0 0 var(--accent);
-}
-
-.sidebar nav a:hover::before,
-.sidebar nav a.active::before {
-  color: var(--accent);
-  opacity: 1;
-  transform: none;
 }
 
 .sidebar-logout {
@@ -262,10 +222,6 @@ select {
   flex-direction: column;
   justify-content: center;
   padding: 24px 0 var(--section-space);
-}
-
-.about-kicker {
-  margin: 0 0 22px;
 }
 
 #about h1 {
@@ -315,16 +271,7 @@ select {
 }
 
 .section-heading-copy {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  align-items: start;
-  gap: 14px;
-}
-
-.section-heading-index {
-  padding-top: 9px;
-  font-family: var(--font-mono);
-  letter-spacing: 0.08em;
+  min-width: 0;
 }
 
 .section-heading h2 {
@@ -556,6 +503,11 @@ select {
   border-color: rgba(166, 95, 66, 0.28);
 }
 
+.time-arrival {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
 .time-machine-menu {
   background: rgba(252, 250, 246, 0.98);
   border-color: var(--line);
@@ -647,6 +599,7 @@ select {
 }
 
 .video-track {
+  --travel-seam-offset: 9px;
   gap: 18px;
   padding: 8px 0 34px;
 }
@@ -903,8 +856,7 @@ select {
     scroll-padding-top: 70px;
   }
 
-  .sidebar,
-  .sidebar-kicker {
+  .sidebar {
     display: none;
   }
 
@@ -1005,10 +957,6 @@ select {
     padding-top: 18px;
   }
 
-  .about-kicker {
-    margin-bottom: 18px;
-  }
-
   #about h1 {
     font-size: clamp(3.1rem, 14vw, 4.6rem);
     line-height: 0.94;
@@ -1030,13 +978,7 @@ select {
   }
 
   .section-heading-copy {
-    grid-template-columns: 32px minmax(0, 1fr);
-    gap: 8px;
-  }
-
-  .section-heading-index {
-    padding-top: 6px;
-    font-size: 0.6rem;
+    min-width: 0;
   }
 
   .section-heading h2 {
@@ -1096,6 +1038,7 @@ select {
   }
 
   .video-track {
+    --travel-seam-offset: 7px;
     gap: 14px;
   }
 
@@ -1120,5 +1063,10 @@ select {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .video-track-infinite {
+    animation-duration: 60s !important;
+    animation-iteration-count: infinite !important;
   }
 }

@@ -572,7 +572,6 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
   return (
     <section id="daily" className="daily-section">
       <SectionHeading
-        index="01"
         title="Daily"
         description="把普通日子收进时间里。"
         action={<TimeMachineControls

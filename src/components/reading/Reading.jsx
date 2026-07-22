@@ -127,7 +127,6 @@ export default function Reading({ isAdmin, books, loading, saving, backendReady,
   return (
     <section id="reading" className="reading-section">
       <SectionHeading
-        index="02"
         title="Reading"
         description="读过的书，也在慢慢塑造生活。"
         action={isAdmin ? (

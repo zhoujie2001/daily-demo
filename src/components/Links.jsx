@@ -7,7 +7,6 @@ export default function Links() {
   return (
     <section id="links" className="links-section">
       <SectionHeading
-        index="06"
         title="Links"
         description="在网络的其他角落，也可以找到我。"
       />

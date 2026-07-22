@@ -214,7 +214,6 @@ export default function Song() {
   return (
     <section id="song" className="song-section">
       <SectionHeading
-        index="05"
         title="Song"
         description="循环播放的歌，保存另一种时间。"
       />

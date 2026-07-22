@@ -3,7 +3,6 @@ import React from 'react';
 export default function About({ isAdmin, onRequestLogin }) {
   return (
     <section id="about" className="about-section">
-      <p className="about-kicker">四十四次日落 · 成都</p>
       <h1
         onDoubleClick={() => !isAdmin && onRequestLogin()}
         style={{ cursor: isAdmin ? 'default' : 'pointer' }}

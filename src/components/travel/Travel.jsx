@@ -74,7 +74,6 @@ export default function Travel({
   return (
     <section id="travel" className="travel-section">
       <SectionHeading
-        index="03"
         title="Travel"
         description="路过的风景，和当时的呼吸。"
         action={isAdmin ? (

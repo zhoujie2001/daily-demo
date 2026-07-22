@@ -162,7 +162,6 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
       </aside>
 
       <aside className="sidebar">
-        <span className="sidebar-kicker">四十四次日落</span>
         <h2
           onDoubleClick={() => !isAdmin && onRequestLogin()}
           style={{ cursor: isAdmin ? 'default' : 'pointer' }}
