@@ -56,19 +56,35 @@ export function useReading(token) {
       };
       if (!clean.title) throw new Error('书名不能为空');
 
-      // 本地演示模式（未登录 or 后端未就绪）
-      if (!token || !backendReady) {
-        if (payload.id) {
-          setBooks((prev) => prev.map((b) => (b.id === payload.id ? normalize({ ...b, ...clean }) : b)));
-        } else {
-          const local = normalize({ id: `local-${Math.random().toString(36).slice(2, 8)}`, ...clean });
-          setBooks((prev) => [local, ...prev]);
-        }
-        return;
-      }
-
       setSaving(true);
       try {
+        // 用户没有手动选择封面时，保存动作本身也会做一次自动匹配，
+        // 避免从书名输入框直接点击“保存”而错过 blur 搜索。
+        if (!clean.cover_url) {
+          try {
+            const candidates = await readingApi.searchBookCovers({
+              title: clean.title,
+              author: clean.author,
+            });
+            clean.cover_url = candidates[0]?.coverUrl || '';
+            clean.author = clean.author || candidates[0]?.authors?.join(' / ') || '';
+            clean.year = clean.year || candidates[0]?.year || '';
+          } catch {
+            // 自动匹配失败不应阻断书籍保存，交给占位封面兜底。
+          }
+        }
+
+        // 本地演示模式（未登录 or 后端未就绪）
+        if (!token || !backendReady) {
+          if (payload.id) {
+            setBooks((prev) => prev.map((b) => (b.id === payload.id ? normalize({ ...b, ...clean }) : b)));
+          } else {
+            const local = normalize({ id: `local-${Math.random().toString(36).slice(2, 8)}`, ...clean });
+            setBooks((prev) => [local, ...prev]);
+          }
+          return;
+        }
+
         const item = payload.id
           ? await readingApi.updateBook(payload.id, clean, token)
           : await readingApi.createBook(clean, token);

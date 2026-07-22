@@ -1,5 +1,21 @@
 import { authHeaders, requestJson } from './client';
 
+export async function searchBookCovers({ title = '', author = '', isbn = '' }) {
+  const params = new URLSearchParams();
+  if (title.trim()) params.set('title', title.trim());
+  if (author.trim()) params.set('author', author.trim());
+  if (isbn.trim()) params.set('isbn', isbn.trim());
+
+  const response = await fetch(`/api/book-search?${params}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.error || `封面搜索失败: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  return Array.isArray(data.candidates) ? data.candidates : [];
+}
+
 export function fetchBooks() {
   return requestJson('/api/reading');
 }

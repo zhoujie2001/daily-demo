@@ -1746,6 +1746,168 @@ h2 {
   min-height: 3rem;
 }
 
+.book-cover-finder {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  background: rgba(166, 95, 66, 0.035);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+}
+
+.book-cover-finder-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.book-cover-finder-header > div {
+  min-width: 0;
+}
+
+.book-cover-finder-header strong,
+.book-cover-finder-header span {
+  display: block;
+}
+
+.book-cover-finder-header strong {
+  color: var(--text-primary);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.book-cover-finder-header span {
+  margin-top: 0.18rem;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.book-editor .book-isbn-field {
+  max-width: 240px;
+  flex: none;
+}
+
+.book-cover-candidates {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.book-cover-candidate {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem;
+  color: var(--text-primary);
+  text-align: left;
+  background: rgba(255, 255, 255, 0.52);
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.book-cover-candidate:hover {
+  border-color: rgba(166, 95, 66, 0.36);
+  transform: translateY(-1px);
+}
+
+.book-cover-candidate.selected {
+  background: rgba(166, 95, 66, 0.09);
+  border-color: rgba(166, 95, 66, 0.52);
+}
+
+.book-cover-candidate-image {
+  position: relative;
+  flex: 0 0 46px;
+  width: 46px;
+  height: 64px;
+  overflow: hidden;
+  background: var(--border-color);
+  border-radius: 5px;
+  box-shadow: 0 5px 12px rgba(48, 43, 35, 0.12);
+}
+
+.book-cover-candidate-image img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.book-cover-selected-mark {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: var(--accent, #a65f42);
+  border: 2px solid #fff;
+  border-radius: 50%;
+}
+
+.book-cover-candidate-copy {
+  min-width: 0;
+}
+
+.book-cover-candidate-copy strong,
+.book-cover-candidate-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.book-cover-candidate-copy strong {
+  display: -webkit-box;
+  color: var(--text-primary);
+  font-size: 0.73rem;
+  font-weight: 600;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.book-cover-candidate-copy small {
+  margin-top: 0.25rem;
+  color: var(--text-secondary);
+  font-size: 0.63rem;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.book-cover-empty {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  background: rgba(255, 255, 255, 0.36);
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+}
+
+.book-cover-search-message {
+  margin: 0;
+  color: #a4513f;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.book-editor .book-cover-url-field {
+  gap: 0.4rem;
+}
+
 .book-editor-row {
   display: flex;
   gap: 0.9rem;
@@ -1785,6 +1947,19 @@ h2 {
 @media (max-width: 600px) {
   .book-editor-row {
     flex-direction: column;
+  }
+  .book-cover-finder-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .book-cover-finder-header .ui-btn {
+    align-self: flex-start;
+  }
+  .book-cover-candidates {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .book-editor .book-isbn-field {
+    max-width: none;
   }
   .book-list {
     grid-template-columns: 1fr;

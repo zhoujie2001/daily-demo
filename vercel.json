@@ -2,6 +2,10 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "functions": {
+    "api/book-search.js": { "maxDuration": 10 },
+    "api/book-cover.js": { "maxDuration": 10 }
+  },
   "headers": [
     {
       "source": "/(.*)",

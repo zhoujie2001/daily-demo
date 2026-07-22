@@ -21,8 +21,8 @@ function Stars({ value }) {
 }
 
 function BookCard({ book, isAdmin, onEdit, onDelete }) {
-  const [coverFailed, setCoverFailed] = useState(false);
-  const showCover = Boolean(book.cover_url) && !coverFailed;
+  const [failedCoverUrl, setFailedCoverUrl] = useState('');
+  const showCover = Boolean(book.cover_url) && failedCoverUrl !== book.cover_url;
 
   return (
     <li className="book-card">
@@ -32,7 +32,7 @@ function BookCard({ book, isAdmin, onEdit, onDelete }) {
             src={book.cover_url}
             alt={`《${book.title}》封面`}
             loading="lazy"
-            onError={() => setCoverFailed(true)}
+            onError={() => setFailedCoverUrl(book.cover_url)}
           />
         ) : (
           <div className="book-cover-placeholder" role="img" aria-label={`《${book.title}》暂无封面`}>
