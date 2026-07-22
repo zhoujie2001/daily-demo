@@ -1,7 +1,8 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import { MAX_UPLOAD_REQUEST_BYTES, formatFileSize } from './uploadLimits';
 
-export const VIDEO_COMPRESSION_THRESHOLD = 20 * 1024 * 1024;
+export const VIDEO_COMPRESSION_THRESHOLD = MAX_UPLOAD_REQUEST_BYTES;
 const FFMPEG_CORE_SOURCES = [
   { baseURL: new URL(`${import.meta.env.BASE_URL}ffmpeg`, window.location.origin).href, useBlob: false },
   { baseURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm', useBlob: true },
@@ -82,6 +83,78 @@ function createJobId() {
   return `${Date.now()}-${jobSequence}`;
 }
 
+function readVideoDuration(file) {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    const objectUrl = URL.createObjectURL(file);
+    let settled = false;
+    const timeoutId = window.setTimeout(() => finish(new Error('读取视频时长超时')), 8000);
+
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      video.removeAttribute('src');
+      video.load();
+      URL.revokeObjectURL(objectUrl);
+    };
+    const finish = (error, duration) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) reject(error);
+      else resolve(duration);
+    };
+
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      const duration = Number(video.duration);
+      if (!Number.isFinite(duration) || duration <= 0) {
+        finish(new Error('无法读取视频时长'));
+        return;
+      }
+      finish(null, duration);
+    };
+    video.onerror = () => finish(new Error('浏览器无法读取视频信息'));
+    video.src = objectUrl;
+  });
+}
+
+function calculateVideoBitrate(duration) {
+  if (!Number.isFinite(duration) || duration <= 0) return 1500;
+  const targetTotalKbps = Math.floor((MAX_UPLOAD_REQUEST_BYTES * 8 * 0.88) / duration / 1000);
+  const audioKbps = targetTotalKbps < 360 ? 48 : 64;
+  return Math.min(1500, Math.max(160, targetTotalKbps - audioKbps));
+}
+
+async function encodeVideo(instance, inputName, outputName, videoBitrate, scaleHeight) {
+  return instance.exec([
+    '-i',
+    inputName,
+    '-map_metadata',
+    '-1',
+    '-vf',
+    `scale=-2:${scaleHeight}`,
+    '-c:v',
+    'libx264',
+    '-preset',
+    'veryfast',
+    '-pix_fmt',
+    'yuv420p',
+    '-b:v',
+    `${videoBitrate}k`,
+    '-maxrate',
+    `${videoBitrate}k`,
+    '-bufsize',
+    `${videoBitrate * 2}k`,
+    '-c:a',
+    'aac',
+    '-b:a',
+    videoBitrate < 360 ? '48k' : '64k',
+    '-movflags',
+    'faststart',
+    outputName,
+  ]);
+}
+
 export async function compressVideo(file, onProgress) {
   if (!file || file.size < VIDEO_COMPRESSION_THRESHOLD) {
     onProgress?.(100);
@@ -93,8 +166,11 @@ export async function compressVideo(file, onProgress) {
     const jobId = createJobId();
     const inputName = `input-video-${jobId}`;
     const outputName = `output-video-${jobId}.mp4`;
+    const retryOutputName = `output-video-${jobId}-retry.mp4`;
+    let encodingPass = 0;
     const handleProgress = ({ progress }) => {
-      const percent = Math.min(99, Math.max(0, Math.round((progress || 0) * 100)));
+      const normalized = Math.min(1, Math.max(0, progress || 0));
+      const percent = encodingPass === 0 ? Math.round(normalized * 70) : 70 + Math.round(normalized * 29);
       onProgress?.(percent);
     };
 
@@ -102,47 +178,60 @@ export async function compressVideo(file, onProgress) {
     instance.on('progress', handleProgress);
 
     try {
+      const duration = await readVideoDuration(file).catch(() => 0);
+      let videoBitrate = calculateVideoBitrate(duration);
       await instance.writeFile(inputName, await fetchFile(file));
-      const exitCode = await instance.exec([
-        '-i',
-        inputName,
-        '-vf',
-        'scale=-2:720',
-        '-c:v',
-        'libx264',
-        '-b:v',
-        '1500k',
-        '-c:a',
-        'aac',
-        '-b:a',
-        '128k',
-        '-movflags',
-        'faststart',
-        outputName,
-      ]);
+      let finalOutputName = outputName;
+      let exitCode = await encodeVideo(instance, inputName, outputName, videoBitrate, 720);
 
       if (exitCode !== 0) {
         throw new Error(`FFmpeg compression failed with exit code ${exitCode}`);
       }
 
-      const data = await instance.readFile(outputName);
+      let data = await instance.readFile(outputName);
       if (!(data instanceof Uint8Array) || data.byteLength === 0) {
         throw new Error('FFmpeg produced an empty video file');
       }
+
+      if (data.byteLength > MAX_UPLOAD_REQUEST_BYTES) {
+        encodingPass = 1;
+        videoBitrate = Math.max(
+          120,
+          Math.floor(videoBitrate * (MAX_UPLOAD_REQUEST_BYTES / data.byteLength) * 0.82)
+        );
+        exitCode = await encodeVideo(instance, inputName, retryOutputName, videoBitrate, videoBitrate < 400 ? 480 : 720);
+        if (exitCode !== 0) {
+          throw new Error(`FFmpeg retry failed with exit code ${exitCode}`);
+        }
+        finalOutputName = retryOutputName;
+        data = await instance.readFile(finalOutputName);
+      }
+
+      if (!(data instanceof Uint8Array) || data.byteLength === 0) {
+        throw new Error('FFmpeg produced an empty video file');
+      }
+      if (data.byteLength > MAX_UPLOAD_REQUEST_BYTES) {
+        throw new Error(
+          `视频压缩后仍有 ${formatFileSize(data.byteLength)}，请缩短视频后重试（安全上限 ${formatFileSize(
+            MAX_UPLOAD_REQUEST_BYTES
+          )}）`
+        );
+      }
+
       const compressedFile = new File([data], `${file.name.replace(/\.[^.]+$/, '') || 'video'}-compressed.mp4`, {
         type: 'video/mp4',
         lastModified: Date.now(),
       });
 
-      if (compressedFile.size >= file.size) {
-        throw new Error('压缩后文件没有变小，请缩短视频或降低源视频画质后重试');
-      }
-
       onProgress?.(100);
       return compressedFile;
     } finally {
       instance.off('progress', handleProgress);
-      await Promise.allSettled([instance.deleteFile(inputName), instance.deleteFile(outputName)]);
+      await Promise.allSettled([
+        instance.deleteFile(inputName),
+        instance.deleteFile(outputName),
+        instance.deleteFile(retryOutputName),
+      ]);
     }
   });
 }

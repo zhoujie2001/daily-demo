@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 export default function TravelVideo({
   src,
@@ -11,8 +11,34 @@ export default function TravelVideo({
   autoPlay,
   disableHover,
   onClick,
+  title,
 }) {
   const videoRef = useRef(null);
+  const wrapperRef = useRef(null);
+  const [isNearViewport, setIsNearViewport] = useState(
+    () => typeof IntersectionObserver !== 'function'
+  );
+  const shouldMount = Boolean(autoPlay) || isNearViewport;
+
+  useEffect(() => {
+    if (autoPlay || typeof IntersectionObserver !== 'function') return undefined;
+
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return undefined;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsNearViewport(entry.isIntersecting);
+      },
+      {
+        rootMargin: '160px',
+        threshold: 0.01,
+      }
+    );
+
+    observer.observe(wrapper);
+    return () => observer.disconnect();
+  }, [autoPlay]);
 
   const canHover = useMemo(() => {
     if (disableHover) return false;
@@ -67,23 +93,38 @@ export default function TravelVideo({
 
   return (
     <div
+      ref={wrapperRef}
       style={wrapperStyle}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onClick={onClick}
+      onKeyDown={(event) => {
+        if (!onClick || (event.key !== 'Enter' && event.key !== ' ')) return;
+        event.preventDefault();
+        onClick();
+      }}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={onClick ? `播放旅行视频${title ? `：${title}` : ''}` : undefined}
     >
-      <video
-        ref={videoRef}
-        src={src}
-        preload="metadata"
-        muted={effectiveMuted}
-        loop={loop}
-        controls={effectiveControls}
-        playsInline={playsInline}
-        autoPlay={autoPlay}
-        className={className}
-        style={videoStyle}
-      />
+      {shouldMount ? (
+        <video
+          ref={videoRef}
+          src={src}
+          preload="metadata"
+          muted={effectiveMuted}
+          loop={loop}
+          controls={effectiveControls}
+          playsInline={playsInline}
+          autoPlay={autoPlay}
+          className={className}
+          style={videoStyle}
+        />
+      ) : (
+        <div className="travel-video-placeholder" style={videoStyle} aria-hidden="true">
+          <span>{title || 'Travel'}</span>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,22 +1,24 @@
 import { useCallback, useEffect, useState } from 'react';
 import { books as fallbackBooks } from '../data/books';
+import { resolveBookMetadata } from '../data/bookMetadata';
 import * as readingApi from '../api/reading';
 
 function normalize(item) {
+  const localMetadata = resolveBookMetadata(item.title);
   return {
     id: item.id,
-    title: item.title || '',
+    title: localMetadata.title,
     author: item.author || '',
-    year: item.year != null ? String(item.year) : '',
+    year: localMetadata.year || (item.year != null ? String(item.year) : ''),
     rating: item.rating != null ? Number(item.rating) : 0,
     status: item.status || 'read',
     note: item.note || '',
-    cover_url: item.cover_url || item.coverUrl || '',
+    cover_url: localMetadata.coverUrl || item.cover_url || item.coverUrl || '',
   };
 }
 
 export function useReading(token) {
-  const [books, setBooks] = useState(fallbackBooks);
+  const [books, setBooks] = useState(() => fallbackBooks.map(normalize));
   const [loading, setLoading] = useState(true);
   const [backendReady, setBackendReady] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -57,9 +59,9 @@ export function useReading(token) {
       // 本地演示模式（未登录 or 后端未就绪）
       if (!token || !backendReady) {
         if (payload.id) {
-          setBooks((prev) => prev.map((b) => (b.id === payload.id ? { ...b, ...clean } : b)));
+          setBooks((prev) => prev.map((b) => (b.id === payload.id ? normalize({ ...b, ...clean }) : b)));
         } else {
-          const local = { id: `local-${Math.random().toString(36).slice(2, 8)}`, ...clean };
+          const local = normalize({ id: `local-${Math.random().toString(36).slice(2, 8)}`, ...clean });
           setBooks((prev) => [local, ...prev]);
         }
         return;

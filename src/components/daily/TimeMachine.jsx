@@ -6,7 +6,6 @@ import {
   Home,
   Link2,
   RotateCw,
-  Sparkles,
 } from 'lucide-react';
 import { TIME_MACHINE_STRATEGIES } from '../../utils/timeMachine';
 
@@ -52,7 +51,7 @@ export function TimeMachineControls({ disabled, isTraveling, onTravel }) {
         >
           <Clock3 size={16} aria-hidden="true" />
           <span className="time-machine-label-full">{isTraveling ? '穿越中…' : '随机时光机'}</span>
-          <span className="time-machine-label-short">{isTraveling ? '穿越中…' : '随机'}</span>
+          <span className="time-machine-label-short">{isTraveling ? '穿越中…' : '时光机'}</span>
         </button>
         <button
           type="button"
@@ -69,10 +68,7 @@ export function TimeMachineControls({ disabled, isTraveling, onTravel }) {
 
       {menuOpen ? (
         <div className="time-machine-menu" role="menu" aria-label="随机目的地">
-          <div className="time-machine-menu-heading">
-            <Sparkles size={14} aria-hidden="true" />
-            随机目的地
-          </div>
+          <div className="time-machine-menu-heading">选择一段时间</div>
           {TIME_MACHINE_STRATEGIES.map((strategy) => (
             <button
               key={strategy.id}

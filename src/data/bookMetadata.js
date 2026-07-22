@@ -1,0 +1,40 @@
+const BOOK_METADATA = {
+  '树上的男爵': {
+    coverUrl: '/images/books/the-baron-in-the-trees.jpg',
+  },
+  '追随她的旅程': {
+    coverUrl: '/images/books/follow-her-journey.jpg',
+  },
+  命运: {
+    coverUrl: '/images/books/fate.jpg',
+  },
+  '1988：我想和这个世界谈谈': {
+    coverUrl: '/images/books/1988.jpg',
+    year: '2010',
+  },
+  长日将尽: {
+    coverUrl: '/images/books/the-remains-of-the-day.jpg',
+  },
+  花街往事: {
+    coverUrl: '/images/books/flower-street.jpg',
+  },
+  霍乱时期的爱情: {
+    coverUrl: '/images/books/love-in-the-time-of-cholera.jpg',
+  },
+  献给阿尔吉侬的花束: {
+    coverUrl: '/images/books/flowers-for-algernon.jpg',
+  },
+};
+
+const TITLE_ALIASES = {
+  献给阿尔吉依的花束: '献给阿尔吉侬的花束',
+};
+
+export function resolveBookMetadata(rawTitle) {
+  const originalTitle = String(rawTitle || '').trim();
+  const title = TITLE_ALIASES[originalTitle] || originalTitle;
+  return {
+    title,
+    ...(BOOK_METADATA[title] || {}),
+  };
+}

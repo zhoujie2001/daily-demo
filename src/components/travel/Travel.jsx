@@ -104,6 +104,7 @@ export default function Travel({
                   playsInline
                   controls={false}
                   onClick={() => setExpandedVideo(video)}
+                  title={video.title}
                   style={{ width: '200px', height: '280px', objectFit: 'cover', cursor: 'pointer' }}
                   className="travel-video"
                 />
@@ -164,6 +165,7 @@ export default function Travel({
               muted={false}
               disableHover
               playsInline
+              title={expandedVideo.title}
               style={{ width: '100%', height: 'auto', maxHeight: '85vh', display: 'block', objectFit: 'contain' }}
             />
             {expandedVideo.title && (

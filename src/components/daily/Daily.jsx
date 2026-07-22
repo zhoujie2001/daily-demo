@@ -570,16 +570,18 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
 
   return (
     <section id="daily" className="daily-section">
-      <h2>Daily</h2>
+      <div className="daily-heading-row">
+        <h2>Daily</h2>
+        <TimeMachineControls
+          disabled={loading || !posts?.length}
+          isTraveling={isTraveling}
+          onTravel={startTimeTravel}
+        />
+      </div>
 
       <div className="daily-toolbar">
         <div className="daily-toolbar-row">
           <SearchBar value={keyword} onChange={handleKeywordChange} onClear={() => handleKeywordChange('')} />
-          <TimeMachineControls
-            disabled={loading || !posts?.length}
-            isTraveling={isTraveling}
-            onTravel={startTimeTravel}
-          />
         </div>
         {allTags.length > 0 ? (
           <div className="daily-tag-filter">
@@ -603,7 +605,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
 
       <div className="layout-grid">
         {loading ? (
-          <main className="col-content daily-skeleton-list">
+          <div className="col-content daily-skeleton-list" aria-label="日记加载中">
             {[0, 1, 2].map((item) => (
               <div key={item} className="daily-skeleton-item">
                 <SkeletonCard height={150} />
@@ -613,11 +615,11 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
                 </div>
               </div>
             ))}
-          </main>
+          </div>
         ) : (
           <>
             <Timeline posts={filteredPosts} activeDate={currentPost?.id} onSelect={handleSelectDate} />
-            <main className="col-content">
+            <div className="col-content" aria-label="日记内容">
               {currentPost ? (
                 <div className="daily-entry-stack">
                   {isArrivalCurrent ? (
@@ -642,7 +644,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
               ) : (
                 <EmptyState title={emptyStateCopy.title} description={emptyStateCopy.description} />
               )}
-            </main>
+            </div>
             <CalendarWidget posts={filteredPosts} onSelect={handleSelectDate} />
           </>
         )}
