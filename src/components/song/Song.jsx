@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import SongCard from './SongCard';
+import SectionHeading from '../ui/SectionHeading';
 import { fetchPlaylist } from '../../api/song';
 import { SkeletonAvatar, SkeletonCard, SkeletonText } from '../Skeleton';
 
@@ -212,7 +213,11 @@ export default function Song() {
 
   return (
     <section id="song" className="song-section">
-      <h2>Song</h2>
+      <SectionHeading
+        index="05"
+        title="Song"
+        description="循环播放的歌，保存另一种时间。"
+      />
 
       {loading ? (
         <div className="song-loading">

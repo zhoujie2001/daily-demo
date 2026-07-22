@@ -154,7 +154,7 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
               closeMenu();
               onLogout();
             }}
-            style={logoutBtnStyle}
+            className="sidebar-logout mobile-logout"
           >
             Logout
           </button>
@@ -162,6 +162,7 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
       </aside>
 
       <aside className="sidebar">
+        <span className="sidebar-kicker">四十四次日落</span>
         <h2
           onDoubleClick={() => !isAdmin && onRequestLogin()}
           style={{ cursor: isAdmin ? 'default' : 'pointer' }}
@@ -197,7 +198,7 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
           ))}
         </nav>
         {isAdmin ? (
-          <button onClick={onLogout} style={logoutBtnStyle}>
+          <button type="button" onClick={onLogout} className="sidebar-logout">
             Logout
           </button>
         ) : null}
@@ -205,13 +206,3 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
     </>
   );
 }
-
-const logoutBtnStyle = {
-  marginTop: '20px',
-  padding: '6px 12px',
-  background: '#f0f0f0',
-  border: 'none',
-  borderRadius: '4px',
-  cursor: 'pointer',
-  fontSize: '12px',
-};

@@ -17,6 +17,7 @@ import {
   toDateKey,
 } from '../../utils/timeMachine';
 import EmptyState from '../ui/EmptyState';
+import SectionHeading from '../ui/SectionHeading';
 import { SkeletonCard, SkeletonText } from '../Skeleton';
 
 function todayLabel() {
@@ -570,14 +571,16 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
 
   return (
     <section id="daily" className="daily-section">
-      <div className="daily-heading-row">
-        <h2>Daily</h2>
-        <TimeMachineControls
+      <SectionHeading
+        index="01"
+        title="Daily"
+        description="把普通日子收进时间里。"
+        action={<TimeMachineControls
           disabled={loading || !posts?.length}
           isTraveling={isTraveling}
           onTravel={startTimeTravel}
-        />
-      </div>
+        />}
+      />
 
       <div className="daily-toolbar">
         <div className="daily-toolbar-row">

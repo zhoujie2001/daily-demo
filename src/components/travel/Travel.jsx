@@ -4,6 +4,7 @@ import { fallbackVideos } from '../../data/fallbackPhotos';
 import { resolveMediaUrl } from '../../utils/media';
 import { useDialog } from '../../context/DialogContext';
 import { LoadingSpinner, LoadingBlock } from '../ui/Loading';
+import SectionHeading from '../ui/SectionHeading';
 import TravelVideo from './TravelVideo';
 
 export default function Travel({
@@ -71,10 +72,12 @@ export default function Travel({
   };
 
   return (
-    <section id="travel">
-      <div style={headerRowStyle}>
-        <h2 style={{ margin: 0 }}>Travel</h2>
-        {isAdmin ? (
+    <section id="travel" className="travel-section">
+      <SectionHeading
+        index="03"
+        title="Travel"
+        description="路过的风景，和当时的呼吸。"
+        action={isAdmin ? (
           <label className={`upload-btn ${uploading ? 'disabled' : ''}`}>
             {uploading ? <LoadingSpinner size={12} /> : <Plus size={14} />}
             <span>{uploading ? 'Uploading...' : 'Upload Video'}</span>
@@ -87,8 +90,7 @@ export default function Travel({
             />
           </label>
         ) : null}
-      </div>
-      <p style={{ marginTop: 0, color: '#666', fontSize: '14px' }}>嘿！快看那边。</p>
+      />
 
       {loading && !isRealData ? (
         <LoadingBlock label="Loading videos..." />
@@ -179,11 +181,3 @@ export default function Travel({
     </section>
   );
 }
-
-const headerRowStyle = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  marginTop: '60px',
-  marginBottom: '10px',
-};

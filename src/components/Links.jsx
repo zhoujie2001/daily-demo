@@ -1,11 +1,16 @@
 import React from 'react';
 import { ExternalLink, Mail } from 'lucide-react';
 import { contactEmail, externalLinks } from '../data/links';
+import SectionHeading from './ui/SectionHeading';
 
 export default function Links() {
   return (
-    <section id="links">
-      <h2>Links</h2>
+    <section id="links" className="links-section">
+      <SectionHeading
+        index="06"
+        title="Links"
+        description="在网络的其他角落，也可以找到我。"
+      />
       <ul className="links">
         <li>
           <Mail size={16} />

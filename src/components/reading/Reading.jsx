@@ -5,6 +5,7 @@ import BookEditor from './BookEditor';
 import Button from '../ui/Button';
 import { LoadingBlock } from '../ui/Loading';
 import EmptyState from '../ui/EmptyState';
+import SectionHeading from '../ui/SectionHeading';
 import { useDialog } from '../../context/DialogContext';
 
 function Stars({ value }) {
@@ -125,14 +126,16 @@ export default function Reading({ isAdmin, books, loading, saving, backendReady,
 
   return (
     <section id="reading" className="reading-section">
-      <div className="reading-header">
-        <h2>Reading_favorite</h2>
-        {isAdmin && (
+      <SectionHeading
+        index="02"
+        title="Reading"
+        description="读过的书，也在慢慢塑造生活。"
+        action={isAdmin ? (
           <Button size="sm" onClick={openAdd}>
             <Plus size={14} /> 添加
           </Button>
-        )}
-      </div>
+        ) : null}
+      />
 
       <div className="reading-toolbar">
         <div className="reading-search">

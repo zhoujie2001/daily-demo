@@ -5,6 +5,7 @@ import { resolveMediaUrl } from '../../utils/media';
 import { useDialog } from '../../context/DialogContext';
 import { LoadingSpinner } from '../ui/Loading';
 import EmptyState from '../ui/EmptyState';
+import SectionHeading from '../ui/SectionHeading';
 import LazyImage from '../ui/LazyImage';
 import PhotoCardDeck from './PhotoCardDeck';
 import { SkeletonCard, SkeletonText } from '../Skeleton';
@@ -82,12 +83,12 @@ export default function Photography({
   };
 
   return (
-    <section id="photography">
-      <h2>Photography</h2>
-      <section id="photography-inner">
-        <div style={headerRowStyle}>
-          <h2 style={{ margin: 0 }}>myCut</h2>
-          {isAdmin ? (
+    <section id="photography" className="photography-section">
+      <SectionHeading
+        index="04"
+        title="Photography"
+        description="光线落下时，替记忆按一次快门。"
+        action={isAdmin ? (
             <label className={`upload-btn ${uploading ? 'disabled' : ''}`}>
               {uploading ? <LoadingSpinner size={12} /> : <Plus size={14} />}
               <span>{uploading ? 'Uploading...' : 'Upload Photo'}</span>
@@ -100,7 +101,9 @@ export default function Photography({
               />
             </label>
           ) : null}
-        </div>
+      />
+
+      <div className="photography-body">
 
         {loading && !isRealData ? (
           <div className="photo-skeleton-grid">
@@ -170,14 +173,7 @@ export default function Photography({
             </div>
           </>
         )}
-      </section>
+      </div>
     </section>
   );
 }
-
-const headerRowStyle = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  marginBottom: '20px',
-};
