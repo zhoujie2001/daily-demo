@@ -1,6 +1,7 @@
 import { authHeaders, requestJson } from './client';
+import { searchPublicBookCovers } from '../utils/bookCoverLookup';
 
-export async function searchBookCovers({ title = '', author = '', isbn = '' }) {
+async function searchServerBookCovers({ title = '', author = '', isbn = '' }) {
   const params = new URLSearchParams();
   if (title.trim()) params.set('title', title.trim());
   if (author.trim()) params.set('author', author.trim());
@@ -13,7 +14,30 @@ export async function searchBookCovers({ title = '', author = '', isbn = '' }) {
     error.status = response.status;
     throw error;
   }
-  return Array.isArray(data.candidates) ? data.candidates : [];
+  return (Array.isArray(data.candidates) ? data.candidates : []).map((candidate) => ({
+    ...candidate,
+    coverUrl: candidate.coverUrl
+      ? new URL(candidate.coverUrl, response.url || window.location.origin).toString()
+      : '',
+  }));
+}
+
+export async function searchBookCovers({ title = '', author = '', isbn = '' }, options = {}) {
+  const query = { title, author, isbn };
+  let publicSearchError = null;
+
+  try {
+    const candidates = await searchPublicBookCovers(query, options);
+    if (candidates.length) return candidates;
+  } catch (error) {
+    publicSearchError = error;
+  }
+
+  try {
+    return await searchServerBookCovers(query);
+  } catch (serverError) {
+    throw publicSearchError || serverError;
+  }
 }
 
 export function fetchBooks() {

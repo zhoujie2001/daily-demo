@@ -17,6 +17,18 @@ function normalize(item) {
   };
 }
 
+function toSavePayload(book) {
+  return {
+    title: book.title || '',
+    author: book.author || '',
+    year: book.year || '',
+    rating: Number(book.rating) || 0,
+    status: book.status || 'read',
+    note: book.note || '',
+    cover_url: book.cover_url || '',
+  };
+}
+
 export function useReading(token) {
   const [books, setBooks] = useState(() => fallbackBooks.map(normalize));
   const [loading, setLoading] = useState(true);
@@ -29,8 +41,50 @@ export function useReading(token) {
       .fetchBooks()
       .then((data) => {
         if (cancelled || !Array.isArray(data)) return;
-        setBooks(data.map(normalize));
+        const normalizedBooks = data.map(normalize);
+        setBooks(normalizedBooks);
         setBackendReady(true);
+
+        // 为历史记录中没有封面的书籍自动补全。未登录时至少在当前页面展示；
+        // 管理员登录后会同步回后端，避免下次访问重复查询。
+        void (async () => {
+          const missingCovers = normalizedBooks.filter((book) => !book.cover_url).slice(0, 12);
+          for (const book of missingCovers) {
+            if (cancelled) return;
+            try {
+              const candidates = await readingApi.searchBookCovers({
+                title: book.title,
+                author: book.author,
+              });
+              const best = candidates[0];
+              if (!best?.coverUrl || cancelled) continue;
+
+              const enriched = {
+                ...book,
+                cover_url: best.coverUrl,
+                author: book.author || best.authors?.join(' / ') || '',
+                year: book.year || best.year || '',
+              };
+              setBooks((prev) => prev.map((item) => {
+                if (item.id !== book.id || item.cover_url) return item;
+                return {
+                  ...item,
+                  cover_url: best.coverUrl,
+                  author: item.author || best.authors?.join(' / ') || '',
+                  year: item.year || best.year || '',
+                };
+              }));
+
+              if (token && book.id != null && !String(book.id).startsWith('local-')) {
+                await readingApi.updateBook(book.id, toSavePayload(enriched), token).catch(() => {
+                  // 展示补全已成功，持久化失败留待下次登录重试。
+                });
+              }
+            } catch {
+              // 单本书查询失败不影响列表和其余书籍。
+            }
+          }
+        })();
       })
       .catch(() => {
         // 后端未部署 /api/reading —— 静默用兜底
@@ -41,7 +95,7 @@ export function useReading(token) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [token]);
 
   const save = useCallback(
     async (payload) => {
