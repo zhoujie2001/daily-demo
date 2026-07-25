@@ -42,11 +42,13 @@ export async function searchServerBookCovers(
 
 export async function searchBookCovers({ title = '', author = '', isbn = '' }, options = {}) {
   const query = { title, author, isbn };
+  let serverResponded = false;
   let serverSearchError = null;
   let publicSearchError = null;
 
   try {
     const candidates = await searchServerBookCovers(query, options);
+    serverResponded = true;
     if (candidates.length) return candidates;
   } catch (error) {
     serverSearchError = error;
@@ -60,6 +62,9 @@ export async function searchBookCovers({ title = '', author = '', isbn = '' }, o
     publicSearchError = error;
   }
 
+  // 服务端已经正常响应但没有候选时，说明只是没找到匹配项；
+  // 不要把浏览器直连公共书库失败误报成“封面服务无法连接”。
+  if (serverResponded) return [];
   throw serverSearchError || publicSearchError || new Error('暂时无法连接书籍封面服务');
 }
 

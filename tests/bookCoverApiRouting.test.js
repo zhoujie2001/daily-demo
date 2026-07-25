@@ -94,3 +94,23 @@ test('服务端搜索会过滤无效封面地址', async () => {
 
   assert.deepEqual(candidates.map((candidate) => candidate.id), ['valid']);
 });
+
+test('服务端正常返回空候选时不会误报为网络连接失败', async () => {
+  const requestedUrls = [];
+  const fetchImpl = async (url) => {
+    const value = String(url);
+    requestedUrls.push(value);
+    if (value.includes('/api/book-search?')) {
+      return jsonResponse({ candidates: [] }, { url: value });
+    }
+    throw new Error('public source unavailable');
+  };
+
+  const candidates = await searchBookCovers(
+    { title: '不存在的书' },
+    { fetchImpl, apiBase: 'https://book-api.example.com', skipCache: true }
+  );
+
+  assert.deepEqual(candidates, []);
+  assert.equal(requestedUrls.length, 3);
+});
