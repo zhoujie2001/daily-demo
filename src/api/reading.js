@@ -2,7 +2,8 @@ import { authHeaders, requestJson } from './client.js';
 import { BOOK_COVER_API_BASE } from '../config.js';
 import { searchPublicBookCovers } from '../utils/bookCoverLookup.js';
 
-const BOOK_COVER_LOOKUP_VERSION = '20260725-2';
+const BOOK_COVER_LOOKUP_VERSION = '20260725-3';
+const KNOWN_UNAVAILABLE_COVER_MARKERS = ['gBoWzgEACAAJ'];
 
 function resolveCoverUrl(rawUrl, baseUrl) {
   if (!rawUrl) return '';
@@ -69,6 +70,35 @@ export async function searchBookCovers({ title = '', author = '', isbn = '' }, o
   // 不要把浏览器直连公共书库失败误报成“封面服务无法连接”。
   if (serverResponded) return [];
   throw serverSearchError || publicSearchError || new Error('暂时无法连接书籍封面服务');
+}
+
+export function isManagedBookCoverUrl(rawUrl) {
+  const value = String(rawUrl || '').trim();
+  if (!value) return false;
+  try {
+    return new URL(value, `${BOOK_COVER_API_BASE}/`).pathname === '/api/book-cover';
+  } catch {
+    return false;
+  }
+}
+
+export function isKnownUnavailableBookCoverUrl(rawUrl) {
+  let value = String(rawUrl || '');
+  try {
+    const parsed = new URL(value, `${BOOK_COVER_API_BASE}/`);
+    value = parsed.pathname === '/api/book-cover'
+      ? parsed.searchParams.get('url') || parsed.href
+      : parsed.href;
+  } catch {
+    // 保留原始字符串供已损坏的历史 URL 做标记匹配。
+  }
+  return KNOWN_UNAVAILABLE_COVER_MARKERS.some((marker) => value.includes(marker));
+}
+
+export function canAutomaticallyReplaceBookCover(rawUrl) {
+  return !String(rawUrl || '').trim()
+    || isManagedBookCoverUrl(rawUrl)
+    || isKnownUnavailableBookCoverUrl(rawUrl);
 }
 
 export function fetchBooks() {

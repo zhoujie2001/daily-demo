@@ -10,14 +10,15 @@ const COVER_HOSTS = new Set([
 const SEARCH_CACHE_TTL = 6 * 60 * 60 * 1000;
 const SEARCH_CACHE_LIMIT = 100;
 const searchCache = new Map();
+const KNOWN_UNAVAILABLE_GOOGLE_BOOK_IDS = new Set(['gBoWzgEACAAJ']);
 const VERIFIED_BOOKS = [
   {
     title: '查拉图斯特拉如是说',
     authors: ['[德] 尼采'],
     year: '2007',
     isbn: '',
-    coverSource: 'https://books.google.com/books/content?id=gBoWzgEACAAJ&printsec=frontcover&img=1&zoom=2&source=gbs_api',
-    sourceUrl: 'https://books.google.com/books?id=gBoWzgEACAAJ',
+    coverSource: 'https://img9.doubanio.com/view/subject/m/public/s2857294.jpg',
+    sourceUrl: 'https://book.douban.com/subject/2359052/',
   },
 ];
 
@@ -81,7 +82,12 @@ function imageFromGoogle(volumeInfo = {}) {
 function mapGoogleCandidate(item) {
   const info = item?.volumeInfo || {};
   const coverSource = imageFromGoogle(info);
-  if (!item?.id || !info.title || !coverSource) return null;
+  if (
+    !item?.id
+    || !info.title
+    || !coverSource
+    || KNOWN_UNAVAILABLE_GOOGLE_BOOK_IDS.has(String(item.id))
+  ) return null;
 
   try {
     const normalizedCover = normalizeCoverSource(coverSource);

@@ -1,4 +1,4 @@
-const PUBLIC_BASE_URL = String(import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
+const PUBLIC_BASE_URL = String(import.meta.env?.BASE_URL || '/').replace(/\/?$/, '/');
 
 function publicAsset(path) {
   return `${PUBLIC_BASE_URL}${String(path).replace(/^\/+/, '')}`;
@@ -29,6 +29,10 @@ const BOOK_METADATA = {
   },
   献给阿尔吉侬的花束: {
     coverUrl: publicAsset('images/books/flowers-for-algernon.jpg'),
+  },
+  查拉图斯特拉如是说: {
+    coverUrl: publicAsset('images/books/thus-spoke-zarathustra.jpg'),
+    year: '2007',
   },
 };
 

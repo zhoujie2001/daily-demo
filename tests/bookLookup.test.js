@@ -169,8 +169,38 @@ test('目标经典书在所有外部数据源失败时仍有经过验证的离�
   assert.equal(externalRequests, 0);
   assert.match(
     decodeURIComponent(result.candidates[0].coverUrl),
-    /books\.google\.com\/books\/content\?id=gBoWzgEACAAJ/
+    /img9\.doubanio\.com\/view\/subject\/m\/public\/s2857294\.jpg/
   );
+});
+
+test('Google Books 已知占位图不会作为有效封面候选', async () => {
+  const result = await lookupBooks(
+    { title: '占位图测试' },
+    {
+      skipCache: true,
+      fetchImpl: async (url) => {
+        if (String(url).startsWith('https://www.googleapis.com/books/')) {
+          return jsonResponse({
+            items: [{
+              id: 'gBoWzgEACAAJ',
+              volumeInfo: {
+                title: '占位图测试',
+                imageLinks: {
+                  thumbnail: 'https://books.google.com/books/content?id=gBoWzgEACAAJ',
+                },
+              },
+            }],
+          });
+        }
+        if (String(url).startsWith('https://search.douban.com/')) {
+          return textResponse('<script>window.__DATA__ = {"items":[]};</script>');
+        }
+        return jsonResponse({ docs: [] });
+      },
+    }
+  );
+
+  assert.deepEqual(result.candidates, []);
 });
 
 test('封面代理校验图片类型并返回二进制数据', async () => {

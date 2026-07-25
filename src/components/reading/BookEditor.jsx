@@ -3,7 +3,7 @@ import { BookOpen, Check, Search } from 'lucide-react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { BOOK_STATUS_OPTIONS } from '../../data/books';
-import { searchBookCovers } from '../../api/reading';
+import { canAutomaticallyReplaceBookCover, searchBookCovers } from '../../api/reading';
 
 const EMPTY = { title: '', author: '', year: '', rating: 0, status: 'read', note: '', cover_url: '' };
 
@@ -68,7 +68,7 @@ export default function BookEditor({ open, initial, onClose, onSubmit, saving })
       }
 
       setForm((prev) => {
-        const canReplaceCover = !prev.cover_url || prev.cover_url.startsWith('/api/book-cover?');
+        const canReplaceCover = canAutomaticallyReplaceBookCover(prev.cover_url);
         return {
           ...prev,
           cover_url: canReplaceCover ? best.coverUrl : prev.cover_url,
@@ -86,7 +86,7 @@ export default function BookEditor({ open, initial, onClose, onSubmit, saving })
   };
 
   const autoLookupOnBlur = (overrides = {}) => {
-    const canReplaceCover = !form.cover_url || form.cover_url.startsWith('/api/book-cover?');
+    const canReplaceCover = canAutomaticallyReplaceBookCover(form.cover_url);
     if (canReplaceCover) void runCoverSearch({ silent: true, ...overrides });
   };
 

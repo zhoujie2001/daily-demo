@@ -3,6 +3,7 @@ const OPEN_LIBRARY_ENDPOINT = 'https://openlibrary.org/search.json';
 const CACHE_TTL = 6 * 60 * 60 * 1000;
 const CACHE_LIMIT = 80;
 const resultCache = new Map();
+const KNOWN_UNAVAILABLE_GOOGLE_BOOK_IDS = new Set(['gBoWzgEACAAJ']);
 
 function cleanInput(value, maxLength = 160) {
   return String(value || '').trim().slice(0, maxLength);
@@ -61,7 +62,12 @@ function imageFromGoogle(volumeInfo = {}) {
 function mapGoogleCandidate(item) {
   const info = item?.volumeInfo || {};
   const coverUrl = normalizeImageUrl(imageFromGoogle(info));
-  if (!item?.id || !info.title || !coverUrl) return null;
+  if (
+    !item?.id
+    || !info.title
+    || !coverUrl
+    || KNOWN_UNAVAILABLE_GOOGLE_BOOK_IDS.has(String(item.id))
+  ) return null;
 
   return {
     id: `google:${item.id}`,

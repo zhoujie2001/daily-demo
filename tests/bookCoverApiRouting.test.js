@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  canAutomaticallyReplaceBookCover,
+  isKnownUnavailableBookCoverUrl,
+  isManagedBookCoverUrl,
   searchBookCovers,
   searchServerBookCovers,
 } from '../src/api/reading.js';
@@ -131,4 +134,15 @@ test('封面函数请求始终携带查询版本，避免继续命中旧的空�
 
   assert.equal(requestedUrls.length, 1);
   assert.match(requestedUrls[0], /[?&]v=cache-bust-2(?:&|$)/);
+});
+
+test('自动封面可以替换绝对代理地址和已知占位图', () => {
+  const managed = 'https://daily-demo-roan.vercel.app/api/book-cover?url=valid';
+  const unavailable = 'https://daily-demo-roan.vercel.app/api/book-cover?url=https%3A%2F%2Fbooks.google.com%2Fbooks%2Fcontent%3Fid%3DgBoWzgEACAAJ';
+
+  assert.equal(isManagedBookCoverUrl(managed), true);
+  assert.equal(isKnownUnavailableBookCoverUrl(unavailable), true);
+  assert.equal(canAutomaticallyReplaceBookCover(managed), true);
+  assert.equal(canAutomaticallyReplaceBookCover(unavailable), true);
+  assert.equal(canAutomaticallyReplaceBookCover('https://example.com/manual-cover.jpg'), false);
 });

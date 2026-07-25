@@ -18,7 +18,7 @@ test('客户端书名标准化支持中文书名号和标点', () => {
   assert.equal(normalizeBookLookupText('《查拉图斯特拉如是说》'), '查拉图斯特拉如是说');
 });
 
-test('静态站点可直接为《查拉图斯特拉如是说》匹配 Google Books 封面', async () => {
+test('静态站点不会把 Google Books 的已知占位图当成封面', async () => {
   const requestedUrls = [];
   const fetchImpl = async (url) => {
     requestedUrls.push(String(url));
@@ -46,9 +46,7 @@ test('静态站点可直接为《查拉图斯特拉如是说》匹配 Google Boo
     { fetchImpl, skipCache: true }
   );
 
-  assert.equal(candidates[0].id, 'google:gBoWzgEACAAJ');
-  assert.equal(candidates[0].title, '查拉图斯特拉如是说');
-  assert.match(candidates[0].coverUrl, /^https:\/\/books\.google\.com\/books\/content/);
+  assert.deepEqual(candidates, []);
   assert.equal(requestedUrls.length, 2);
   assert.match(requestedUrls[0], /intitle%3A%22%E6%9F%A5%E6%8B%89%E5%9B%BE%E6%96%AF%E7%89%B9%E6%8B%89%E5%A6%82%E6%98%AF%E8%AF%B4%22/);
 });
