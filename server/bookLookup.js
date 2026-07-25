@@ -16,8 +16,8 @@ const VERIFIED_BOOKS = [
     authors: ['[德] 尼采'],
     year: '2007',
     isbn: '',
-    coverSource: 'https://img9.doubanio.com/view/subject/m/public/s2857294.jpg',
-    sourceUrl: 'https://book.douban.com/subject/2359052/',
+    coverSource: 'https://books.google.com/books/content?id=gBoWzgEACAAJ&printsec=frontcover&img=1&zoom=2&source=gbs_api',
+    sourceUrl: 'https://books.google.com/books?id=gBoWzgEACAAJ',
   },
 ];
 
@@ -404,6 +404,9 @@ export async function fetchCoverImage(rawUrl, options = {}) {
         headers: {
           Accept: 'image/avif,image/webp,image/jpeg,image/png,image/*;q=0.8',
           'User-Agent': 'daily-demo/1.0 (book cover lookup)',
+          ...(/^img\d+\.doubanio\.com$/.test(new URL(url).hostname)
+            ? { Referer: 'https://book.douban.com/' }
+            : {}),
         },
         redirect: 'manual',
         signal: controller.signal,

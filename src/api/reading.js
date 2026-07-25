@@ -2,7 +2,7 @@ import { authHeaders, requestJson } from './client.js';
 import { BOOK_COVER_API_BASE } from '../config.js';
 import { searchPublicBookCovers } from '../utils/bookCoverLookup.js';
 
-const BOOK_COVER_LOOKUP_VERSION = '20260725-1';
+const BOOK_COVER_LOOKUP_VERSION = '20260725-2';
 
 function resolveCoverUrl(rawUrl, baseUrl) {
   if (!rawUrl) return '';

@@ -169,7 +169,7 @@ test('目标经典书在所有外部数据源失败时仍有经过验证的离�
   assert.equal(externalRequests, 0);
   assert.match(
     decodeURIComponent(result.candidates[0].coverUrl),
-    /img9\.doubanio\.com\/view\/subject\/m\/public\/s2857294\.jpg/
+    /books\.google\.com\/books\/content\?id=gBoWzgEACAAJ/
   );
 });
 
@@ -200,4 +200,22 @@ test('封面代理拒绝 HTML 响应，避免把错误页当图片缓存', async
     }),
     /不是受支持的图片/
   );
+});
+
+test('豆瓣封面代理携带来源页请求头，避免图片防盗链拒绝', async () => {
+  const payload = new Uint8Array([255, 216, 255, 224]);
+  let requestHeaders;
+  await fetchCoverImage('https://img9.doubanio.com/view/subject/m/public/s2857294.jpg', {
+    fetchImpl: async (_url, options) => {
+      requestHeaders = options.headers;
+      return {
+        ok: true,
+        status: 200,
+        headers: headers({ 'content-type': 'image/jpeg', 'content-length': payload.length }),
+        arrayBuffer: async () => payload.buffer,
+      };
+    },
+  });
+
+  assert.equal(requestHeaders.Referer, 'https://book.douban.com/');
 });
