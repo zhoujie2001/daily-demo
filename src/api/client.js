@@ -1,4 +1,4 @@
-import { API_BASE } from '../config';
+import { API_BASE } from '../config.js';
 
 /** 拼接完整的 API URL */
 export function apiUrl(path) {

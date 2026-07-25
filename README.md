@@ -49,6 +49,7 @@ cp .env.example .env.local
 | 变量 | 说明 | 默认 |
 | --- | --- | --- |
 | `VITE_API_URL` | 后端 API 根地址（不含末尾斜杠） | `https://daily-demo-backend.vercel.app` |
+| `VITE_BOOK_COVER_API_URL` | 本仓库 Vercel 书籍搜索与封面代理地址 | `https://daily-demo-roan.vercel.app` |
 
 ## 本地开发
 

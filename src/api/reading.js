@@ -1,43 +1,66 @@
-import { authHeaders, requestJson } from './client';
-import { searchPublicBookCovers } from '../utils/bookCoverLookup';
+import { authHeaders, requestJson } from './client.js';
+import { BOOK_COVER_API_BASE } from '../config.js';
+import { searchPublicBookCovers } from '../utils/bookCoverLookup.js';
 
-async function searchServerBookCovers({ title = '', author = '', isbn = '' }) {
+function resolveCoverUrl(rawUrl, baseUrl) {
+  if (!rawUrl) return '';
+  try {
+    return new URL(rawUrl, baseUrl).toString();
+  } catch {
+    return '';
+  }
+}
+
+export async function searchServerBookCovers(
+  { title = '', author = '', isbn = '' },
+  options = {}
+) {
   const params = new URLSearchParams();
   if (title.trim()) params.set('title', title.trim());
   if (author.trim()) params.set('author', author.trim());
   if (isbn.trim()) params.set('isbn', isbn.trim());
 
-  const response = await fetch(`/api/book-search?${params}`);
+  const apiBase = String(options.apiBase || BOOK_COVER_API_BASE).replace(/\/+$/, '');
+  const requestUrl = `${apiBase}/api/book-search?${params}`;
+  const response = await (options.fetchImpl || fetch)(requestUrl, {
+    headers: { Accept: 'application/json' },
+  });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(data.error || `封面搜索失败: ${response.status}`);
     error.status = response.status;
     throw error;
   }
-  return (Array.isArray(data.candidates) ? data.candidates : []).map((candidate) => ({
-    ...candidate,
-    coverUrl: candidate.coverUrl
-      ? new URL(candidate.coverUrl, response.url || window.location.origin).toString()
-      : '',
-  }));
+  const responseBase = response.url || requestUrl;
+  return (Array.isArray(data.candidates) ? data.candidates : [])
+    .map((candidate) => ({
+      ...candidate,
+      coverUrl: resolveCoverUrl(candidate.coverUrl, responseBase),
+    }))
+    .filter((candidate) => candidate.coverUrl);
 }
 
 export async function searchBookCovers({ title = '', author = '', isbn = '' }, options = {}) {
   const query = { title, author, isbn };
+  let serverSearchError = null;
   let publicSearchError = null;
+
+  try {
+    const candidates = await searchServerBookCovers(query, options);
+    if (candidates.length) return candidates;
+  } catch (error) {
+    serverSearchError = error;
+  }
 
   try {
     const candidates = await searchPublicBookCovers(query, options);
     if (candidates.length) return candidates;
+    return [];
   } catch (error) {
     publicSearchError = error;
   }
 
-  try {
-    return await searchServerBookCovers(query);
-  } catch (serverError) {
-    throw publicSearchError || serverError;
-  }
+  throw serverSearchError || publicSearchError || new Error('暂时无法连接书籍封面服务');
 }
 
 export function fetchBooks() {
