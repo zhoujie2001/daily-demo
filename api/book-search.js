@@ -17,7 +17,12 @@ export default async function handler(req, res) {
       author: req.query?.author,
       isbn: req.query?.isbn,
     });
-    res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400');
+    res.setHeader(
+      'Cache-Control',
+      result.candidates.length
+        ? 'public, s-maxage=3600, stale-while-revalidate=86400'
+        : 'no-store, max-age=0'
+    );
     return res.status(200).json(result);
   } catch (error) {
     return res.status(error.status || 500).json({

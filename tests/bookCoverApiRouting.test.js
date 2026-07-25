@@ -18,7 +18,7 @@ function jsonResponse(data, options = {}) {
 test('静态博客优先通过 Vercel 函数搜索封面并使用同源图片代理', async () => {
   const requestedUrls = [];
   const apiBase = 'https://book-api.example.com';
-  const requestUrl = `${apiBase}/api/book-search?title=${encodeURIComponent('查拉图斯特拉如是说')}&author=${encodeURIComponent('尼采')}`;
+  const requestUrl = `${apiBase}/api/book-search?title=${encodeURIComponent('查拉图斯特拉如是说')}&author=${encodeURIComponent('尼采')}&v=test-version`;
   const fetchImpl = async (url) => {
     requestedUrls.push(String(url));
     return jsonResponse({
@@ -33,7 +33,7 @@ test('静态博客优先通过 Vercel 函数搜索封面并使用同源图片代
 
   const candidates = await searchBookCovers(
     { title: '查拉图斯特拉如是说', author: '尼采' },
-    { fetchImpl, apiBase, skipCache: true }
+    { fetchImpl, apiBase, lookupVersion: 'test-version', skipCache: true }
   );
 
   assert.deepEqual(requestedUrls, [requestUrl]);
@@ -113,4 +113,22 @@ test('服务端正常返回空候选时不会误报为网络连接失败', async
 
   assert.deepEqual(candidates, []);
   assert.equal(requestedUrls.length, 3);
+});
+
+test('封面函数请求始终携带查询版本，避免继续命中旧的空结果缓存', async () => {
+  const requestedUrls = [];
+  await searchServerBookCovers(
+    { title: '缓存测试' },
+    {
+      apiBase: 'https://book-api.example.com',
+      lookupVersion: 'cache-bust-2',
+      fetchImpl: async (url) => {
+        requestedUrls.push(String(url));
+        return jsonResponse({ candidates: [] }, { url: String(url) });
+      },
+    }
+  );
+
+  assert.equal(requestedUrls.length, 1);
+  assert.match(requestedUrls[0], /[?&]v=cache-bust-2(?:&|$)/);
 });

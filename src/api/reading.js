@@ -2,6 +2,8 @@ import { authHeaders, requestJson } from './client.js';
 import { BOOK_COVER_API_BASE } from '../config.js';
 import { searchPublicBookCovers } from '../utils/bookCoverLookup.js';
 
+const BOOK_COVER_LOOKUP_VERSION = '20260725-1';
+
 function resolveCoverUrl(rawUrl, baseUrl) {
   if (!rawUrl) return '';
   try {
@@ -19,6 +21,7 @@ export async function searchServerBookCovers(
   if (title.trim()) params.set('title', title.trim());
   if (author.trim()) params.set('author', author.trim());
   if (isbn.trim()) params.set('isbn', isbn.trim());
+  params.set('v', options.lookupVersion || BOOK_COVER_LOOKUP_VERSION);
 
   const apiBase = String(options.apiBase || BOOK_COVER_API_BASE).replace(/\/+$/, '');
   const requestUrl = `${apiBase}/api/book-search?${params}`;

@@ -365,25 +365,28 @@ export async function lookupBooks(rawQuery, options = {}) {
     if (cached) return cached;
   }
 
+  const verified = verifiedBookCandidates(query);
+  if (verified.length) {
+    const value = { query, candidates: rankBookCandidates(verified, query) };
+    writeCache(cacheKey, value);
+    return value;
+  }
+
   const searches = await Promise.allSettled([
     searchGoogleBooks(query, options),
     searchOpenLibrary(query, options),
     searchDoubanBooks(query, options),
   ]);
   const successful = searches.filter((result) => result.status === 'fulfilled');
-  const verified = verifiedBookCandidates(query);
-  if (!successful.length && !verified.length) {
+  if (!successful.length) {
     const error = new Error('暂时无法连接书籍封面服务');
     error.status = 502;
     throw error;
   }
 
-  const candidates = rankBookCandidates([
-    ...successful.flatMap((result) => result.value),
-    ...verified,
-  ], query);
+  const candidates = rankBookCandidates(successful.flatMap((result) => result.value), query);
   const value = { query, candidates };
-  writeCache(cacheKey, value);
+  if (candidates.length) writeCache(cacheKey, value);
   return value;
 }
 

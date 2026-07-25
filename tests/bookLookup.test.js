@@ -8,6 +8,7 @@ import {
   normalizeCoverSource,
   parseDoubanSearchPage,
   rankBookCandidates,
+  searchDoubanBooks,
 } from '../server/bookLookup.js';
 
 function headers(values = {}) {
@@ -133,10 +134,9 @@ test('豆瓣搜索页可为中文书籍解析封面，并在其他上游失败�
   assert.equal(parsed[0].year, '2007');
   assert.match(parsed[0].coverUrl, /^\/api\/book-cover\?url=/);
 
-  const result = await lookupBooks(
+  const candidates = await searchDoubanBooks(
     { title: '查拉图斯特拉如是说', author: '尼采' },
     {
-      skipCache: true,
       fetchImpl: async (url) => {
         if (String(url).startsWith('https://search.douban.com/')) {
           return textResponse(doubanHtml);
@@ -146,17 +146,18 @@ test('豆瓣搜索页可为中文书籍解析封面，并在其他上游失败�
     }
   );
 
-  assert.equal(result.candidates.length, 1);
-  assert.equal(result.candidates[0].id, 'douban:2359052');
-  assert.ok(result.candidates[0].score >= 198);
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].id, 'douban:2359052');
 });
 
 test('目标经典书在所有外部数据源失败时仍有经过验证的离线候选', async () => {
+  let externalRequests = 0;
   const result = await lookupBooks(
     { title: '《查拉图斯特拉如是说》', author: '尼采' },
     {
       skipCache: true,
       fetchImpl: async () => {
+        externalRequests += 1;
         throw new Error('all external sources unavailable');
       },
     }
@@ -165,6 +166,7 @@ test('目标经典书在所有外部数据源失败时仍有经过验证的离�
   assert.equal(result.candidates.length, 1);
   assert.equal(result.candidates[0].source, 'verified');
   assert.equal(result.candidates[0].year, '2007');
+  assert.equal(externalRequests, 0);
   assert.match(
     decodeURIComponent(result.candidates[0].coverUrl),
     /img9\.doubanio\.com\/view\/subject\/m\/public\/s2857294\.jpg/
