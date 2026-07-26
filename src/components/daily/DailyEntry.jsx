@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Edit2, Trash2, Play } from 'lucide-react';
+import { Edit2, Trash2, VolumeX } from 'lucide-react';
 import LazyImage from '../ui/LazyImage';
+import VideoLightbox from '../ui/VideoLightbox';
+import TravelVideo from '../travel/TravelVideo';
 import EmojiReactions from './EmojiReactions';
 
 function escapeRegExp(value) {
@@ -35,137 +37,41 @@ function highlightText(content, keyword) {
 }
 
 function LazyVideo({ url }) {
-  const [isLoaded, setIsLoaded] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Expanded Lightbox-style Video View
   if (isExpanded) {
     return (
-      <div
-        className="lightbox"
-        onClick={() => setIsExpanded(false)}
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <button
-          className="lightbox-close"
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsExpanded(false);
-          }}
-          style={{ zIndex: 1000 }}
-        >
-          ×
-        </button>
-        <div
-          className="lightbox-content"
-          onClick={(e) => e.stopPropagation()}
-          style={{ width: '90%', maxWidth: '1200px', backgroundColor: '#000', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 24px 60px rgba(0,0,0,0.4)' }}
-        >
-          <video
-            src={url}
-            autoPlay
-            controls
-            playsInline
-            style={{ width: '100%', height: 'auto', maxHeight: '85vh', display: 'block', objectFit: 'contain' }}
-          />
-        </div>
-      </div>
+      <VideoLightbox
+        src={url}
+        onClose={() => setIsExpanded(false)}
+      />
     );
   }
 
-  // Loaded Inline View (Auto-playing without sound)
-  if (isLoaded) {
-    return (
-      <div style={{ position: 'relative', width: '100%', borderRadius: '4px', overflow: 'hidden' }}>
-        <video
-          src={url}
-          autoPlay
-          muted
-          loop
-          playsInline
-          style={{ width: '100%', height: 'auto', maxWidth: '100%', objectFit: 'contain', display: 'block', cursor: 'pointer' }}
-          onClick={() => setIsExpanded(true)}
-        />
-        <div
-          onClick={() => setIsExpanded(true)}
-          style={{
-            position: 'absolute',
-            bottom: '12px',
-            right: '12px',
-            backgroundColor: 'rgba(0,0,0,0.6)',
-            color: 'white',
-            padding: '6px 12px',
-            borderRadius: '20px',
-            fontSize: '12px',
-            backdropFilter: 'blur(4px)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            transition: 'background 0.2s',
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.8)'}
-          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.6)'}
-        >
-          <Play size={12} fill="white" /> 点击放大并播放声音
-        </div>
-      </div>
-    );
-  }
-
-  // Placeholder View
   return (
-    <div
-      onClick={() => setIsLoaded(true)}
-      style={{
-        width: '100%',
-        aspectRatio: '16/9',
-        backgroundColor: 'var(--color-surface, rgba(128, 128, 128, 0.05))',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        cursor: 'pointer',
-        borderRadius: '4px',
-        position: 'relative',
-        overflow: 'hidden'
-      }}
-      className="lazy-video-placeholder"
-    >
-      <div
-        style={{
-          width: '64px',
-          height: '64px',
-          borderRadius: '50%',
-          backgroundColor: 'rgba(0, 0, 0, 0.4)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backdropFilter: 'blur(8px)',
-          WebkitBackdropFilter: 'blur(8px)',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
-          border: '1px solid rgba(255,255,255,0.1)',
-          transition: 'all 0.4s cubic-bezier(0.19, 1, 0.22, 1)',
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.transform = 'scale(1.15)';
-          e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-          e.currentTarget.style.boxShadow = '0 12px 40px rgba(0,0,0,0.25)';
-          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = 'scale(1)';
-          e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
-          e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.15)';
-          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
-        }}
+    <div className="daily-video-preview">
+      <TravelVideo
+        src={url}
+        muted
+        loop
+        playsInline
+        controls={false}
+        playWhenVisible
+        disableHover
+        onClick={() => setIsExpanded(true)}
+        title="Daily"
+        className="daily-inline-video"
+        style={{ width: '100%', aspectRatio: '16 / 9', objectFit: 'contain', cursor: 'pointer' }}
+      />
+      <button
+        type="button"
+        className="daily-video-sound-hint"
+        onClick={() => setIsExpanded(true)}
+        aria-label="打开视频并播放声音"
+        title="打开视频并播放声音"
       >
-        <Play size={24} color="#fff" fill="#fff" style={{ marginLeft: '4px' }} />
-      </div>
+        <VolumeX size={16} />
+      </button>
     </div>
   );
 }

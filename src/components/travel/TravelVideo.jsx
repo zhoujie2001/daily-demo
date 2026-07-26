@@ -4,18 +4,22 @@ export default function TravelVideo({
   src,
   className,
   style,
-  muted,
-  loop,
-  controls,
-  playsInline,
-  autoPlay,
-  disableHover,
+  muted = false,
+  loop = false,
+  controls = false,
+  playsInline = true,
+  autoPlay = false,
+  playWhenVisible = false,
+  disableHover = false,
   onClick,
   title,
 }) {
   const videoRef = useRef(null);
   const wrapperRef = useRef(null);
   const [isNearViewport, setIsNearViewport] = useState(
+    () => typeof IntersectionObserver !== 'function'
+  );
+  const [isPlaybackVisible, setIsPlaybackVisible] = useState(
     () => typeof IntersectionObserver !== 'function'
   );
   const shouldMount = Boolean(autoPlay) || isNearViewport;
@@ -40,11 +44,61 @@ export default function TravelVideo({
     return () => observer.disconnect();
   }, [autoPlay]);
 
+  useEffect(() => {
+    if (autoPlay || !playWhenVisible || typeof IntersectionObserver !== 'function') {
+      return undefined;
+    }
+
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return undefined;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsPlaybackVisible(entry.isIntersecting && entry.intersectionRatio >= 0.35);
+      },
+      {
+        threshold: [0, 0.35, 0.75],
+      }
+    );
+
+    observer.observe(wrapper);
+    return () => observer.disconnect();
+  }, [autoPlay, playWhenVisible]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return undefined;
+
+    if (autoPlay) {
+      video.muted = Boolean(muted);
+      const playback = video.play();
+      playback?.catch(() => {
+        // Controls remain available if the browser blocks audible autoplay.
+      });
+      return undefined;
+    }
+
+    if (!playWhenVisible || !isPlaybackVisible) {
+      video.pause();
+      return undefined;
+    }
+
+    video.muted = true;
+    const playback = video.play();
+    playback?.catch(() => {
+      // Muted playback can still be blocked by device-level media policies.
+    });
+
+    return () => {
+      video.pause();
+    };
+  }, [autoPlay, isPlaybackVisible, muted, playWhenVisible, shouldMount, src]);
+
   const canHover = useMemo(() => {
-    if (disableHover) return false;
+    if (disableHover || playWhenVisible) return false;
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
     return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-  }, [disableHover]);
+  }, [disableHover, playWhenVisible]);
 
   const handleMouseEnter = async () => {
     if (!canHover) return;
@@ -83,13 +137,14 @@ export default function TravelVideo({
 
   const videoStyle = {
     width: '100%',
-    height: '100%',
+    height: style?.height ?? '100%',
+    maxHeight: style?.maxHeight,
     objectFit: style?.objectFit,
     display: 'block',
   };
 
-  const effectiveControls = canHover ? false : controls;
-  const effectiveMuted = canHover ? true : muted;
+  const effectiveControls = playWhenVisible || canHover ? false : controls;
+  const effectiveMuted = playWhenVisible || canHover ? true : muted;
 
   return (
     <div
@@ -105,7 +160,7 @@ export default function TravelVideo({
       }}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
-      aria-label={onClick ? `播放旅行视频${title ? `：${title}` : ''}` : undefined}
+      aria-label={onClick ? `播放视频${title ? `：${title}` : ''}` : undefined}
     >
       {shouldMount ? (
         <video
