@@ -1,6 +1,22 @@
-import React, { useMemo, useState } from 'react';
-import { Search, X, Plus, Edit3, Trash2, BookOpen } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Search,
+  X,
+  Plus,
+  Edit3,
+  Trash2,
+  BookOpen,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
 import { statusLabel } from '../../data/books';
+import {
+  READING_FILTERS,
+  filterReadingBooks,
+  getReadingPageSize,
+  getReadingSwipeDirection,
+  paginateReadingBooks,
+} from '../../utils/readingPagination';
 import BookEditor from './BookEditor';
 import Button from '../ui/Button';
 import { LoadingBlock } from '../ui/Loading';
@@ -25,7 +41,7 @@ function BookCard({ book, isAdmin, onEdit, onDelete }) {
   const showCover = Boolean(book.cover_url) && failedCoverUrl !== book.cover_url;
 
   return (
-    <li className="book-card">
+    <li className={`book-card ${isAdmin ? 'is-admin' : ''}`.trim()}>
       <div className="book-cover">
         {showCover ? (
           <img
@@ -68,23 +84,77 @@ function BookCard({ book, isAdmin, onEdit, onDelete }) {
   );
 }
 
+function readPageSize() {
+  if (typeof window === 'undefined') return getReadingPageSize();
+  return getReadingPageSize(window.innerWidth);
+}
+
+function useReadingPageSize() {
+  const [pageSize, setPageSize] = useState(readPageSize);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setPageSize((current) => {
+        const next = readPageSize();
+        return current === next ? current : next;
+      });
+    };
+
+    window.addEventListener('resize', handleResize, { passive: true });
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  return pageSize;
+}
+
 export default function Reading({ isAdmin, books, loading, saving, backendReady, onSave, onDelete }) {
   const [query, setQuery] = useState('');
+  const [activeStatus, setActiveStatus] = useState('all');
+  const [page, setPage] = useState(1);
+  const [pageDirection, setPageDirection] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const touchStartRef = useRef(null);
+  const pageSize = useReadingPageSize();
   const { confirm, toast } = useDialog();
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return books;
-    return books.filter((b) => {
-      return (
-        (b.title || '').toLowerCase().includes(q) ||
-        (b.author || '').toLowerCase().includes(q) ||
-        (b.note || '').toLowerCase().includes(q)
-      );
-    });
-  }, [books, query]);
+    return filterReadingBooks(books, { query, status: activeStatus });
+  }, [activeStatus, books, query]);
+
+  const paginated = useMemo(
+    () => paginateReadingBooks(filtered, page, pageSize),
+    [filtered, page, pageSize]
+  );
+
+  const resetPage = () => {
+    setPageDirection('');
+    setPage(1);
+  };
+
+  const changePage = (nextPage) => {
+    const next = Math.min(Math.max(1, nextPage), paginated.pageCount);
+    if (next === paginated.page) return;
+    setPageDirection(next > paginated.page ? 'next' : 'previous');
+    setPage(next);
+  };
+
+  const handleTouchStart = (event) => {
+    const touch = event.touches[0];
+    if (!touch) return;
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const handleTouchEnd = (event) => {
+    const start = touchStartRef.current;
+    const touch = event.changedTouches[0];
+    touchStartRef.current = null;
+    if (!start || !touch || paginated.pageCount <= 1) return;
+
+    const direction = getReadingSwipeDirection(start, { x: touch.clientX, y: touch.clientY });
+    if (!direction) return;
+    changePage(direction === 'next' ? paginated.page + 1 : paginated.page - 1);
+  };
 
   const openAdd = () => {
     setEditing(null);
@@ -101,6 +171,7 @@ export default function Reading({ isAdmin, books, loading, saving, backendReady,
   const handleSubmit = async (form) => {
     try {
       await onSave({ ...form, id: editing?.id });
+      resetPage();
       toast.success(editing ? '已更新' : '已添加');
       setEditorOpen(false);
     } catch (err) {
@@ -118,6 +189,7 @@ export default function Reading({ isAdmin, books, loading, saving, backendReady,
     if (!ok) return;
     try {
       await onDelete(book.id);
+      resetPage();
       toast.success('已删除');
     } catch (err) {
       toast.error(err.message || '删除失败');
@@ -144,13 +216,19 @@ export default function Reading({ isAdmin, books, loading, saving, backendReady,
             className="reading-search-input"
             placeholder="搜索书名 / 作者 / 短评..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              resetPage();
+            }}
           />
           {query && (
             <button
               type="button"
               className="reading-search-clear"
-              onClick={() => setQuery('')}
+              onClick={() => {
+                setQuery('');
+                resetPage();
+              }}
               aria-label="clear"
             >
               <X size={12} />
@@ -158,30 +236,86 @@ export default function Reading({ isAdmin, books, loading, saving, backendReady,
           )}
         </div>
         <span className="reading-count">
-          {query ? `${filtered.length}/${books.length}` : `${books.length} 本`}
+          {query || activeStatus !== 'all'
+            ? `${filtered.length}/${books.length} 本`
+            : `${books.length} 本`}
         </span>
       </div>
 
-      {loading ? (
-        <LoadingBlock label="加载书单..." />
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          title={query ? '没有匹配的书' : '暂无书籍'}
-          description={query ? '换个关键词试试' : (isAdmin ? '点右上角"添加"开始记录吧' : '')}
-        />
-      ) : (
-        <ul className="book-list">
-          {filtered.map((book) => (
-            <BookCard
-              key={book.id}
-              book={book}
-              isAdmin={isAdmin}
-              onEdit={openEdit}
-              onDelete={handleDelete}
-            />
-          ))}
-        </ul>
-      )}
+      <div className="reading-filters" role="group" aria-label="按阅读状态筛选">
+        {READING_FILTERS.map((filter) => (
+          <button
+            key={filter.value}
+            type="button"
+            className={`reading-filter ${activeStatus === filter.value ? 'active' : ''}`.trim()}
+            aria-pressed={activeStatus === filter.value}
+            onClick={() => {
+              setActiveStatus(filter.value);
+              resetPage();
+            }}
+          >
+            {filter.label}
+          </button>
+        ))}
+      </div>
+
+      <div
+        className="reading-results"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        {loading ? (
+          <LoadingBlock label="加载书单..." />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            title={query || activeStatus !== 'all' ? '没有匹配的书' : '暂无书籍'}
+            description={
+              query || activeStatus !== 'all'
+                ? '换个关键词或状态试试'
+                : (isAdmin ? '点右上角"添加"开始记录吧' : '')
+            }
+          />
+        ) : (
+          <ul
+            key={`${activeStatus}-${query}-${paginated.page}-${pageSize}`}
+            className={`book-list ${pageDirection ? `page-enter-${pageDirection}` : ''}`.trim()}
+          >
+            {paginated.items.map((book) => (
+              <BookCard
+                key={book.id}
+                book={book}
+                isAdmin={isAdmin}
+                onEdit={openEdit}
+                onDelete={handleDelete}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <nav className="reading-pagination" aria-label="书籍分页">
+        <button
+          type="button"
+          className="reading-page-button"
+          onClick={() => changePage(paginated.page - 1)}
+          disabled={paginated.page <= 1}
+          aria-label="上一页书籍"
+        >
+          <ChevronLeft size={17} />
+        </button>
+        <span className="reading-page-count" aria-live="polite">
+          {filtered.length === 0 ? '0 / 0' : `${paginated.page} / ${paginated.pageCount}`}
+        </span>
+        <button
+          type="button"
+          className="reading-page-button"
+          onClick={() => changePage(paginated.page + 1)}
+          disabled={paginated.page >= paginated.pageCount}
+          aria-label="下一页书籍"
+        >
+          <ChevronRight size={17} />
+        </button>
+      </nav>
 
       {isAdmin && !backendReady && !loading && (
         <p className="reading-hint">
