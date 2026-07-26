@@ -5,7 +5,8 @@ import CalendarWidget from './CalendarWidget';
 import DailyEntry from './DailyEntry';
 import DailyEditor from './DailyEditor';
 import SearchBar from './SearchBar';
-import { TimeArrival, TimeMachineControls, TimeTravelOverlay } from './TimeMachine';
+import { TimeArrival, TimeTravelOverlay } from './TimeMachine';
+import MemoryActions from './MemoryActions';
 import { useDialog } from '../../context/DialogContext';
 import { compressVideo, VIDEO_COMPRESSION_THRESHOLD } from '../../utils/compressVideo';
 import {
@@ -574,11 +575,15 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
       <SectionHeading
         title="Daily"
         description="把普通日子收进时间里。"
-        action={<TimeMachineControls
-          disabled={loading || !posts?.length}
-          isTraveling={isTraveling}
-          onTravel={startTimeTravel}
-        />}
+        action={(
+          <MemoryActions
+            disabled={loading || !posts?.length}
+            isTraveling={isTraveling}
+            onTimeTravel={startTimeTravel}
+            posts={posts}
+            currentPostId={currentPost?.id || activeDate}
+          />
+        )}
       />
 
       <div className="daily-toolbar">

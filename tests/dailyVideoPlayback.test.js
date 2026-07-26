@@ -6,13 +6,23 @@ const root = new URL('../', import.meta.url);
 
 test('Daily 视频使用可视区静音循环播放并通过共享浮层开启声音', async () => {
   const source = await readFile(
-    new URL('src/components/daily/DailyEntry.jsx', root),
+    new URL('src/components/daily/DailyMedia.jsx', root),
     'utf8'
   );
 
   assert.match(source, /<TravelVideo[\s\S]*?muted[\s\S]*?loop[\s\S]*?playWhenVisible/);
   assert.match(source, /controls=\{false\}/);
   assert.match(source, /<VideoLightbox[\s\S]*?src=\{url\}/);
+});
+
+test('Daily 正文和漂流瓶纸条共用同一媒体渲染器', async () => {
+  const [entrySource, noteSource] = await Promise.all([
+    readFile(new URL('src/components/daily/DailyEntry.jsx', root), 'utf8'),
+    readFile(new URL('src/components/daily/drift/BottleNote.jsx', root), 'utf8'),
+  ]);
+
+  assert.match(entrySource, /<DailyMedia[\s\S]*?media=\{post\.media\}/);
+  assert.match(noteSource, /<DailyMedia[\s\S]*?media=\{post\.media\}[\s\S]*?variant="note"/);
 });
 
 test('共享视频浮层自动播放、显示控制栏且明确关闭静音', async () => {
