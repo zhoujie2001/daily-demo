@@ -1,0 +1,250 @@
+.cat-pet {
+  --cat-pet-width: 220px;
+  position: fixed;
+  z-index: 72;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  width: var(--cat-pet-width);
+  height: 268px;
+  pointer-events: none;
+  filter: drop-shadow(0 16px 18px rgba(48, 43, 35, 0.08));
+  transition: right 420ms var(--ease-out);
+}
+
+.cat-pet-stage {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  border-radius: 46% 46% 32% 32%;
+  outline: none;
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cat-pet-stage:focus-visible {
+  outline: 2px solid rgba(166, 95, 66, 0.62);
+  outline-offset: 3px;
+}
+
+.cat-pet canvas,
+.cat-pet-fallback {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.cat-pet canvas.is-unavailable {
+  display: none;
+}
+
+.cat-pet-ground {
+  position: absolute;
+  z-index: 1;
+  right: 17%;
+  bottom: 9px;
+  left: 17%;
+  height: 20px;
+  opacity: 0.62;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(67, 56, 46, 0.2),
+    rgba(67, 56, 46, 0) 72%
+  );
+  border-radius: 50%;
+  filter: blur(4px);
+  pointer-events: none;
+}
+
+.cat-pet-hide {
+  position: absolute;
+  z-index: 5;
+  top: 28px;
+  right: 2px;
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  color: rgba(63, 57, 49, 0.58);
+  background: rgba(255, 253, 249, 0.7);
+  border: 1px solid rgba(88, 74, 62, 0.12);
+  border-radius: 50%;
+  box-shadow: 0 7px 18px rgba(48, 43, 35, 0.08);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 160ms ease, transform 160ms ease, color 160ms ease;
+  cursor: pointer;
+  pointer-events: auto;
+  backdrop-filter: blur(10px);
+}
+
+.cat-pet:hover .cat-pet-hide,
+.cat-pet:focus-within .cat-pet-hide {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.cat-pet-hide:hover {
+  color: var(--accent-deep);
+}
+
+.cat-pet-reaction {
+  position: absolute;
+  z-index: 4;
+  top: 46px;
+  left: 50%;
+  width: 70px;
+  height: 58px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.cat-pet-reaction i {
+  position: absolute;
+  width: 10px;
+  height: 12px;
+  background: rgba(166, 95, 66, 0.76);
+  border-radius: 55% 45% 52% 48%;
+  opacity: 0;
+  animation: cat-pet-reaction-rise 900ms var(--ease-out) forwards;
+}
+
+.cat-pet-reaction i::before,
+.cat-pet-reaction i::after {
+  content: '';
+  position: absolute;
+  top: -5px;
+  width: 5px;
+  height: 6px;
+  background: inherit;
+  border-radius: 50%;
+}
+
+.cat-pet-reaction i::before {
+  left: -1px;
+}
+
+.cat-pet-reaction i::after {
+  right: -1px;
+}
+
+.cat-pet-reaction i:nth-child(1) {
+  left: 8px;
+  bottom: 0;
+  rotate: -18deg;
+}
+
+.cat-pet-reaction i:nth-child(2) {
+  left: 31px;
+  bottom: 8px;
+  scale: 0.78;
+  animation-delay: 90ms;
+}
+
+.cat-pet-reaction i:nth-child(3) {
+  right: 7px;
+  bottom: 2px;
+  rotate: 17deg;
+  scale: 0.62;
+  animation-delay: 170ms;
+}
+
+.cat-pet-reaction.is-head-tilt i {
+  background: rgba(174, 140, 58, 0.72);
+}
+
+.cat-pet-restore {
+  position: fixed;
+  z-index: 72;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  width: 44px;
+  height: 44px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  color: var(--accent-deep);
+  background: rgba(255, 253, 249, 0.82);
+  border: 1px solid rgba(166, 95, 66, 0.2);
+  border-radius: 50%;
+  box-shadow: 0 10px 30px rgba(48, 43, 35, 0.12);
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+}
+
+.cat-pet-restore:hover {
+  background: var(--surface-elevated);
+  transform: translateY(-2px);
+}
+
+@keyframes cat-pet-reaction-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.65);
+  }
+  24% {
+    opacity: 0.92;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-34px) scale(1.08);
+  }
+}
+
+@media (max-width: 999px) {
+  .cat-pet {
+    --cat-pet-width: 168px;
+    right: max(7px, env(safe-area-inset-right));
+    bottom: max(5px, env(safe-area-inset-bottom));
+    height: 205px;
+  }
+
+  .cat-pet-hide {
+    top: 21px;
+    right: 0;
+    opacity: 0.78;
+    transform: none;
+  }
+}
+
+@media (min-width: 1000px) and (max-width: 1400px) {
+  .cat-pet.is-avoiding-controls {
+    right: 245px;
+  }
+}
+
+@media (max-width: 700px) {
+  .cat-pet {
+    --cat-pet-width: 108px;
+    right: max(2px, env(safe-area-inset-right));
+    bottom: max(1px, env(safe-area-inset-bottom));
+    height: 134px;
+    opacity: 0.96;
+  }
+
+  .cat-pet-hide {
+    top: 11px;
+    width: 27px;
+    height: 27px;
+  }
+
+  .cat-pet-reaction {
+    top: 14px;
+    scale: 0.66;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cat-pet-reaction i {
+    animation-duration: 520ms;
+  }
+
+  .cat-pet-hide,
+  .cat-pet-restore,
+  .cat-pet {
+    transition: none;
+  }
+}

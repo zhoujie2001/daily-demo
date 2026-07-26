@@ -17,6 +17,7 @@ import { useDiary } from './hooks/useDiary';
 import { usePhotos } from './hooks/usePhotos';
 import { useVideos } from './hooks/useVideos';
 import { useReading } from './hooks/useReading';
+import CatPet from './components/pet/CatPet';
 
 function AppInner() {
   const { token, isAdmin, login, logout } = useAdminAuth();
@@ -118,6 +119,7 @@ function AppInner() {
         onRetry={() => runBackendCheck({ showDialogOnFail: true })}
       />
       <AdminLogin open={showLogin} onClose={closeLogin} onLogin={handleLogin} />
+      <CatPet />
 
       <Sidebar
         isAdmin={isAdmin}
