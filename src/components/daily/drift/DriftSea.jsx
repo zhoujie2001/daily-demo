@@ -154,37 +154,37 @@ function InteractiveBottle({
         ))}
       </div>
 
-      <Motion.button
-        type="button"
-        className="drift-floating-bottle"
-        data-drift-bottle-id={bottle.id}
-        data-physics-enabled={canSelect}
-        aria-label={`打开第 ${index + 1} 只漂流瓶`}
-        disabled={!canSelect}
-        onClick={() => onSelect(bottle)}
-        onPointerEnter={(event) => applyPointerImpact(event, true)}
-        onPointerMove={applyPointerImpact}
-        onPointerLeave={settleBottle}
-        animate={reducedMotion ? {
-          scale: bottle.scale,
-        } : {
-          y: [0, -bottle.drift, 0],
-          scale: bottle.scale,
-        }}
-        transition={reducedMotion ? {
-          duration: 0.01,
-        } : {
-          y: {
-            duration: 3.2 + index * 0.2,
-            repeat: Infinity,
-            ease: 'easeInOut',
-            delay: bottle.delay,
-          },
-          scale: { duration: 0.2 },
-        }}
-        whileTap={canSelect ? { scale: bottle.scale * 0.96 } : undefined}
-      >
-        <MotionConfig reducedMotion="never">
+      <MotionConfig reducedMotion="never">
+        <Motion.button
+          type="button"
+          className="drift-floating-bottle"
+          data-drift-bottle-id={bottle.id}
+          data-physics-enabled={canSelect}
+          aria-label={`打开第 ${index + 1} 只漂流瓶`}
+          disabled={!canSelect}
+          onClick={() => onSelect(bottle)}
+          onPointerEnter={(event) => applyPointerImpact(event, true)}
+          onPointerMove={applyPointerImpact}
+          onPointerLeave={settleBottle}
+          animate={{
+            y: [
+              0,
+              -(reducedMotion ? Math.max(7, bottle.drift * 0.58) : bottle.drift),
+              0,
+            ],
+            scale: bottle.scale,
+          }}
+          transition={{
+            y: {
+              duration: (reducedMotion ? 5.6 : 3.8) + index * 0.2,
+              repeat: Infinity,
+              ease: 'easeInOut',
+              delay: bottle.delay,
+            },
+            scale: { duration: reducedMotion ? 0.32 : 0.2 },
+          }}
+          whileTap={canSelect ? { scale: bottle.scale * 0.96 } : undefined}
+        >
           <Motion.span
             className="drift-bottle-impact-body"
             style={{ x: shiftX, y: shiftY, rotate: tilt }}
@@ -201,8 +201,8 @@ function InteractiveBottle({
               <BottleIllustration />
             </span>
           </Motion.span>
-        </MotionConfig>
-      </Motion.button>
+        </Motion.button>
+      </MotionConfig>
     </div>
   );
 }

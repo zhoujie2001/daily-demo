@@ -32,7 +32,11 @@ export function BottleCork({ className = '' }) {
   );
 }
 
-export default function BottleIllustration({ corked = true, className = '' }) {
+export default function BottleIllustration({
+  corked = true,
+  paperVisible = true,
+  className = '',
+}) {
   return (
     <svg
       className={`drift-bottle-art ${className}`.trim()}
@@ -69,13 +73,17 @@ export default function BottleIllustration({ corked = true, className = '' }) {
           strokeLinecap="round"
           opacity=".65"
         />
-        <path
-          d="M29 95c7-4.5 20.5-6.5 29-4l3.8 31.5c-9.4-2.2-20.4.1-29.8 4L29 95Z"
-          fill="url(#drift-paper-fill)"
-          stroke="#c6ae82"
-          strokeWidth="1.2"
-        />
-        <path d="M33 101c8-2.7 16-3.7 24-2.2M34 108c7.4-2.4 15-3.2 23-1.8M35 115c7-2.1 14-2.7 22-1.4" stroke="#a65f42" strokeWidth="1.2" opacity=".42" />
+        {paperVisible ? (
+          <g className="drift-bottle-paper">
+            <path
+              d="M29 95c7-4.5 20.5-6.5 29-4l3.8 31.5c-9.4-2.2-20.4.1-29.8 4L29 95Z"
+              fill="url(#drift-paper-fill)"
+              stroke="#c6ae82"
+              strokeWidth="1.2"
+            />
+            <path d="M33 101c8-2.7 16-3.7 24-2.2M34 108c7.4-2.4 15-3.2 23-1.8M35 115c7-2.1 14-2.7 22-1.4" stroke="#a65f42" strokeWidth="1.2" opacity=".42" />
+          </g>
+        ) : null}
         <path d="M29 33h28M30 21h26" stroke="#d7e9e6" strokeWidth="2" />
       </g>
 

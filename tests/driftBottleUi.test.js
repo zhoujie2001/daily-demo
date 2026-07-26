@@ -39,10 +39,53 @@ test('漂流瓶体验使用模态 dialog、可退出并具有完整动画阶段'
   assert.match(source, /window\.addEventListener\('keydown', handleEscape\)/);
   assert.match(source, /退出漂流瓶/);
   assert.match(source, /DRIFT_BOTTLE_PHASES\.UNCORKING/);
+  assert.match(source, /DRIFT_BOTTLE_PHASES\.EXTRACTING/);
   assert.match(source, /DRIFT_BOTTLE_PHASES\.UNFOLDING/);
+  assert.match(source, /DRIFT_BOTTLE_PHASES\.INSERTING/);
   assert.match(source, /DRIFT_BOTTLE_PHASES\.THROWING/);
   assert.match(source, /DRIFT_BOTTLE_PHASES\.SPLASHING/);
+  assert.match(source, /className="drift-rolled-note"/);
+  assert.match(source, /drift-splash-ring-outer/);
+  assert.match(source, /drift-splash-ring-inner/);
+  assert.match(source, /<MotionConfig reducedMotion="never">/);
   assert.doesNotMatch(source, /<motion\./);
+});
+
+test('取信和扔回时间轴保留可辨识的十段动作', async () => {
+  const source = await readFile(
+    new URL('src/components/daily/drift/DriftBottleExperience.jsx', root),
+    'utf8'
+  );
+
+  const durations = Object.fromEntries(
+    Array.from(source.matchAll(/^\s{2}(\w+): ([\d.]+),$/gm))
+      .map(([, name, seconds]) => [name, Number(seconds)])
+  );
+
+  assert.ok(durations.approach >= 1.4);
+  assert.ok(durations.uncork >= 1);
+  assert.ok(durations.extract >= 1.2);
+  assert.ok(durations.unfold >= 1.3);
+  assert.ok(durations.fold >= 1.1);
+  assert.ok(durations.insert >= 1.1);
+  assert.ok(durations.cork >= 0.9);
+  assert.ok(durations.throw >= 1.5);
+  assert.ok(durations.splash >= 1.3);
+  assert.match(source, /const PHASE_ADVANCE = Object\.freeze/);
+  assert.match(source, /window\.setTimeout/);
+  assert.match(source, /duration \* 1000 \+ 60/);
+  assert.doesNotMatch(source, /reducedMotion \? 0\.01/);
+});
+
+test('聚焦瓶子可以在纸卷取出后隐藏瓶内纸张，并在放回后恢复', async () => {
+  const [experienceSource, illustrationSource] = await Promise.all([
+    readFile(new URL('src/components/daily/drift/DriftBottleExperience.jsx', root), 'utf8'),
+    readFile(new URL('src/components/daily/drift/BottleIllustration.jsx', root), 'utf8'),
+  ]);
+
+  assert.match(experienceSource, /paperVisible=\{paperInsideBottle\}/);
+  assert.match(illustrationSource, /paperVisible = true/);
+  assert.match(illustrationSource, /\{paperVisible \? \(/);
 });
 
 test('海面包含云、帆船、三层海浪和可点击瓶子', async () => {

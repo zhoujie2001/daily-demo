@@ -3,9 +3,11 @@ export const DRIFT_BOTTLE_PHASES = Object.freeze({
   SEA: 'sea',
   APPROACHING: 'approaching',
   UNCORKING: 'uncorking',
+  EXTRACTING: 'extracting',
   UNFOLDING: 'unfolding',
   READING: 'reading',
   FOLDING: 'folding',
+  INSERTING: 'inserting',
   CORKING: 'corking',
   THROWING: 'throwing',
   SPLASHING: 'splashing',
@@ -16,9 +18,11 @@ export const DRIFT_BOTTLE_ACTIONS = Object.freeze({
   SELECT: 'select',
   APPROACH_COMPLETE: 'approach-complete',
   UNCORK_COMPLETE: 'uncork-complete',
+  EXTRACT_COMPLETE: 'extract-complete',
   UNFOLD_COMPLETE: 'unfold-complete',
   RETURN: 'return',
   FOLD_COMPLETE: 'fold-complete',
+  INSERT_COMPLETE: 'insert-complete',
   CORK_COMPLETE: 'cork-complete',
   THROW_COMPLETE: 'throw-complete',
   SPLASH_COMPLETE: 'splash-complete',
@@ -144,6 +148,10 @@ export function driftBottleReducer(state, action) {
 
     case DRIFT_BOTTLE_ACTIONS.UNCORK_COMPLETE:
       if (state.phase !== DRIFT_BOTTLE_PHASES.UNCORKING) return state;
+      return { ...state, phase: DRIFT_BOTTLE_PHASES.EXTRACTING };
+
+    case DRIFT_BOTTLE_ACTIONS.EXTRACT_COMPLETE:
+      if (state.phase !== DRIFT_BOTTLE_PHASES.EXTRACTING) return state;
       return { ...state, phase: DRIFT_BOTTLE_PHASES.UNFOLDING };
 
     case DRIFT_BOTTLE_ACTIONS.UNFOLD_COMPLETE:
@@ -156,6 +164,10 @@ export function driftBottleReducer(state, action) {
 
     case DRIFT_BOTTLE_ACTIONS.FOLD_COMPLETE:
       if (state.phase !== DRIFT_BOTTLE_PHASES.FOLDING) return state;
+      return { ...state, phase: DRIFT_BOTTLE_PHASES.INSERTING };
+
+    case DRIFT_BOTTLE_ACTIONS.INSERT_COMPLETE:
+      if (state.phase !== DRIFT_BOTTLE_PHASES.INSERTING) return state;
       return { ...state, phase: DRIFT_BOTTLE_PHASES.CORKING };
 
     case DRIFT_BOTTLE_ACTIONS.CORK_COMPLETE:
