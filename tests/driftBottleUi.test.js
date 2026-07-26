@@ -59,6 +59,27 @@ test('海面包含云、帆船、三层海浪和可点击瓶子', async () => {
   assert.match(source, /aria-label=\{`打开第 \$\{index \+ 1\} 只漂流瓶`\}/);
 });
 
+test('海浪持续推进，瓶子根据指针速度和碰撞方位产生物理反馈', async () => {
+  const [componentSource, cssSource] = await Promise.all([
+    readFile(new URL('src/components/daily/drift/DriftSea.jsx', root), 'utf8'),
+    readFile(new URL('src/components/daily/drift/DriftBottle.css', root), 'utf8'),
+  ]);
+
+  assert.match(componentSource, /calculateBottleCollision/);
+  assert.match(componentSource, /samplePointerMotion/);
+  assert.match(componentSource, /onPointerMoveCapture=\{trackPointer\}/);
+  assert.match(componentSource, /onPointerEnter=\{\(event\) => applyPointerImpact\(event, true\)\}/);
+  assert.match(componentSource, /className="drift-impact-ripple"/);
+  assert.match(componentSource, /<MotionConfig reducedMotion="never">/);
+  assert.match(cssSource, /@keyframes drift-wave-swell/);
+  assert.match(cssSource, /@keyframes drift-sea-current/);
+  assert.match(cssSource, /@keyframes drift-impact-ripple/);
+  assert.match(cssSource, /will-change: transform/);
+  assert.match(cssSource, /prefers-reduced-motion: reduce[\s\S]*?\.drift-wave-track[\s\S]*?animation-duration: 18s/);
+  assert.match(cssSource, /prefers-reduced-motion: reduce[\s\S]*?\.drift-wave-track[\s\S]*?animation-iteration-count: infinite/);
+  assert.match(cssSource, /prefers-reduced-motion: reduce[\s\S]*?\.drift-impact-ripple/);
+});
+
 test('漂流瓶样式覆盖移动端、安全区域和减少动态效果设置', async () => {
   const source = await readFile(
     new URL('src/components/daily/drift/DriftBottle.css', root),
