@@ -1,21 +1,30 @@
 .cat-pet {
-  --cat-pet-width: 220px;
+  --cat-pet-width: 240px;
   position: fixed;
   z-index: 72;
   right: max(18px, env(safe-area-inset-right));
-  bottom: max(12px, env(safe-area-inset-bottom));
+  bottom: max(10px, env(safe-area-inset-bottom));
   width: var(--cat-pet-width);
-  height: 268px;
+  height: 304px;
   pointer-events: none;
-  filter: drop-shadow(0 16px 18px rgba(48, 43, 35, 0.08));
+  filter: drop-shadow(0 17px 20px rgba(48, 43, 35, 0.11));
   transition: right 420ms var(--ease-out);
 }
 
 .cat-pet-stage {
+  --blink: 0;
+  --look-x: 0px;
+  --look-y: 0px;
+  --eye-x: 0px;
+  --eye-y: 0px;
+  --head-angle: 0deg;
+  --ear-flick: 0deg;
+  --tail-angle: 0deg;
+  --breath: 0px;
   position: absolute;
   inset: 0;
   overflow: visible;
-  border-radius: 46% 46% 32% 32%;
+  border-radius: 46% 46% 34% 34%;
   outline: none;
   cursor: pointer;
   pointer-events: auto;
@@ -23,31 +32,169 @@
 }
 
 .cat-pet-stage:focus-visible {
-  outline: 2px solid rgba(166, 95, 66, 0.62);
+  outline: 2px solid rgba(166, 95, 66, 0.54);
   outline-offset: 3px;
 }
 
-.cat-pet canvas,
-.cat-pet-fallback {
-  position: relative;
+.cat-pet-character {
+  position: absolute;
   z-index: 2;
+  inset: 0;
+  display: block;
+  transform: translateY(var(--breath));
+  transform-origin: 52% 91%;
+  transition: filter 220ms ease;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.cat-pet-stage:hover .cat-pet-character {
+  filter: brightness(1.025) saturate(1.025);
+}
+
+.cat-pet-art,
+.cat-pet-tail-layer,
+.cat-pet-head-layer,
+.cat-pet-ear-layer,
+.cat-pet-paw-layer,
+.cat-pet-fallback {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   display: block;
+  object-fit: contain;
+  object-position: center bottom;
+  user-select: none;
+  pointer-events: none;
 }
 
-.cat-pet canvas.is-unavailable {
-  display: none;
+.cat-pet-art {
+  z-index: 1;
+}
+
+.cat-pet-head-layer {
+  z-index: 3;
+  clip-path: polygon(10% 0, 69% 0, 70% 45%, 10% 45%);
+  transform:
+    translate(var(--look-x), var(--look-y))
+    rotate(var(--head-angle));
+  transform-origin: 39% 32%;
+  will-change: transform;
+}
+
+.cat-pet-ear-layer {
+  z-index: 4;
+  will-change: transform;
+}
+
+.cat-pet-ear-layer.is-left {
+  clip-path: polygon(19% 0, 43% 0, 42% 20%, 18% 20%);
+  transform: rotate(calc(var(--ear-flick) * -1));
+  transform-origin: 31% 16%;
+}
+
+.cat-pet-ear-layer.is-right {
+  clip-path: polygon(42% 2%, 68% 3%, 68% 23%, 41% 21%);
+  transform: rotate(var(--ear-flick));
+  transform-origin: 56% 17%;
+}
+
+.cat-pet-tail-layer {
+  z-index: 2;
+  clip-path: polygon(44% 72%, 100% 72%, 100% 100%, 41% 100%);
+  transform: rotate(var(--tail-angle));
+  transform-origin: 76% 82%;
+  will-change: transform;
+}
+
+.cat-pet-paw-layer {
+  z-index: 5;
+  clip-path: polygon(20% 76%, 38% 76%, 38% 100%, 19% 100%);
+  transform-origin: 29% 91%;
+}
+
+.cat-pet-paw-mask {
+  position: absolute;
+  z-index: 4;
+  left: 19.5%;
+  bottom: 0;
+  width: 18.5%;
+  height: 22%;
+  background: var(--paper);
+  border-radius: 56% 44% 50% 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cat-pet-eyelid {
+  position: absolute;
+  z-index: 6;
+  height: 4.5%;
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(151, 151, 146, 0.98),
+      rgba(226, 218, 207, 0.99) 57%,
+      rgba(247, 239, 228, 0.99)
+    );
+  border-bottom: 1px solid rgba(57, 51, 45, 0.62);
+  border-radius: 60% 60% 48% 48%;
+  transform: scaleY(var(--blink));
+  transform-origin: 50% 0;
+  opacity: min(1, calc(var(--blink) * 1.35));
+  box-shadow: 0 1px 1px rgba(63, 57, 49, 0.16);
+  pointer-events: none;
+}
+
+.cat-pet-eyelid.is-left {
+  top: 22.4%;
+  left: 28.7%;
+  width: 7.6%;
+  rotate: 6deg;
+}
+
+.cat-pet-eyelid.is-right {
+  top: 24.9%;
+  left: 43.1%;
+  width: 7.8%;
+  rotate: -7deg;
+}
+
+.cat-pet-eye-shine {
+  position: absolute;
+  z-index: 7;
+  width: 1.35%;
+  aspect-ratio: 1;
+  background: rgba(255, 255, 248, 0.96);
+  border-radius: 50%;
+  box-shadow:
+    0 0 2px rgba(255, 255, 255, 0.92),
+    0 0 5px rgba(218, 201, 112, 0.45);
+  transform: translate(var(--eye-x), var(--eye-y));
+  opacity: calc(1 - var(--blink));
+  will-change: transform;
+  pointer-events: none;
+}
+
+.cat-pet-eye-shine.is-left {
+  top: 22.3%;
+  left: 31.5%;
+}
+
+.cat-pet-eye-shine.is-right {
+  top: 24.9%;
+  left: 46.1%;
 }
 
 .cat-pet-ground {
   position: absolute;
   z-index: 1;
-  right: 17%;
-  bottom: 9px;
-  left: 17%;
-  height: 20px;
-  opacity: 0.62;
+  right: 11%;
+  bottom: 1px;
+  left: 11%;
+  height: 18px;
+  opacity: 0.52;
   background: radial-gradient(
     ellipse at center,
     rgba(67, 56, 46, 0.2),
@@ -58,18 +205,34 @@
   pointer-events: none;
 }
 
+.cat-pet-stage.is-head-tilt .cat-pet-character {
+  animation: cat-pet-curious-tilt 1.15s var(--ease-out);
+}
+
+.cat-pet-stage.is-paw .cat-pet-character {
+  animation: cat-pet-body-hop 850ms var(--ease-out);
+}
+
+.cat-pet-stage.is-paw .cat-pet-paw-layer {
+  animation: cat-pet-paw-wave 920ms var(--ease-out);
+}
+
+.cat-pet-stage.is-paw .cat-pet-paw-mask {
+  animation: cat-pet-paw-mask 920ms linear;
+}
+
 .cat-pet-hide {
   position: absolute;
-  z-index: 5;
-  top: 28px;
-  right: 2px;
+  z-index: 9;
+  top: 24px;
+  right: 0;
   width: 32px;
   height: 32px;
   display: inline-grid;
   place-items: center;
   padding: 0;
   color: rgba(63, 57, 49, 0.58);
-  background: rgba(255, 253, 249, 0.7);
+  background: rgba(255, 253, 249, 0.76);
   border: 1px solid rgba(88, 74, 62, 0.12);
   border-radius: 50%;
   box-shadow: 0 7px 18px rgba(48, 43, 35, 0.08);
@@ -93,9 +256,9 @@
 
 .cat-pet-reaction {
   position: absolute;
-  z-index: 4;
-  top: 46px;
-  left: 50%;
+  z-index: 8;
+  top: 18px;
+  left: 49%;
   width: 70px;
   height: 58px;
   transform: translateX(-50%);
@@ -104,9 +267,9 @@
 
 .cat-pet-reaction i {
   position: absolute;
-  width: 10px;
-  height: 12px;
-  background: rgba(166, 95, 66, 0.76);
+  width: 12px;
+  height: 14px;
+  background: rgba(166, 95, 66, 0.86);
   border-radius: 55% 45% 52% 48%;
   opacity: 0;
   animation: cat-pet-reaction-rise 900ms var(--ease-out) forwards;
@@ -180,6 +343,54 @@
   transform: translateY(-2px);
 }
 
+@keyframes cat-pet-curious-tilt {
+  0%,
+  100% {
+    transform: translateY(var(--breath)) rotate(0);
+  }
+  36%,
+  68% {
+    transform: translate(-2px, calc(var(--breath) - 3px)) rotate(8deg);
+  }
+}
+
+@keyframes cat-pet-body-hop {
+  0%,
+  100% {
+    transform: translateY(var(--breath)) scaleY(1);
+  }
+  42% {
+    transform: translateY(calc(var(--breath) - 8px)) scaleY(1.018);
+  }
+}
+
+@keyframes cat-pet-paw-wave {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0);
+  }
+  36% {
+    transform: translate(-5px, -24px) rotate(-15deg);
+  }
+  56% {
+    transform: translate(-3px, -19px) rotate(8deg);
+  }
+  74% {
+    transform: translate(-4px, -22px) rotate(-8deg);
+  }
+}
+
+@keyframes cat-pet-paw-mask {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  12%,
+  88% {
+    opacity: 1;
+  }
+}
+
 @keyframes cat-pet-reaction-rise {
   0% {
     opacity: 0;
@@ -194,25 +405,25 @@
   }
 }
 
+@media (min-width: 1000px) {
+  .cat-pet.is-avoiding-controls {
+    right: clamp(245px, 18vw, 420px);
+  }
+}
+
 @media (max-width: 999px) {
   .cat-pet {
     --cat-pet-width: 168px;
     right: max(7px, env(safe-area-inset-right));
-    bottom: max(5px, env(safe-area-inset-bottom));
-    height: 205px;
+    bottom: max(4px, env(safe-area-inset-bottom));
+    height: 212px;
   }
 
   .cat-pet-hide {
-    top: 21px;
+    top: 19px;
     right: 0;
     opacity: 0.78;
     transform: none;
-  }
-}
-
-@media (min-width: 1000px) and (max-width: 1400px) {
-  .cat-pet.is-avoiding-controls {
-    right: 245px;
   }
 }
 
@@ -221,23 +432,33 @@
     --cat-pet-width: 108px;
     right: max(2px, env(safe-area-inset-right));
     bottom: max(1px, env(safe-area-inset-bottom));
-    height: 134px;
+    height: 136px;
     opacity: 0.96;
   }
 
   .cat-pet-hide {
-    top: 11px;
+    top: 10px;
     width: 27px;
     height: 27px;
   }
 
   .cat-pet-reaction {
-    top: 14px;
+    top: 13px;
     scale: 0.66;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .cat-pet-character,
+  .cat-pet-paw-layer,
+  .cat-pet-paw-mask,
+  .cat-pet-head-layer,
+  .cat-pet-tail-layer,
+  .cat-pet-ear-layer {
+    animation: none !important;
+    transition: none;
+  }
+
   .cat-pet-reaction i {
     animation-duration: 520ms;
   }

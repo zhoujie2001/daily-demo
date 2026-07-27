@@ -1,10 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { EyeOff, PawPrint } from 'lucide-react';
-import { CAT_PET_REACTION } from '../../utils/catPetBehavior';
-import { createCatPetEngine } from './catPetEngine';
+import {
+  advanceCatPetSchedule,
+  blinkAmount,
+  CAT_PET_EVENT,
+  CAT_PET_REACTION,
+  chooseCatPetReaction,
+  createCatPetSchedule,
+} from '../../utils/catPetBehavior';
 import './CatPet.css';
 
 const STORAGE_KEY = 'daily-demo-cat-pet-hidden';
+const CAT_ASSET = '/images/cat-pet-2d.png';
 
 function readInitialHiddenState() {
   try {
@@ -22,45 +29,86 @@ function persistHiddenState(hidden) {
   }
 }
 
+function clamp(value, min = -1, max = 1) {
+  return Math.min(max, Math.max(min, value));
+}
+
 function CatPetFallback() {
   return (
     <svg
       className="cat-pet-fallback"
-      viewBox="0 0 220 260"
+      viewBox="0 0 220 278"
       aria-hidden="true"
     >
-      <ellipse cx="110" cy="236" rx="72" ry="13" fill="rgba(74, 64, 54, .12)" />
+      <defs>
+        <linearGradient id="catFallbackFur" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#f7f1e8" />
+          <stop offset=".58" stopColor="#d7d5d1" />
+          <stop offset="1" stopColor="#aaaead" />
+        </linearGradient>
+        <radialGradient id="catFallbackEye">
+          <stop offset="0" stopColor="#d8c35d" />
+          <stop offset=".72" stopColor="#9b8b31" />
+          <stop offset="1" stopColor="#514a20" />
+        </radialGradient>
+      </defs>
       <path
-        d="M66 200c-7-47 4-94 44-103 38 5 54 48 45 102-5 30-25 39-45 39-22 0-39-9-44-38Z"
-        fill="#c9c8c4"
+        d="M53 242c-11-60-5-116 23-139 10-9 22-14 35-14 15 0 29 7 39 19 24 28 28 83 13 134-18 16-86 17-110 0Z"
+        fill="url(#catFallbackFur)"
       />
       <path
-        d="M75 117 67 55l38 26c13-5 28-5 41 0l36-25-7 62c7 10 10 22 8 35-4 29-29 47-67 47-40 0-67-19-69-49-1-13 2-24 8-34Z"
-        fill="#d8d6d0"
+        d="M56 116 49 53l42 30c13-5 27-5 40 0l41-30-7 64c7 11 10 24 7 38-6 29-30 48-61 48-33 0-58-19-64-49-3-14 1-27 9-38Z"
+        fill="url(#catFallbackFur)"
+      />
+      <path d="m60 88-5-24 26 20-21 4Zm102 0 5-24-26 20 21 4Z" fill="#d5a7a0" />
+      <ellipse cx="87" cy="132" rx="13" ry="10" fill="url(#catFallbackEye)" />
+      <ellipse cx="137" cy="132" rx="13" ry="10" fill="url(#catFallbackEye)" />
+      <ellipse cx="87" cy="132" rx="2.6" ry="8" fill="#24231f" />
+      <ellipse cx="137" cy="132" rx="2.6" ry="8" fill="#24231f" />
+      <circle cx="83" cy="128" r="2.2" fill="#fff" />
+      <circle cx="133" cy="128" r="2.2" fill="#fff" />
+      <path d="m103 151 9-5 9 5-9 9-9-9Z" fill="#b26c61" />
+      <path
+        d="M105 98c2-11 5-19 7-25 3 7 6 14 8 25M91 101c3-9 7-16 12-21m31 21c-3-9-7-16-12-21"
+        fill="none"
+        stroke="#777b7b"
+        strokeWidth="4"
+        strokeLinecap="round"
       />
       <path
-        d="M77 126c-9 9-13 24-9 40 5 23 23 35 48 35 26 0 45-13 49-37 3-16-2-31-11-40-4 25-18 39-38 39-20 0-35-13-39-37Z"
-        fill="#f1eadf"
+        d="M79 170c-19 10-29 33-24 52m113-54c24 12 33 34 22 55"
+        fill="none"
+        stroke="#f7f1e8"
+        strokeWidth="22"
+        strokeLinecap="round"
       />
-      <path d="m78 86-5-22 23 16-18 6Zm79 0 5-22-23 16 18 6Z" fill="#c3877b" />
-      <ellipse cx="92" cy="121" rx="12" ry="15" fill="#a9943b" />
-      <ellipse cx="140" cy="121" rx="12" ry="15" fill="#a9943b" />
-      <ellipse cx="94" cy="121" rx="3" ry="10" fill="#292620" />
-      <ellipse cx="138" cy="121" rx="3" ry="10" fill="#292620" />
-      <path d="m108 142 8-5 8 5-8 8-8-8Z" fill="#a65f4a" />
-      <path d="M108 91c3-11 5-17 8-22 3 5 5 12 7 22m-25 2c3-9 7-15 11-20m25 20c-3-9-7-15-11-20" fill="none" stroke="#5e6262" strokeWidth="4" strokeLinecap="round" />
-      <path d="M86 183c7 16 7 35 4 51m52-51c-7 16-7 35-4 51" fill="none" stroke="#5e6262" strokeWidth="5" strokeLinecap="round" opacity=".65" />
-      <path d="M151 205c34-4 51 10 49 28-2 19-28 24-68 9 28 1 42-5 40-16-2-8-9-15-21-21Z" fill="#b9bab7" />
+      <path
+        d="M153 226c37-5 55 7 54 24-2 19-32 22-77 6 31 0 46-6 44-17-2-7-9-11-21-13Z"
+        fill="#c3c5c3"
+      />
     </svg>
   );
 }
 
+function CatArtLayer({ className, onError }) {
+  return (
+    <img
+      className={className}
+      src={CAT_ASSET}
+      alt=""
+      aria-hidden="true"
+      draggable="false"
+      onError={onError}
+    />
+  );
+}
+
 export default function CatPet() {
-  const canvasRef = useRef(null);
-  const engineRef = useRef(null);
+  const stageRef = useRef(null);
   const reactionTimerRef = useRef(null);
+  const previousReactionRef = useRef(null);
   const [hidden, setHidden] = useState(readInitialHiddenState);
-  const [fallback, setFallback] = useState(false);
+  const [assetFailed, setAssetFailed] = useState(false);
   const [reaction, setReaction] = useState(null);
   const [reactionKey, setReactionKey] = useState(0);
   const [avoidingControls, setAvoidingControls] = useState(false);
@@ -78,46 +126,93 @@ export default function CatPet() {
   }, []);
 
   useEffect(() => {
-    if (hidden || !canvasRef.current) return undefined;
+    if (hidden || !stageRef.current) return undefined;
 
+    const stage = stageRef.current;
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const engine = createCatPetEngine(canvasRef.current, {
-      reducedMotion: media.matches,
-      onUnavailable: () => setFallback(true),
-    });
-    engineRef.current = engine;
-    engine?.start();
+    let reducedMotion = media.matches;
+    let frame = null;
+    let running = true;
+    let schedule = createCatPetSchedule(performance.now());
+    const pointerTarget = { x: 0, y: 0, nearby: false };
+    const pointer = { x: 0, y: 0 };
 
+    const render = (time) => {
+      if (!running) return;
+
+      const advanced = advanceCatPetSchedule(schedule, time);
+      schedule = advanced.schedule;
+      const active = advanced.active;
+      const blink = blinkAmount(active[CAT_PET_EVENT.BLINK] || 0);
+      const earProgress = active[CAT_PET_EVENT.EAR_FLICK] || 0;
+      const lookProgress = active[CAT_PET_EVENT.LOOK_AROUND] || 0;
+      const lookArc = Math.sin(lookProgress * Math.PI * 2);
+      const targetX = pointerTarget.nearby ? pointerTarget.x : lookArc * 0.48;
+      const targetY = pointerTarget.nearby ? pointerTarget.y : 0;
+
+      pointer.x += (targetX - pointer.x) * 0.075;
+      pointer.y += (targetY - pointer.y) * 0.075;
+
+      const breath = reducedMotion ? 0 : Math.sin(time * 0.0015) * 1.35;
+      const tail = reducedMotion
+        ? 0
+        : Math.sin(time * 0.00082) * 1.25 + Math.sin(time * 0.0017) * 0.4;
+      const ear = reducedMotion
+        ? 0
+        : Math.sin(earProgress * Math.PI * 3) * 3.2;
+
+      stage.style.setProperty('--blink', reducedMotion ? '0' : String(blink));
+      stage.style.setProperty('--look-x', `${pointer.x * 2.2}px`);
+      stage.style.setProperty('--look-y', `${pointer.y * 1.35}px`);
+      stage.style.setProperty('--eye-x', `${pointer.x * 1.4}px`);
+      stage.style.setProperty('--eye-y', `${pointer.y * 0.9}px`);
+      stage.style.setProperty('--head-angle', `${pointer.x * 1.15}deg`);
+      stage.style.setProperty('--ear-flick', `${ear}deg`);
+      stage.style.setProperty('--tail-angle', `${tail}deg`);
+      stage.style.setProperty('--breath', `${breath}px`);
+
+      frame = window.requestAnimationFrame(render);
+    };
+
+    const start = () => {
+      if (frame !== null) return;
+      running = true;
+      frame = window.requestAnimationFrame(render);
+    };
+    const stop = () => {
+      running = false;
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      frame = null;
+    };
     const handleMotionPreference = (event) => {
-      engine?.setReducedMotion(event.matches);
+      reducedMotion = event.matches;
     };
     const handleVisibility = () => {
-      if (document.hidden) engine?.stop();
-      else engine?.start();
+      if (document.hidden) stop();
+      else start();
     };
     const handlePointer = (event) => {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
+      const rect = stage.getBoundingClientRect();
+      const centerX = rect.left + rect.width * 0.42;
+      const centerY = rect.top + rect.height * 0.28;
+      const distanceX = (event.clientX - centerX) / Math.max(window.innerWidth * 0.34, 1);
+      const distanceY = (event.clientY - centerY) / Math.max(window.innerHeight * 0.34, 1);
 
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      const x = (event.clientX - centerX) / Math.max(window.innerWidth * 0.42, 1);
-      const y = (event.clientY - centerY) / Math.max(window.innerHeight * 0.42, 1);
-      const nearby = Math.hypot(x, y) < 1.25;
-      if (nearby) engine?.setPointer(x, y, true);
-      else engine?.clearPointer();
+      pointerTarget.x = clamp(distanceX);
+      pointerTarget.y = clamp(distanceY);
+      pointerTarget.nearby = Math.hypot(distanceX, distanceY) < 1.45;
     };
 
     media.addEventListener?.('change', handleMotionPreference);
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('pointermove', handlePointer, { passive: true });
+    frame = window.requestAnimationFrame(render);
 
     return () => {
       media.removeEventListener?.('change', handleMotionPreference);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('pointermove', handlePointer);
-      engine?.destroy();
-      engineRef.current = null;
+      stop();
     };
   }, [hidden]);
 
@@ -131,11 +226,13 @@ export default function CatPet() {
   };
 
   const interact = () => {
-    const nextReaction = engineRef.current?.react() || CAT_PET_REACTION.HEAD_TILT;
+    const nextReaction = chooseCatPetReaction(previousReactionRef.current);
+    previousReactionRef.current = nextReaction;
     setReaction(nextReaction);
     setReactionKey((current) => current + 1);
+
     if (reactionTimerRef.current) window.clearTimeout(reactionTimerRef.current);
-    reactionTimerRef.current = window.setTimeout(() => setReaction(null), 1200);
+    reactionTimerRef.current = window.setTimeout(() => setReaction(null), 1250);
   };
 
   const handleKeyDown = (event) => {
@@ -174,7 +271,8 @@ export default function CatPet() {
       </button>
 
       <div
-        className="cat-pet-stage"
+        ref={stageRef}
+        className={`cat-pet-stage${reaction ? ` is-${reaction}` : ''}`}
         role="button"
         tabIndex={0}
         aria-label="银白猫页面宠物，点击和它互动"
@@ -182,12 +280,28 @@ export default function CatPet() {
         onClick={interact}
         onKeyDown={handleKeyDown}
       >
-        {fallback ? <CatPetFallback /> : null}
-        <canvas
-          ref={canvasRef}
-          className={fallback ? 'is-unavailable' : ''}
-          aria-hidden="true"
-        />
+        {assetFailed ? (
+          <CatPetFallback />
+        ) : (
+          <span className="cat-pet-character" aria-hidden="true">
+            <CatArtLayer
+              className="cat-pet-art"
+              onError={() => setAssetFailed(true)}
+            />
+            <CatArtLayer className="cat-pet-tail-layer" />
+            <CatArtLayer className="cat-pet-head-layer" />
+            <CatArtLayer className="cat-pet-ear-layer is-left" />
+            <CatArtLayer className="cat-pet-ear-layer is-right" />
+            <span className="cat-pet-paw-mask" />
+            <CatArtLayer className="cat-pet-paw-layer" />
+
+            <span className="cat-pet-eyelid is-left" />
+            <span className="cat-pet-eyelid is-right" />
+            <span className="cat-pet-eye-shine is-left" />
+            <span className="cat-pet-eye-shine is-right" />
+          </span>
+        )}
+
         <span className="cat-pet-ground" aria-hidden="true" />
         {reaction ? (
           <span
