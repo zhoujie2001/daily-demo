@@ -2,10 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   ALISHA_ACTION,
-  ALISHA_STATE,
   DEFAULT_ALISHA_CONFIG,
-  deriveAlishaState,
-  enqueueAlishaAction,
   mergeAlishaConfig,
   pickClickReaction,
   pickIdleAction,
@@ -21,10 +18,9 @@ test('运行时配置只覆盖给定字段，其余安全回退到默认值', ()
   });
 
   assert.equal(merged.position.right, 44);
-  assert.equal(merged.position.bottom, 20);
+  assert.equal(merged.position.bottom, 32);
   assert.equal(merged.behaviors.idle, false);
   assert.equal(merged.behaviors.pointerGaze, true);
-  assert.equal(merged.timings.idleSleepMs, 180000);
 });
 
 test('点击反应不会连续重复', () => {
@@ -33,44 +29,8 @@ test('点击反应不会连续重复', () => {
     ALISHA_ACTION.HAPPY_HOP
   );
   assert.notEqual(
-    pickClickReaction(ALISHA_ACTION.PAW, () => 0.99),
-    ALISHA_ACTION.PAW
-  );
-});
-
-test('主体动作按优先级排队且同一动作不会重复入队', () => {
-  const queue = enqueueAlishaAction(
-    [{ name: ALISHA_ACTION.YAWN, priority: 10 }],
-    { name: ALISHA_ACTION.ANNOYED, priority: 100 }
-  );
-  const deduplicated = enqueueAlishaAction(
-    queue,
-    { name: ALISHA_ACTION.YAWN, priority: 10 }
-  );
-
-  assert.deepEqual(
-    queue.map((item) => item.name),
-    [ALISHA_ACTION.ANNOYED, ALISHA_ACTION.YAWN]
-  );
-  assert.equal(deduplicated.length, 2);
-});
-
-test('状态由睡眠、主体动作与观察关系稳定推导', () => {
-  assert.equal(
-    deriveAlishaState({ sleeping: true, observing: true, action: null }),
-    ALISHA_STATE.SLEEP
-  );
-  assert.equal(
-    deriveAlishaState({
-      sleeping: false,
-      observing: false,
-      action: ALISHA_ACTION.ANNOYED,
-    }),
-    ALISHA_STATE.ANNOYED
-  );
-  assert.equal(
-    deriveAlishaState({ sleeping: false, observing: true, action: null }),
-    ALISHA_STATE.OBSERVE
+    pickClickReaction(ALISHA_ACTION.SPIN, () => 0.99),
+    ALISHA_ACTION.SPIN
   );
 });
 

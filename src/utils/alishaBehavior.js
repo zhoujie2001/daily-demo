@@ -1,26 +1,12 @@
-export const ALISHA_STATE = Object.freeze({
-  IDLE: 'idle',
-  OBSERVE: 'observe',
-  HAPPY: 'happy',
-  ANNOYED: 'annoyed',
-  SLEEP: 'sleep',
-  WAKE: 'wake',
-});
-
 export const ALISHA_ACTION = Object.freeze({
   WELCOME: 'welcome',
   HAPPY_HOP: 'happy-hop',
-  HEAD_TILT: 'head-tilt',
-  PAW: 'paw',
-  PETTING: 'petting',
-  EAR_LEFT: 'ear-left',
-  EAR_RIGHT: 'ear-right',
-  TAIL_TOUCHED: 'tail-touched',
+  SPIN: 'spin',
+  TAIL_SHAKE: 'tail-shake',
   ANNOYED: 'annoyed',
   YAWN: 'yawn',
   GROOM: 'groom',
   DAYDREAM: 'daydream',
-  WAKE: 'wake',
   DAILY: 'section-daily',
   PHOTOGRAPHY: 'section-photography',
   TRAVEL: 'section-travel',
@@ -31,19 +17,14 @@ export const ALISHA_ACTION_PRIORITY = Object.freeze({
   [ALISHA_ACTION.YAWN]: 10,
   [ALISHA_ACTION.GROOM]: 10,
   [ALISHA_ACTION.DAYDREAM]: 10,
-  [ALISHA_ACTION.DAILY]: 25,
-  [ALISHA_ACTION.PHOTOGRAPHY]: 25,
-  [ALISHA_ACTION.TRAVEL]: 25,
-  [ALISHA_ACTION.WAKE]: 70,
+  [ALISHA_ACTION.DAILY]: 30,
+  [ALISHA_ACTION.PHOTOGRAPHY]: 30,
+  [ALISHA_ACTION.TRAVEL]: 30,
+  [ALISHA_ACTION.STAR_GIFT]: 55,
   [ALISHA_ACTION.WELCOME]: 70,
-  [ALISHA_ACTION.STAR_GIFT]: 75,
-  [ALISHA_ACTION.HEAD_TILT]: 85,
-  [ALISHA_ACTION.PAW]: 85,
-  [ALISHA_ACTION.HAPPY_HOP]: 85,
-  [ALISHA_ACTION.PETTING]: 90,
-  [ALISHA_ACTION.EAR_LEFT]: 90,
-  [ALISHA_ACTION.EAR_RIGHT]: 90,
-  [ALISHA_ACTION.TAIL_TOUCHED]: 92,
+  [ALISHA_ACTION.HAPPY_HOP]: 90,
+  [ALISHA_ACTION.SPIN]: 90,
+  [ALISHA_ACTION.TAIL_SHAKE]: 90,
   [ALISHA_ACTION.ANNOYED]: 100,
 });
 
@@ -56,39 +37,28 @@ export const SECTION_ACTIONS = Object.freeze({
 export const DEFAULT_ALISHA_CONFIG = Object.freeze({
   enabled: true,
   name: '阿丽莎',
-  position: { right: 24, bottom: 20 },
-  size: { desktop: 248, tablet: 184, mobile: 124 },
+  position: { right: 32, bottom: 32 },
+  size: { desktop: 96, tablet: 84, mobile: 72 },
   behaviors: {
     welcome: true,
     idle: true,
-    sleep: true,
     pointerGaze: true,
     clickReaction: true,
     annoyedReaction: true,
     sectionSync: true,
     easterEggs: true,
     autoAvoid: true,
-    controls: true,
   },
   timings: {
-    welcomeMs: 3200,
-    blinkMinMs: 4000,
-    blinkMaxMs: 9000,
-    earMinMs: 12000,
-    earMaxMs: 30000,
-    tailMinMs: 9000,
-    tailMaxMs: 18000,
-    idleMinMs: 30000,
-    idleMaxMs: 65000,
-    idleSleepMs: 180000,
-    complexCooldownMs: 20000,
-    rapidClickWindowMs: 3000,
+    welcomeMs: 4200,
+    idleMinMs: 45000,
+    idleMaxMs: 90000,
+    rapidClickWindowMs: 2500,
     rapidClickCount: 4,
-    annoyedCooldownMs: 8000,
-    sectionDwellMs: 850,
+    annoyedCooldownMs: 300000,
+    sectionDwellMs: 700,
     starActiveMs: 300000,
     activeGraceMs: 60000,
-    petHoldMs: 500,
   },
   motion: {
     intensity: 'soft',
@@ -99,9 +69,9 @@ export const DEFAULT_ALISHA_CONFIG = Object.freeze({
 });
 
 const CLICK_REACTIONS = Object.freeze([
-  ALISHA_ACTION.HEAD_TILT,
-  ALISHA_ACTION.PAW,
   ALISHA_ACTION.HAPPY_HOP,
+  ALISHA_ACTION.SPIN,
+  ALISHA_ACTION.TAIL_SHAKE,
 ]);
 
 const IDLE_ACTIONS = Object.freeze([
@@ -154,40 +124,13 @@ export function pickIdleAction(previous, random = Math.random) {
 export function recordRapidClick(
   previousClicks,
   now,
-  { windowMs = 3000, threshold = 4 } = {}
+  { windowMs = 2500, threshold = 4 } = {}
 ) {
   const recentClicks = [...previousClicks.filter((time) => now - time <= windowMs), now];
   return {
     clicks: recentClicks.length >= threshold ? [] : recentClicks,
     triggered: recentClicks.length >= threshold,
   };
-}
-
-export function enqueueAlishaAction(queue, action, maxLength = 5) {
-  const normalizedQueue = Array.isArray(queue) ? queue : [];
-  if (!action?.name) return normalizedQueue.slice();
-  if (normalizedQueue.some((item) => item.name === action.name)) {
-    return normalizedQueue.slice();
-  }
-
-  return [...normalizedQueue, action]
-    .sort((left, right) => (right.priority || 0) - (left.priority || 0))
-    .slice(0, Math.max(1, maxLength));
-}
-
-export function deriveAlishaState({ sleeping, observing, action }) {
-  if (sleeping) return ALISHA_STATE.SLEEP;
-  if (action === ALISHA_ACTION.WAKE) return ALISHA_STATE.WAKE;
-  if (action === ALISHA_ACTION.ANNOYED) return ALISHA_STATE.ANNOYED;
-  if (
-    action === ALISHA_ACTION.PETTING ||
-    action === ALISHA_ACTION.HAPPY_HOP ||
-    action === ALISHA_ACTION.PAW
-  ) {
-    return ALISHA_STATE.HAPPY;
-  }
-  if (observing) return ALISHA_STATE.OBSERVE;
-  return ALISHA_STATE.IDLE;
 }
 
 export function localDateKey(date = new Date()) {
