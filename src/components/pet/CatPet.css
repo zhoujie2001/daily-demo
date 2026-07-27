@@ -1,30 +1,26 @@
 .cat-pet {
-  --cat-pet-width: 240px;
+  --alisha-right: 32px;
+  --alisha-bottom: 32px;
+  --alisha-size-desktop: 96px;
+  --alisha-size-tablet: 84px;
+  --alisha-size-mobile: 72px;
   position: fixed;
   z-index: 72;
-  right: max(18px, env(safe-area-inset-right));
-  bottom: max(10px, env(safe-area-inset-bottom));
-  width: var(--cat-pet-width);
-  height: 304px;
+  right: max(var(--alisha-right), env(safe-area-inset-right));
+  bottom: max(var(--alisha-bottom), env(safe-area-inset-bottom));
+  width: var(--alisha-size-desktop);
+  height: var(--alisha-size-desktop);
   pointer-events: none;
-  filter: drop-shadow(0 17px 20px rgba(48, 43, 35, 0.11));
   transition: right 420ms var(--ease-out);
 }
 
 .cat-pet-stage {
-  --blink: 0;
-  --look-x: 0px;
-  --look-y: 0px;
-  --eye-x: 0px;
-  --eye-y: 0px;
-  --head-angle: 0deg;
-  --ear-flick: 0deg;
-  --tail-angle: 0deg;
-  --breath: 0px;
+  --gaze-x: 0px;
+  --gaze-y: 0px;
+  --face-tilt: 0deg;
   position: absolute;
   inset: 0;
   overflow: visible;
-  border-radius: 46% 46% 34% 34%;
   outline: none;
   cursor: pointer;
   pointer-events: auto;
@@ -32,8 +28,9 @@
 }
 
 .cat-pet-stage:focus-visible {
-  outline: 2px solid rgba(166, 95, 66, 0.54);
-  outline-offset: 3px;
+  outline: 2px solid rgba(166, 95, 66, 0.56);
+  outline-offset: 4px;
+  border-radius: 42%;
 }
 
 .cat-pet-character {
@@ -41,22 +38,23 @@
   z-index: 2;
   inset: 0;
   display: block;
-  transform: translateY(var(--breath));
-  transform-origin: 52% 91%;
-  transition: filter 220ms ease;
-  will-change: transform;
+  transform-origin: 50% 92%;
+  animation: alisha-breathe 4.8s ease-in-out infinite;
+  filter: drop-shadow(0 8px 8px rgba(48, 43, 35, 0.14));
   pointer-events: none;
+  will-change: transform;
 }
 
 .cat-pet-stage:hover .cat-pet-character {
-  filter: brightness(1.025) saturate(1.025);
+  filter:
+    drop-shadow(0 8px 8px rgba(48, 43, 35, 0.14))
+    brightness(1.025)
+    saturate(1.035);
 }
 
 .cat-pet-art,
 .cat-pet-tail-layer,
-.cat-pet-head-layer,
 .cat-pet-ear-layer,
-.cat-pet-paw-layer,
 .cat-pet-fallback {
   position: absolute;
   inset: 0;
@@ -69,179 +67,150 @@
   pointer-events: none;
 }
 
-.cat-pet-art {
-  z-index: 1;
+.cat-pet-art,
+.cat-pet-fallback {
+  z-index: 2;
 }
 
-.cat-pet-head-layer {
+.cat-pet-tail-layer {
   z-index: 3;
-  clip-path: polygon(10% 0, 69% 0, 70% 45%, 10% 45%);
-  transform:
-    translate(var(--look-x), var(--look-y))
-    rotate(var(--head-angle));
-  transform-origin: 39% 32%;
+  clip-path: polygon(49% 68%, 100% 68%, 100% 100%, 46% 100%);
+  transform-origin: 72% 87%;
+  animation: alisha-tail-rest 5.6s ease-in-out infinite;
   will-change: transform;
 }
 
 .cat-pet-ear-layer {
   z-index: 4;
-  will-change: transform;
+  clip-path: polygon(17% 0, 78% 0, 78% 31%, 17% 31%);
+  transform-origin: 49% 29%;
 }
 
-.cat-pet-ear-layer.is-left {
-  clip-path: polygon(19% 0, 43% 0, 42% 20%, 18% 20%);
-  transform: rotate(calc(var(--ear-flick) * -1));
-  transform-origin: 31% 16%;
+.cat-pet-stage.is-ear-flicking .cat-pet-ear-layer {
+  animation: alisha-ear-flick 520ms ease-out;
 }
 
-.cat-pet-ear-layer.is-right {
-  clip-path: polygon(42% 2%, 68% 3%, 68% 23%, 41% 21%);
-  transform: rotate(var(--ear-flick));
-  transform-origin: 56% 17%;
-}
-
-.cat-pet-tail-layer {
-  z-index: 2;
-  clip-path: polygon(44% 72%, 100% 72%, 100% 100%, 41% 100%);
-  transform: rotate(var(--tail-angle));
-  transform-origin: 76% 82%;
-  will-change: transform;
-}
-
-.cat-pet-paw-layer {
-  z-index: 5;
-  clip-path: polygon(20% 76%, 38% 76%, 38% 100%, 19% 100%);
-  transform-origin: 29% 91%;
-}
-
-.cat-pet-paw-mask {
+.cat-pet-pupil {
   position: absolute;
-  z-index: 4;
-  left: 19.5%;
-  bottom: 0;
-  width: 18.5%;
-  height: 22%;
-  background: var(--paper);
-  border-radius: 56% 44% 50% 50%;
-  opacity: 0;
-  pointer-events: none;
+  z-index: 5;
+  top: 27.1%;
+  width: 2.7%;
+  height: 6%;
+  min-width: 2px;
+  min-height: 4px;
+  border-radius: 50%;
+  background: rgba(43, 41, 25, 0.58);
+  box-shadow: 0 0 1px rgba(255, 251, 221, 0.66);
+  transform: translate(var(--gaze-x), var(--gaze-y)) rotate(var(--face-tilt));
+  transition: opacity 80ms ease;
+  will-change: transform;
+}
+
+.cat-pet-pupil.is-left {
+  left: 40.2%;
+}
+
+.cat-pet-pupil.is-right {
+  top: 29.5%;
+  left: 54.3%;
 }
 
 .cat-pet-eyelid {
   position: absolute;
   z-index: 6;
-  height: 4.5%;
-  background:
-    linear-gradient(
-      to bottom,
-      rgba(151, 151, 146, 0.98),
-      rgba(226, 218, 207, 0.99) 57%,
-      rgba(247, 239, 228, 0.99)
-    );
-  border-bottom: 1px solid rgba(57, 51, 45, 0.62);
-  border-radius: 60% 60% 48% 48%;
-  transform: scaleY(var(--blink));
+  width: 12.5%;
+  height: 7.5%;
+  border-bottom: 1px solid rgba(71, 65, 58, 0.5);
+  border-radius: 62% 62% 52% 52%;
+  background: linear-gradient(
+    to bottom,
+    rgba(191, 188, 181, 0.98),
+    rgba(239, 231, 220, 0.99)
+  );
+  opacity: 0;
+  transform: scaleY(0);
   transform-origin: 50% 0;
-  opacity: min(1, calc(var(--blink) * 1.35));
-  box-shadow: 0 1px 1px rgba(63, 57, 49, 0.16);
+  transition: transform 90ms ease, opacity 70ms ease;
   pointer-events: none;
 }
 
 .cat-pet-eyelid.is-left {
-  top: 22.4%;
-  left: 28.7%;
-  width: 7.6%;
-  rotate: 6deg;
+  top: 24.8%;
+  left: 35.1%;
+  rotate: 4deg;
 }
 
 .cat-pet-eyelid.is-right {
-  top: 24.9%;
-  left: 43.1%;
-  width: 7.8%;
-  rotate: -7deg;
+  top: 27.2%;
+  left: 49.4%;
+  rotate: -5deg;
 }
 
-.cat-pet-eye-shine {
+.cat-pet-stage.is-blinking .cat-pet-eyelid {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+.cat-pet-stage.is-blinking .cat-pet-pupil {
+  opacity: 0;
+}
+
+.cat-pet-paw {
   position: absolute;
   z-index: 7;
-  width: 1.35%;
-  aspect-ratio: 1;
-  background: rgba(255, 255, 248, 0.96);
-  border-radius: 50%;
-  box-shadow:
-    0 0 2px rgba(255, 255, 255, 0.92),
-    0 0 5px rgba(218, 201, 112, 0.45);
-  transform: translate(var(--eye-x), var(--eye-y));
-  opacity: calc(1 - var(--blink));
-  will-change: transform;
-  pointer-events: none;
-}
-
-.cat-pet-eye-shine.is-left {
-  top: 22.3%;
-  left: 31.5%;
-}
-
-.cat-pet-eye-shine.is-right {
-  top: 24.9%;
-  left: 46.1%;
+  left: 21%;
+  top: 57%;
+  width: 20%;
+  height: 29%;
+  border: 1px solid rgba(108, 102, 94, 0.2);
+  border-radius: 58% 52% 45% 50%;
+  background:
+    linear-gradient(105deg, rgba(156, 156, 151, 0.2), transparent 36%),
+    #eee9df;
+  box-shadow: inset -3px -5px 7px rgba(129, 124, 115, 0.13);
+  opacity: 0;
+  transform-origin: 63% 92%;
 }
 
 .cat-pet-ground {
   position: absolute;
   z-index: 1;
-  right: 11%;
-  bottom: 1px;
-  left: 11%;
-  height: 18px;
-  opacity: 0.52;
+  right: 8%;
+  bottom: -2px;
+  left: 8%;
+  height: 11px;
+  border-radius: 50%;
   background: radial-gradient(
     ellipse at center,
     rgba(67, 56, 46, 0.2),
     rgba(67, 56, 46, 0) 72%
   );
-  border-radius: 50%;
-  filter: blur(4px);
+  filter: blur(3px);
+  opacity: 0.42;
   pointer-events: none;
-}
-
-.cat-pet-stage.is-head-tilt .cat-pet-character {
-  animation: cat-pet-curious-tilt 1.15s var(--ease-out);
-}
-
-.cat-pet-stage.is-paw .cat-pet-character {
-  animation: cat-pet-body-hop 850ms var(--ease-out);
-}
-
-.cat-pet-stage.is-paw .cat-pet-paw-layer {
-  animation: cat-pet-paw-wave 920ms var(--ease-out);
-}
-
-.cat-pet-stage.is-paw .cat-pet-paw-mask {
-  animation: cat-pet-paw-mask 920ms linear;
 }
 
 .cat-pet-hide {
   position: absolute;
-  z-index: 9;
-  top: 24px;
-  right: 0;
-  width: 32px;
-  height: 32px;
+  z-index: 12;
+  top: -7px;
+  right: -8px;
+  width: 25px;
+  height: 25px;
   display: inline-grid;
   place-items: center;
   padding: 0;
-  color: rgba(63, 57, 49, 0.58);
-  background: rgba(255, 253, 249, 0.76);
-  border: 1px solid rgba(88, 74, 62, 0.12);
+  color: rgba(63, 57, 49, 0.56);
+  background: rgba(255, 253, 249, 0.82);
+  border: 1px solid rgba(88, 74, 62, 0.13);
   border-radius: 50%;
-  box-shadow: 0 7px 18px rgba(48, 43, 35, 0.08);
+  box-shadow: 0 6px 16px rgba(48, 43, 35, 0.09);
   opacity: 0;
-  transform: translateY(4px);
+  transform: translateY(3px);
   transition: opacity 160ms ease, transform 160ms ease, color 160ms ease;
   cursor: pointer;
   pointer-events: auto;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(9px);
 }
 
 .cat-pet:hover .cat-pet-hide,
@@ -254,88 +223,23 @@
   color: var(--accent-deep);
 }
 
-.cat-pet-reaction {
-  position: absolute;
-  z-index: 8;
-  top: 18px;
-  left: 49%;
-  width: 70px;
-  height: 58px;
-  transform: translateX(-50%);
-  pointer-events: none;
-}
-
-.cat-pet-reaction i {
-  position: absolute;
-  width: 12px;
-  height: 14px;
-  background: rgba(166, 95, 66, 0.86);
-  border-radius: 55% 45% 52% 48%;
-  opacity: 0;
-  animation: cat-pet-reaction-rise 900ms var(--ease-out) forwards;
-}
-
-.cat-pet-reaction i::before,
-.cat-pet-reaction i::after {
-  content: '';
-  position: absolute;
-  top: -5px;
-  width: 5px;
-  height: 6px;
-  background: inherit;
-  border-radius: 50%;
-}
-
-.cat-pet-reaction i::before {
-  left: -1px;
-}
-
-.cat-pet-reaction i::after {
-  right: -1px;
-}
-
-.cat-pet-reaction i:nth-child(1) {
-  left: 8px;
-  bottom: 0;
-  rotate: -18deg;
-}
-
-.cat-pet-reaction i:nth-child(2) {
-  left: 31px;
-  bottom: 8px;
-  scale: 0.78;
-  animation-delay: 90ms;
-}
-
-.cat-pet-reaction i:nth-child(3) {
-  right: 7px;
-  bottom: 2px;
-  rotate: 17deg;
-  scale: 0.62;
-  animation-delay: 170ms;
-}
-
-.cat-pet-reaction.is-head-tilt i {
-  background: rgba(174, 140, 58, 0.72);
-}
-
 .cat-pet-restore {
   position: fixed;
   z-index: 72;
-  right: max(18px, env(safe-area-inset-right));
-  bottom: max(18px, env(safe-area-inset-bottom));
-  width: 44px;
-  height: 44px;
+  right: max(var(--alisha-right, 32px), env(safe-area-inset-right));
+  bottom: max(var(--alisha-bottom, 32px), env(safe-area-inset-bottom));
+  width: 40px;
+  height: 40px;
   display: inline-grid;
   place-items: center;
   padding: 0;
   color: var(--accent-deep);
-  background: rgba(255, 253, 249, 0.82);
+  background: rgba(255, 253, 249, 0.84);
   border: 1px solid rgba(166, 95, 66, 0.2);
   border-radius: 50%;
-  box-shadow: 0 10px 30px rgba(48, 43, 35, 0.12);
+  box-shadow: 0 10px 26px rgba(48, 43, 35, 0.12);
   cursor: pointer;
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(11px);
 }
 
 .cat-pet-restore:hover {
@@ -343,129 +247,839 @@
   transform: translateY(-2px);
 }
 
-@keyframes cat-pet-curious-tilt {
+.alisha-speech {
+  position: absolute;
+  z-index: 11;
+  right: 74%;
+  bottom: 86%;
+  width: max-content;
+  max-width: min(184px, calc(100vw - 132px));
+  padding: 9px 12px;
+  color: rgba(51, 46, 40, 0.88);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+  background: rgba(255, 253, 249, 0.92);
+  border: 1px solid rgba(166, 95, 66, 0.16);
+  border-radius: 13px 13px 4px 13px;
+  box-shadow: 0 9px 24px rgba(48, 43, 35, 0.1);
+  animation: alisha-speech-in 420ms var(--ease-out) both;
+  pointer-events: none;
+  backdrop-filter: blur(10px);
+}
+
+.alisha-expression {
+  position: absolute;
+  z-index: 9;
+  inset: 0;
+  pointer-events: none;
+}
+
+.alisha-expression i {
+  position: absolute;
+  display: none;
+}
+
+.cat-pet-stage.is-happy-hop .alisha-expression i,
+.cat-pet-stage.is-spin .alisha-expression i,
+.cat-pet-stage.is-tail-shake .alisha-expression i {
+  display: block;
+  top: 12%;
+  width: 8px;
+  height: 8px;
+  background: rgba(176, 97, 75, 0.86);
+  border-radius: 7px 7px 2px 7px;
+  rotate: 45deg;
+  animation: alisha-heart-rise 1.2s var(--ease-out) both;
+}
+
+.cat-pet-stage.is-happy-hop .alisha-expression i::before,
+.cat-pet-stage.is-happy-hop .alisha-expression i::after,
+.cat-pet-stage.is-spin .alisha-expression i::before,
+.cat-pet-stage.is-spin .alisha-expression i::after,
+.cat-pet-stage.is-tail-shake .alisha-expression i::before,
+.cat-pet-stage.is-tail-shake .alisha-expression i::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: inherit;
+  border-radius: 50%;
+}
+
+.cat-pet-stage.is-happy-hop .alisha-expression i::before,
+.cat-pet-stage.is-spin .alisha-expression i::before,
+.cat-pet-stage.is-tail-shake .alisha-expression i::before {
+  left: -4px;
+}
+
+.cat-pet-stage.is-happy-hop .alisha-expression i::after,
+.cat-pet-stage.is-spin .alisha-expression i::after,
+.cat-pet-stage.is-tail-shake .alisha-expression i::after {
+  top: -4px;
+}
+
+.alisha-expression i:nth-child(1) {
+  left: 10%;
+}
+
+.alisha-expression i:nth-child(2) {
+  left: 45%;
+  animation-delay: 100ms !important;
+  scale: 0.72;
+}
+
+.alisha-expression i:nth-child(3) {
+  right: 7%;
+  animation-delay: 190ms !important;
+  scale: 0.55;
+}
+
+.cat-pet-stage.is-yawn .alisha-expression i:first-child {
+  display: block;
+  top: 40.5%;
+  left: 48%;
+  width: 9px;
+  height: 7px;
+  border: 1px solid rgba(77, 57, 51, 0.68);
+  border-radius: 50%;
+  background: rgba(145, 75, 69, 0.78);
+  animation: alisha-yawn-mouth 3.2s ease-in-out;
+}
+
+.cat-pet-stage.is-daydream .alisha-expression i {
+  display: block;
+  border: 1px solid rgba(123, 113, 101, 0.26);
+  border-radius: 50%;
+  background: rgba(255, 253, 249, 0.86);
+  animation: alisha-thought 2.8s ease-in-out infinite;
+}
+
+.cat-pet-stage.is-daydream .alisha-expression i:nth-child(1) {
+  top: 5%;
+  right: 4%;
+  width: 9px;
+  height: 9px;
+}
+
+.cat-pet-stage.is-daydream .alisha-expression i:nth-child(2) {
+  top: -7%;
+  right: -10%;
+  width: 15px;
+  height: 15px;
+  animation-delay: 120ms;
+}
+
+.cat-pet-stage.is-daydream .alisha-expression i:nth-child(3) {
+  top: -26%;
+  right: -39%;
+  width: 31px;
+  height: 22px;
+  border-radius: 50% 55% 48% 52%;
+  animation-delay: 220ms;
+}
+
+.cat-pet-stage.is-annoyed .alisha-expression i {
+  display: block;
+  top: 4%;
+  right: 4%;
+  width: 12px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent-deep);
+  transform-origin: right center;
+}
+
+.cat-pet-stage.is-annoyed .alisha-expression i:nth-child(1) {
+  rotate: -42deg;
+}
+
+.cat-pet-stage.is-annoyed .alisha-expression i:nth-child(2) {
+  top: 10%;
+  right: 1%;
+  rotate: -4deg;
+  scale: 0.78;
+}
+
+.cat-pet-stage.is-annoyed .alisha-expression i:nth-child(3) {
+  top: -1%;
+  right: 11%;
+  rotate: -78deg;
+  scale: 0.72;
+}
+
+.alisha-accessory {
+  position: absolute;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  color: rgba(70, 62, 54, 0.85);
+  pointer-events: none;
+}
+
+.alisha-accessory svg {
+  width: 62%;
+  height: 62%;
+  stroke-width: 1.6;
+}
+
+.alisha-accessory.is-diary {
+  left: 32%;
+  bottom: 2%;
+  width: 38%;
+  height: 30%;
+  color: #7b5548;
+  background: #e9d5b8;
+  border: 1px solid rgba(119, 82, 65, 0.34);
+  border-radius: 3px 7px 7px 3px;
+  animation: alisha-diary-write 3.6s ease-in-out both;
+}
+
+.alisha-accessory.is-diary i {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 48%;
+  width: 1px;
+  background: rgba(119, 82, 65, 0.23);
+}
+
+.alisha-accessory.is-camera {
+  left: 31%;
+  bottom: 16%;
+  width: 40%;
+  height: 27%;
+  color: #f5efe7;
+  background: #665c55;
+  border-radius: 7px;
+  animation: alisha-camera-lift 3.4s ease-in-out both;
+}
+
+.alisha-accessory.is-camera i {
+  position: absolute;
+  top: -26px;
+  left: 48%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #fff7d0;
+  box-shadow: 0 0 24px 11px rgba(255, 239, 170, 0.92);
+  opacity: 0;
+  animation: alisha-camera-flash 3.4s ease-in-out both;
+}
+
+.alisha-accessory.is-backpack {
+  z-index: 1;
+  right: -2%;
+  bottom: 21%;
+  width: 40%;
+  height: 43%;
+  color: #f2dfc9;
+  background: #a86c4e;
+  border: 1px solid rgba(96, 57, 43, 0.24);
+  border-radius: 40% 38% 30% 35%;
+  animation: alisha-backpack-in 3.8s ease-out both;
+}
+
+.alisha-bow {
+  position: absolute;
+  z-index: 9;
+  top: 9%;
+  right: 19%;
+  width: 23px;
+  height: 16px;
+  filter: drop-shadow(0 2px 2px rgba(69, 53, 45, 0.14));
+  pointer-events: none;
+}
+
+.alisha-bow i,
+.alisha-bow b {
+  position: absolute;
+  display: block;
+  background: #b26a54;
+  border: 1px solid rgba(119, 69, 53, 0.3);
+}
+
+.alisha-bow i {
+  top: 2px;
+  width: 12px;
+  height: 12px;
+}
+
+.alisha-bow i:first-child {
+  left: 0;
+  border-radius: 70% 35% 60% 40%;
+  rotate: 12deg;
+}
+
+.alisha-bow i:nth-child(2) {
+  right: 0;
+  border-radius: 35% 70% 40% 60%;
+  rotate: -12deg;
+}
+
+.alisha-bow b {
+  z-index: 2;
+  top: 5px;
+  left: 9px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.alisha-keepsake-star {
+  position: absolute;
+  z-index: 9;
+  right: 2%;
+  bottom: 15%;
+  width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  color: #c69a36;
+  filter: drop-shadow(0 2px 3px rgba(125, 89, 33, 0.18));
+  animation: alisha-star-glint 3.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.alisha-keepsake-star svg {
+  width: 100%;
+  height: 100%;
+  fill: #f3ce65;
+  stroke-width: 1.2;
+}
+
+.cat-pet-stage.is-welcome .cat-pet-character {
+  animation: alisha-welcome 4.2s var(--ease-out) both;
+}
+
+.cat-pet-stage.is-welcome .cat-pet-paw,
+.cat-pet-stage.is-groom .cat-pet-paw {
+  opacity: 1;
+}
+
+.cat-pet-stage.is-welcome .cat-pet-paw {
+  animation: alisha-wave 1.05s ease-in-out 2 520ms;
+}
+
+.cat-pet-stage.is-happy-hop .cat-pet-character {
+  animation: alisha-happy-hop 1.5s var(--ease-out) both;
+}
+
+.cat-pet-stage.is-spin .cat-pet-character {
+  animation: alisha-spin 1.75s var(--ease-out) both;
+}
+
+.cat-pet-stage.is-tail-shake .cat-pet-character {
+  animation: alisha-happy-squash 1.6s ease-in-out both;
+}
+
+.cat-pet-stage.is-tail-shake .cat-pet-tail-layer {
+  animation: alisha-tail-happy 150ms ease-in-out 9 alternate;
+}
+
+.cat-pet-stage.is-annoyed .cat-pet-character {
+  animation: alisha-run-away 5.6s cubic-bezier(0.6, 0, 0.2, 1) both;
+}
+
+.cat-pet-stage.is-annoyed .cat-pet-ear-layer {
+  transform: translateY(3px) scaleY(0.86);
+}
+
+.cat-pet-stage.is-yawn .cat-pet-character {
+  animation: alisha-yawn 3.2s ease-in-out both;
+}
+
+.cat-pet-stage.is-yawn .cat-pet-eyelid {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+.cat-pet-stage.is-groom .cat-pet-character {
+  animation: alisha-groom-body 3.4s ease-in-out both;
+}
+
+.cat-pet-stage.is-groom .cat-pet-paw {
+  animation: alisha-groom-paw 650ms ease-in-out 4 alternate;
+}
+
+.cat-pet-stage.is-daydream .cat-pet-character {
+  animation: alisha-daydream 3.8s ease-in-out both;
+}
+
+.cat-pet-stage.is-section-daily .cat-pet-character {
+  animation: alisha-work-focus 3.6s ease-in-out both;
+}
+
+.cat-pet-stage.is-section-photography .cat-pet-character {
+  animation: alisha-photo-pose 3.4s ease-in-out both;
+}
+
+.cat-pet-stage.is-section-travel .cat-pet-character {
+  animation: alisha-look-far 3.8s ease-in-out both;
+}
+
+.cat-pet-stage.is-star-gift .cat-pet-character {
+  animation: alisha-star-gift 4.2s ease-in-out both;
+}
+
+.cat-pet-stage.is-star-gift .alisha-keepsake-star {
+  animation: alisha-star-arrive 4.2s var(--ease-out) both;
+}
+
+@keyframes alisha-breathe {
   0%,
   100% {
-    transform: translateY(var(--breath)) rotate(0);
+    transform: translateY(0) rotate(-0.35deg) scale(1);
   }
-  36%,
-  68% {
-    transform: translate(-2px, calc(var(--breath) - 3px)) rotate(8deg);
+  50% {
+    transform: translateY(-1.5px) rotate(0.45deg) scale(1.008, 1.012);
   }
 }
 
-@keyframes cat-pet-body-hop {
+@keyframes alisha-tail-rest {
   0%,
   100% {
-    transform: translateY(var(--breath)) scaleY(1);
+    transform: rotate(-0.8deg) translateY(0);
   }
-  42% {
-    transform: translateY(calc(var(--breath) - 8px)) scaleY(1.018);
+  50% {
+    transform: rotate(1.5deg) translateY(-0.5px);
   }
 }
 
-@keyframes cat-pet-paw-wave {
+@keyframes alisha-ear-flick {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  28% {
+    transform: rotate(-2.4deg) translateY(1px);
+  }
+  58% {
+    transform: rotate(1.8deg);
+  }
+}
+
+@keyframes alisha-speech-in {
+  from {
+    opacity: 0;
+    transform: translate(6px, 7px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0) scale(1);
+  }
+}
+
+@keyframes alisha-welcome {
   0%,
   100% {
     transform: translateY(0) rotate(0);
   }
-  36% {
-    transform: translate(-5px, -24px) rotate(-15deg);
+  16% {
+    transform: translateY(-4px) rotate(-2deg);
   }
-  56% {
-    transform: translate(-3px, -19px) rotate(8deg);
-  }
-  74% {
-    transform: translate(-4px, -22px) rotate(-8deg);
+  32%,
+  62% {
+    transform: translateY(-2px) rotate(2deg);
   }
 }
 
-@keyframes cat-pet-paw-mask {
+@keyframes alisha-wave {
+  0%,
+  100% {
+    transform: translate(0) rotate(0);
+  }
+  44% {
+    transform: translate(-7px, -21px) rotate(-24deg);
+  }
+  68% {
+    transform: translate(-5px, -18px) rotate(12deg);
+  }
+}
+
+@keyframes alisha-happy-hop {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  18% {
+    transform: translateY(2px) scale(1.04, 0.96);
+  }
+  46% {
+    transform: translateY(-14px) scale(0.98, 1.04);
+  }
+  70% {
+    transform: translateY(0) scale(1.03, 0.97);
+  }
+}
+
+@keyframes alisha-spin {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0) scaleX(1);
+  }
+  18% {
+    transform: translateY(-4px) rotate(-4deg) scaleX(0.92);
+  }
+  48% {
+    transform: translateY(-7px) rotate(180deg) scaleX(0.74);
+  }
+  78% {
+    transform: translateY(-3px) rotate(350deg) scaleX(0.96);
+  }
+}
+
+@keyframes alisha-happy-squash {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  40%,
+  72% {
+    transform: translateY(-3px) scale(1.025, 0.985);
+  }
+}
+
+@keyframes alisha-tail-happy {
+  from {
+    transform: rotate(-8deg);
+  }
+  to {
+    transform: rotate(9deg);
+  }
+}
+
+@keyframes alisha-heart-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.55);
+  }
+  25% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-28px) scale(1.05);
+  }
+}
+
+@keyframes alisha-run-away {
+  0% {
+    transform: translateX(0) rotate(0);
+  }
+  14% {
+    transform: translateX(7px) rotate(-4deg);
+  }
+  25%,
+  47% {
+    transform: translateX(128px) rotate(9deg);
+  }
+  57% {
+    transform: translateX(66px) rotate(-7deg);
+  }
+  68% {
+    transform: translateX(115px) rotate(4deg);
+  }
+  82% {
+    transform: translateX(22px) rotate(-2deg);
+  }
+  100% {
+    transform: translateX(0) rotate(0);
+  }
+}
+
+@keyframes alisha-yawn {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  28%,
+  68% {
+    transform: translateY(1px) scale(1.025, 0.975);
+  }
+  80% {
+    transform: translateY(-2px) scale(0.99, 1.015);
+  }
+}
+
+@keyframes alisha-yawn-mouth {
   0%,
   100% {
     opacity: 0;
+    transform: scale(0.2);
   }
-  12%,
-  88% {
+  28%,
+  68% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes alisha-groom-body {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  20%,
+  76% {
+    transform: translate(-2px, 3px) rotate(-5deg);
+  }
+}
+
+@keyframes alisha-groom-paw {
+  from {
+    transform: translate(-5px, -18px) rotate(-14deg);
+  }
+  to {
+    transform: translate(2px, -27px) rotate(12deg);
+  }
+}
+
+@keyframes alisha-daydream {
+  0%,
+  100% {
+    transform: rotate(0) translateY(0);
+  }
+  34%,
+  72% {
+    transform: rotate(2.2deg) translateY(-2px);
+  }
+}
+
+@keyframes alisha-thought {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: translateY(1px);
+  }
+  50% {
+    opacity: 0.95;
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes alisha-work-focus {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0);
+  }
+  24%,
+  74% {
+    transform: translateY(2px) rotate(-3deg);
+  }
+}
+
+@keyframes alisha-diary-write {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translateY(11px) scale(0.86);
+  }
+  18%,
+  82% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes alisha-photo-pose {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0);
+  }
+  22%,
+  76% {
+    transform: translateY(-3px) rotate(2deg);
+  }
+  48% {
+    transform: translateY(-4px) rotate(-2deg);
+  }
+}
+
+@keyframes alisha-camera-lift {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translateY(15px) rotate(-7deg);
+  }
+  20%,
+  84% {
+    opacity: 1;
+    transform: translateY(0) rotate(0);
+  }
+}
+
+@keyframes alisha-camera-flash {
+  0%,
+  43%,
+  55%,
+  100% {
+    opacity: 0;
+  }
+  47% {
     opacity: 1;
   }
 }
 
-@keyframes cat-pet-reaction-rise {
-  0% {
-    opacity: 0;
-    transform: translateY(10px) scale(0.65);
+@keyframes alisha-look-far {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0);
   }
-  24% {
-    opacity: 0.92;
+  24%,
+  76% {
+    transform: translate(-4px, -2px) rotate(-4deg);
   }
+}
+
+@keyframes alisha-backpack-in {
+  0%,
   100% {
     opacity: 0;
-    transform: translateY(-34px) scale(1.08);
+    transform: translateX(12px) scale(0.82);
+  }
+  18%,
+  85% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes alisha-star-gift {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0);
+  }
+  25%,
+  70% {
+    transform: translateY(-7px) rotate(3deg);
+  }
+}
+
+@keyframes alisha-star-arrive {
+  0% {
+    opacity: 0;
+    transform: translate(-24px, -42px) rotate(-50deg) scale(0.2);
+  }
+  35% {
+    opacity: 1;
+    transform: translate(-13px, -25px) rotate(12deg) scale(1.55);
+  }
+  72%,
+  100% {
+    opacity: 1;
+    transform: translate(0) rotate(0) scale(1);
+  }
+}
+
+@keyframes alisha-star-glint {
+  0%,
+  100% {
+    transform: rotate(-5deg) scale(0.94);
+  }
+  50% {
+    transform: rotate(8deg) scale(1.08);
   }
 }
 
 @media (min-width: 1000px) {
   .cat-pet.is-avoiding-controls {
-    right: clamp(245px, 18vw, 420px);
+    right: clamp(158px, 12vw, 236px);
   }
 }
 
 @media (max-width: 999px) {
   .cat-pet {
-    --cat-pet-width: 168px;
-    right: max(7px, env(safe-area-inset-right));
-    bottom: max(4px, env(safe-area-inset-bottom));
-    height: 212px;
+    right: max(20px, env(safe-area-inset-right));
+    bottom: max(22px, env(safe-area-inset-bottom));
+    width: var(--alisha-size-tablet);
+    height: var(--alisha-size-tablet);
   }
 
   .cat-pet-hide {
-    top: 19px;
-    right: 0;
-    opacity: 0.78;
+    opacity: 0.72;
     transform: none;
+  }
+
+  .alisha-speech {
+    right: 64%;
+    font-size: 11px;
   }
 }
 
 @media (max-width: 700px) {
   .cat-pet {
-    --cat-pet-width: 108px;
-    right: max(2px, env(safe-area-inset-right));
-    bottom: max(1px, env(safe-area-inset-bottom));
-    height: 136px;
-    opacity: 0.96;
+    right: max(16px, env(safe-area-inset-right));
+    bottom: max(18px, env(safe-area-inset-bottom));
+    width: var(--alisha-size-mobile);
+    height: var(--alisha-size-mobile);
   }
 
   .cat-pet-hide {
-    top: 10px;
-    width: 27px;
-    height: 27px;
+    top: -9px;
+    right: -10px;
+    width: 23px;
+    height: 23px;
   }
 
-  .cat-pet-reaction {
-    top: 13px;
-    scale: 0.66;
+  .alisha-speech {
+    right: 56%;
+    bottom: 91%;
+    max-width: min(154px, calc(100vw - 98px));
+    padding: 7px 9px;
+  }
+
+  .alisha-bow {
+    top: 7%;
+    right: 15%;
+    scale: 0.74;
+  }
+
+  .cat-pet-tail-layer {
+    animation-duration: 7s;
+  }
+
+  .cat-pet-stage.is-spin .cat-pet-character {
+    animation-name: alisha-happy-hop;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .cat-pet-character,
-  .cat-pet-paw-layer,
-  .cat-pet-paw-mask,
-  .cat-pet-head-layer,
   .cat-pet-tail-layer,
-  .cat-pet-ear-layer {
+  .cat-pet-ear-layer,
+  .cat-pet-paw,
+  .alisha-accessory,
+  .alisha-accessory i,
+  .alisha-keepsake-star,
+  .alisha-expression i {
     animation: none !important;
-    transition: none;
   }
 
-  .cat-pet-reaction i {
-    animation-duration: 520ms;
+  .cat-pet-character {
+    transform: none !important;
   }
 
+  .cat-pet-tail-layer {
+    transform: none !important;
+  }
+
+  .cat-pet-stage.is-welcome .cat-pet-paw,
+  .cat-pet-stage.is-groom .cat-pet-paw,
+  .cat-pet-stage.is-section-daily .alisha-accessory,
+  .cat-pet-stage.is-section-photography .alisha-accessory,
+  .cat-pet-stage.is-section-travel .alisha-accessory {
+    opacity: 1;
+  }
+
+  .alisha-speech {
+    animation: none;
+  }
+
+  .cat-pet,
   .cat-pet-hide,
-  .cat-pet-restore,
-  .cat-pet {
+  .cat-pet-restore {
     transition: none;
   }
 }
