@@ -4,7 +4,6 @@ import test from 'node:test';
 
 const root = new URL('../', import.meta.url);
 const actionAssets = [
-  'v8_blink.mp4',
   'v8_look.mp4',
   'v8_stretch.mp4',
   'v8_lick.mp4',
@@ -47,7 +46,7 @@ test('主站挂载视频版阿丽莎并保留静态降级图', async () => {
   );
 });
 
-test('十段筛选后的视频动作均为可识别 MP4，且不再包含形象不一致的行走片段', async () => {
+test('九段实时抠图动作均为可识别 MP4，且不再包含形象不一致的行走片段', async () => {
   const runtimeSource = await readFile(
     new URL('src/components/pet/videoPetRuntime.js', root),
     'utf8'
@@ -68,6 +67,39 @@ test('十段筛选后的视频动作均为可识别 MP4，且不再包含形象�
   }
 });
 
+test('眨眼动作使用同帧 RGB 与 Alpha 素材，避免背景穿透主体', async () => {
+  const [runtimeSource, playerSource, packedAsset] = await Promise.all([
+    readFile(
+      new URL('src/components/pet/videoPetRuntime.js', root),
+      'utf8'
+    ),
+    readFile(
+      new URL(
+        'src/components/pet/StableVideoPetPlayer.js',
+        root
+      ),
+      'utf8'
+    ),
+    readFile(
+      new URL(
+        'public/videos/alisha/v8_blink_rgb_alpha.webm',
+        root
+      )
+    ),
+  ]);
+
+  assert.ok(packedAsset.length > 100_000);
+  assert.deepEqual(
+    [...packedAsset.subarray(0, 4)],
+    [0x1a, 0x45, 0xdf, 0xa3]
+  );
+  assert.match(runtimeSource, /v8_blink_rgb_alpha\.webm/);
+  assert.match(runtimeSource, /matteMode: 'packed-horizontal'/);
+  assert.match(playerSource, /renderPackedAlpha/);
+  assert.match(playerSource, /source\.videoWidth/);
+  assert.match(playerSource, /globalCompositeOperation = 'destination-in'/);
+});
+
 test('播放器使用 V6 容差、固定背景参考、时间平滑蒙版和交叉过渡抑制闪烁', async () => {
   const source = await readFile(
     new URL(
@@ -77,11 +109,15 @@ test('播放器使用 V6 容差、固定背景参考、时间平滑蒙版和交�
     'utf8'
   );
 
-  assert.match(source, /const MASK_SIZE = 176/);
+  assert.match(source, /resolvePetMaskSize/);
+  assert.match(source, /createPetProtectionMask/);
+  assert.match(source, /createPetEnvelopeMask/);
+  assert.match(source, /createSpatialBackgroundModel/);
+  assert.match(source, /stabilizePetAlpha/);
   assert.match(source, /threshold = 20/);
   assert.match(source, /this\.backgroundReference/);
   assert.match(source, /this\.previousAlpha/);
-  assert.match(source, /previous \* 0\.45 \+ rawAlpha \* 0\.55/);
+  assert.match(source, /detailBoost/);
   assert.match(source, /const TRANSITION_MS = 150/);
   assert.match(source, /requestVideoFrameCallback/);
   assert.match(source, /this\.fpsStartedAt = performance\.now\(\)/);

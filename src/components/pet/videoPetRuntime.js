@@ -1,6 +1,7 @@
 export const VIDEO_PET_ACTIONS = Object.freeze({
   blink: {
-    src: '/videos/alisha/v8_blink.mp4',
+    src: '/videos/alisha/v8_blink_rgb_alpha.webm',
+    matteMode: 'packed-horizontal',
     label: '慢慢眨眼',
     speech: '眨眨眼，继续陪你。',
     kind: 'micro',

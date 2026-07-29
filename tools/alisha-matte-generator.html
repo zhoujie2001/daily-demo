@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>阿丽莎 Alpha 同帧素材生成器</title>
+    <style>
+      :root {
+        color: #29241e;
+        background: #f4f0e8;
+        font-family: system-ui, sans-serif;
+      }
+
+      body {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 32px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 20px;
+      }
+
+      figure {
+        margin: 0;
+        padding: 16px;
+        background: #fffdf8;
+        border: 1px solid #ded7ca;
+        border-radius: 18px;
+      }
+
+      video,
+      canvas {
+        display: block;
+        width: 100%;
+        aspect-ratio: 1;
+        background:
+          linear-gradient(45deg, #252525 25%, transparent 25%),
+          linear-gradient(-45deg, #252525 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, #252525 75%),
+          linear-gradient(-45deg, transparent 75%, #252525 75%),
+          #161616;
+        background-position:
+          0 0,
+          0 12px,
+          12px -12px,
+          -12px 0;
+        background-size: 24px 24px;
+        object-fit: contain;
+        border-radius: 12px;
+      }
+
+      #packed {
+        aspect-ratio: 2;
+      }
+
+      button {
+        margin: 16px 0;
+        padding: 10px 16px;
+        color: white;
+        background: #29241e;
+        border: 0;
+        border-radius: 999px;
+        cursor: pointer;
+      }
+
+      output {
+        display: block;
+        min-height: 24px;
+        color: #7d4f3b;
+      }
+
+      @media (max-width: 760px) {
+        body {
+          padding: 18px;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>阿丽莎 Alpha 同帧素材生成器</h1>
+    <p>
+      左半边保存 RGB，右半边保存同一帧的灰度 Alpha，供正式播放器直接合成。
+    </p>
+    <button id="generate" type="button">生成眨眼 Demo</button>
+    <output id="status">等待生成</output>
+
+    <div class="grid">
+      <figure>
+        <figcaption>RGB＋Alpha 同帧素材</figcaption>
+        <canvas id="packed" width="720" height="360"></canvas>
+      </figure>
+      <figure>
+        <figcaption>解码后的透明合成结果</figcaption>
+        <canvas id="decoded" width="360" height="360"></canvas>
+      </figure>
+    </div>
+
+    <video
+      id="source"
+      src="/public/videos/alisha/v8_blink.mp4"
+      muted
+      playsinline
+      preload="auto"
+      hidden
+    ></video>
+    <video id="preview" muted playsinline loop hidden></video>
+    <textarea id="result-data" hidden></textarea>
+    <img
+      id="base"
+      src="/public/videos/alisha/base-image.jpg"
+      alt=""
+      hidden
+    />
+
+    <script type="module">
+      import StableVideoPetPlayer from '/src/components/pet/StableVideoPetPlayer.js';
+
+      const source = document.querySelector('#source');
+      const preview = document.querySelector('#preview');
+      const base = document.querySelector('#base');
+      const packed = document.querySelector('#packed');
+      const decoded = document.querySelector('#decoded');
+      const status = document.querySelector('#status');
+      const generate = document.querySelector('#generate');
+      const resultData = document.querySelector('#result-data');
+      const packedContext = packed.getContext('2d', {
+        willReadFrequently: true,
+      });
+      const decodedContext = decoded.getContext('2d');
+      const alphaCanvas = document.createElement('canvas');
+      alphaCanvas.width = 360;
+      alphaCanvas.height = 360;
+      const alphaContext = alphaCanvas.getContext('2d', {
+        willReadFrequently: true,
+      });
+      const decodeMaskCanvas = document.createElement('canvas');
+      decodeMaskCanvas.width = 360;
+      decodeMaskCanvas.height = 360;
+      const decodeMaskContext = decodeMaskCanvas.getContext('2d', {
+        willReadFrequently: true,
+      });
+      const playerCanvas = document.createElement('canvas');
+      const spareVideos = [
+        document.createElement('video'),
+        document.createElement('video'),
+      ];
+      const player = new StableVideoPetPlayer({
+        canvas: playerCanvas,
+        videos: spareVideos,
+        baseImage: base,
+        threshold: 20,
+        maskSize: 224,
+      });
+
+      window.generatorResult = null;
+      window.generatorError = null;
+
+      function waitFor(element, eventName) {
+        if (
+          eventName === 'loadeddata' &&
+          element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+        ) {
+          return Promise.resolve();
+        }
+        if (
+          eventName === 'load' &&
+          element.complete &&
+          element.naturalWidth
+        ) {
+          return Promise.resolve();
+        }
+        return new Promise((resolve, reject) => {
+          element.addEventListener(eventName, resolve, { once: true });
+          element.addEventListener(
+            'error',
+            () => reject(new Error(`${eventName} 失败`)),
+            { once: true }
+          );
+        });
+      }
+
+      function drawPackedFrame() {
+        player.createStableMask(source);
+        const mask = player.maskContext.getImageData(
+          0,
+          0,
+          player.maskSize,
+          player.maskSize
+        );
+        for (let index = 0; index < mask.data.length; index += 4) {
+          const alpha = mask.data[index + 3];
+          mask.data[index] = alpha;
+          mask.data[index + 1] = alpha;
+          mask.data[index + 2] = alpha;
+          mask.data[index + 3] = 255;
+        }
+        alphaContext.clearRect(0, 0, 360, 360);
+        alphaContext.putImageData(mask, 0, 0);
+
+        packedContext.clearRect(0, 0, 720, 360);
+        packedContext.drawImage(source, 0, 0, 360, 360);
+        packedContext.drawImage(
+          alphaCanvas,
+          0,
+          0,
+          player.maskSize,
+          player.maskSize,
+          360,
+          0,
+          360,
+          360
+        );
+      }
+
+      function drawDecodedFrame() {
+        if (
+          preview.readyState <
+          HTMLMediaElement.HAVE_CURRENT_DATA
+        ) {
+          requestAnimationFrame(drawDecodedFrame);
+          return;
+        }
+        decodedContext.clearRect(0, 0, 360, 360);
+        decodedContext.globalCompositeOperation = 'source-over';
+        decodedContext.drawImage(
+          preview,
+          0,
+          0,
+          preview.videoWidth / 2,
+          preview.videoHeight,
+          0,
+          0,
+          360,
+          360
+        );
+        decodeMaskContext.clearRect(0, 0, 360, 360);
+        decodeMaskContext.drawImage(
+          preview,
+          preview.videoWidth / 2,
+          0,
+          preview.videoWidth / 2,
+          preview.videoHeight,
+          0,
+          0,
+          360,
+          360
+        );
+        const matte = decodeMaskContext.getImageData(0, 0, 360, 360);
+        for (let index = 0; index < matte.data.length; index += 4) {
+          matte.data[index + 3] = matte.data[index];
+          matte.data[index] = 255;
+          matte.data[index + 1] = 255;
+          matte.data[index + 2] = 255;
+        }
+        decodeMaskContext.putImageData(matte, 0, 0);
+        decodedContext.globalCompositeOperation = 'destination-in';
+        decodedContext.drawImage(
+          decodeMaskCanvas,
+          0,
+          0,
+          360,
+          360
+        );
+        decodedContext.globalCompositeOperation = 'source-over';
+        requestAnimationFrame(drawDecodedFrame);
+      }
+
+      async function blobToBase64(blob) {
+        const buffer = await blob.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        const chunkSize = 0x8000;
+        for (let index = 0; index < bytes.length; index += chunkSize) {
+          binary += String.fromCharCode(
+            ...bytes.subarray(index, index + chunkSize)
+          );
+        }
+        return btoa(binary);
+      }
+
+      async function generateDemo() {
+        generate.disabled = true;
+        status.value = '正在生成 Alpha 蒙版并录制…';
+        window.generatorResult = null;
+        window.generatorError = null;
+        try {
+          await Promise.all([
+            waitFor(source, 'loadeddata'),
+            waitFor(base, 'load'),
+          ]);
+          await player.initialize();
+          player.resetMask();
+          source.pause();
+          source.currentTime = 0;
+
+          const mimeTypes = [
+            'video/webm;codecs=vp9',
+            'video/webm;codecs=vp8',
+            'video/webm',
+          ];
+          const mimeType =
+            mimeTypes.find((type) => MediaRecorder.isTypeSupported(type)) ||
+            '';
+          const stream = packed.captureStream(30);
+          const recorder = new MediaRecorder(stream, {
+            mimeType,
+            videoBitsPerSecond: 2_600_000,
+          });
+          const chunks = [];
+          recorder.addEventListener('dataavailable', (event) => {
+            if (event.data.size) chunks.push(event.data);
+          });
+          const stopped = new Promise((resolve) => {
+            recorder.addEventListener('stop', resolve, { once: true });
+          });
+
+          let frameCount = 0;
+          let frameCallback = null;
+          const render = () => {
+            drawPackedFrame();
+            frameCount += 1;
+            if (!source.ended) {
+              frameCallback = source.requestVideoFrameCallback(render);
+            }
+          };
+
+          recorder.start(100);
+          frameCallback = source.requestVideoFrameCallback(render);
+          await source.play();
+          await new Promise((resolve) => {
+            source.addEventListener('ended', resolve, { once: true });
+          });
+          if (frameCallback !== null) {
+            source.cancelVideoFrameCallback(frameCallback);
+          }
+          drawPackedFrame();
+          await new Promise((resolve) => setTimeout(resolve, 180));
+          recorder.stop();
+          await stopped;
+
+          const blob = new Blob(chunks, {
+            type: recorder.mimeType || 'video/webm',
+          });
+          const saveEndpoint = new URLSearchParams(location.search).get(
+            'save'
+          );
+          if (saveEndpoint) {
+            const response = await fetch(saveEndpoint, {
+              method: 'POST',
+              headers: {
+                'Content-Type': blob.type || 'video/webm',
+              },
+              body: blob,
+            });
+            if (!response.ok) {
+              throw new Error(`保存生成素材失败：${response.status}`);
+            }
+          }
+          const url = URL.createObjectURL(blob);
+          preview.src = url;
+          await waitFor(preview, 'loadeddata');
+          await preview.play();
+          drawDecodedFrame();
+
+          const base64 = await blobToBase64(blob);
+          resultData.value = base64;
+          resultData.dataset.mime = blob.type;
+          resultData.dataset.size = String(blob.size);
+          resultData.dataset.frames = String(frameCount);
+          resultData.dataset.duration = String(source.duration);
+          resultData.dataset.width = String(packed.width);
+          resultData.dataset.height = String(packed.height);
+          window.generatorResult = {
+            base64,
+            mime: blob.type,
+            size: blob.size,
+            frames: frameCount,
+            duration: source.duration,
+            width: packed.width,
+            height: packed.height,
+          };
+          document.documentElement.dataset.generatorState = 'complete';
+          status.value = `完成：${frameCount} 帧，${Math.round(
+            blob.size / 1024
+          )} KiB`;
+        } catch (error) {
+          window.generatorError = String(error?.stack || error);
+          document.documentElement.dataset.generatorState = 'failed';
+          status.value = `失败：${error.message}`;
+        } finally {
+          generate.disabled = false;
+        }
+      }
+
+      generate.addEventListener('click', generateDemo);
+      if (new URLSearchParams(location.search).has('autostart')) {
+        generateDemo();
+      }
+    </script>
+  </body>
+</html>

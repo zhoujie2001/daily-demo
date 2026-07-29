@@ -1,5 +1,13 @@
+import {
+  createPetEnvelopeMask,
+  createPetProtectionMask,
+  createSpatialBackgroundModel,
+  resolvePetMaskSize,
+  sampleSpatialBackground,
+  stabilizePetAlpha,
+} from '../../utils/petMatte.js';
+
 const FRAME_SIZE = 360;
-const MASK_SIZE = 176;
 const MEDIA_TIMEOUT = 12_000;
 const TRANSITION_MS = 150;
 
@@ -42,6 +50,7 @@ export default class StableVideoPetPlayer {
     videos,
     baseImage,
     threshold = 20,
+    maskSize = null,
     onEnded,
     onError,
     onFps,
@@ -57,6 +66,7 @@ export default class StableVideoPetPlayer {
     this.baseImage = baseImage;
     this.threshold = threshold;
     this.currentAction = null;
+    this.currentMatteMode = null;
     this.switchToken = 0;
     this.switching = false;
     this.renderHandle = null;
@@ -66,16 +76,36 @@ export default class StableVideoPetPlayer {
     this.onFps = onFps;
     this.frameCount = 0;
     this.fpsStartedAt = 0;
+    this.maskSize =
+      maskSize ??
+      resolvePetMaskSize({
+        viewportWidth: window.innerWidth,
+        deviceMemory: navigator.deviceMemory ?? 8,
+      });
+    this.maskPixelCount = this.maskSize * this.maskSize;
     this.backgroundReference = null;
-    this.previousAlpha = new Float32Array(MASK_SIZE * MASK_SIZE);
+    this.previousAlpha = new Float32Array(this.maskPixelCount);
+    this.rawAlpha = new Float32Array(this.maskPixelCount);
+    this.repairedAlpha = new Float32Array(this.maskPixelCount);
+    this.maskScratch = new Float32Array(this.maskPixelCount);
+    this.scores = new Float32Array(this.maskPixelCount);
+    this.luma = new Float32Array(this.maskPixelCount);
+    this.protection = createPetProtectionMask(
+      this.maskSize,
+      this.maskSize
+    );
+    this.envelope = createPetEnvelopeMask(
+      this.maskSize,
+      this.maskSize
+    );
     this.hasPreviousMask = false;
     this.transitionStartedAt = 0;
     this.transitionActive = false;
     this.initialized = false;
 
     this.maskCanvas = document.createElement('canvas');
-    this.maskCanvas.width = MASK_SIZE;
-    this.maskCanvas.height = MASK_SIZE;
+    this.maskCanvas.width = this.maskSize;
+    this.maskCanvas.height = this.maskSize;
     this.maskContext = this.maskCanvas.getContext('2d', {
       alpha: true,
       willReadFrequently: true,
@@ -128,34 +158,6 @@ export default class StableVideoPetPlayer {
     this.initialized = true;
   }
 
-  sampleBackground(data, width, height) {
-    const points = [
-      [0.04, 0.04],
-      [0.5, 0.035],
-      [0.96, 0.04],
-      [0.035, 0.48],
-      [0.965, 0.48],
-      [0.04, 0.94],
-    ];
-    const total = points.reduce(
-      (result, [xRatio, yRatio]) => {
-        const x = Math.round((width - 1) * xRatio);
-        const y = Math.round((height - 1) * yRatio);
-        const index = (y * width + x) * 4;
-        result.r += data[index];
-        result.g += data[index + 1];
-        result.b += data[index + 2];
-        return result;
-      },
-      { r: 0, g: 0, b: 0 }
-    );
-    return {
-      r: total.r / points.length,
-      g: total.g / points.length,
-      b: total.b / points.length,
-    };
-  }
-
   resetMask() {
     this.backgroundReference = null;
     this.previousAlpha.fill(0);
@@ -164,101 +166,180 @@ export default class StableVideoPetPlayer {
 
   createStableMask(source) {
     const context = this.maskContext;
-    context.clearRect(0, 0, MASK_SIZE, MASK_SIZE);
-    context.drawImage(source, 0, 0, MASK_SIZE, MASK_SIZE);
-    const frame = context.getImageData(0, 0, MASK_SIZE, MASK_SIZE);
+    const size = this.maskSize;
+    context.clearRect(0, 0, size, size);
+    context.drawImage(source, 0, 0, size, size);
+    const frame = context.getImageData(0, 0, size, size);
     if (!this.backgroundReference) {
-      this.backgroundReference = this.sampleBackground(
+      this.backgroundReference = createSpatialBackgroundModel(
         frame.data,
-        MASK_SIZE,
-        MASK_SIZE
+        size,
+        size
       );
     }
-    const background = this.backgroundReference;
-    const pixelCount = MASK_SIZE * MASK_SIZE;
-    const scores = new Float32Array(pixelCount);
-    const connected = new Uint8Array(pixelCount);
-    const queue = new Int32Array(pixelCount);
-    let start = 0;
-    let end = 0;
+    const backgroundModel = this.backgroundReference;
+    const background = [0, 0, 0];
+    const pixelCount = this.maskPixelCount;
+    const scores = this.scores;
+    const luma = this.luma;
 
     for (let pixel = 0; pixel < pixelCount; pixel += 1) {
       const index = pixel * 4;
       const r = frame.data[index];
       const g = frame.data[index + 1];
       const b = frame.data[index + 2];
+      const x = pixel % size;
+      const y = Math.floor(pixel / size);
+      sampleSpatialBackground(
+        backgroundModel,
+        x,
+        y,
+        background
+      );
+      luma[pixel] = r * 0.2126 + g * 0.7152 + b * 0.0722;
       const colorDistance = Math.hypot(
-        r - background.r,
-        g - background.g,
-        b - background.b
+        r - background[0],
+        g - background[1],
+        b - background[2]
       );
       const chromaDistance = Math.hypot(
-        r - g - (background.r - background.g),
-        g - b - (background.g - background.b)
+        r - g - (background[0] - background[1]),
+        g - b - (background[1] - background[2])
       );
       scores[pixel] = colorDistance * 0.58 + chromaDistance * 0.72;
     }
 
-    const enqueue = (pixel) => {
-      if (connected[pixel] || scores[pixel] > this.threshold + 18) return;
-      connected[pixel] = 1;
-      queue[end] = pixel;
-      end += 1;
-    };
-
-    for (let x = 0; x < MASK_SIZE; x += 1) {
-      enqueue(x);
-      enqueue((MASK_SIZE - 1) * MASK_SIZE + x);
+    const mask = context.createImageData(size, size);
+    for (let pixel = 0; pixel < pixelCount; pixel += 1) {
+      const previous = this.previousAlpha[pixel];
+      const x = pixel % size;
+      const y = Math.floor(pixel / size);
+      const left = luma[y * size + Math.max(0, x - 1)];
+      const right = luma[y * size + Math.min(size - 1, x + 1)];
+      const top = luma[Math.max(0, y - 1) * size + x];
+      const bottom = luma[Math.min(size - 1, y + 1) * size + x];
+      const detail = Math.hypot(right - left, bottom - top);
+      const detailBoost =
+        this.protection[pixel] *
+        smoothstep(7, 24, detail) *
+        214;
+      const effectiveThreshold =
+        this.threshold + (1 - this.protection[pixel]) * 12;
+      const keyedAlpha = Math.round(
+        smoothstep(
+          effectiveThreshold - (previous > 128 ? 9 : 6),
+          effectiveThreshold + (previous > 128 ? 15 : 19),
+          scores[pixel]
+        ) * 255
+      );
+      const protectedCoreAlpha = this.protection[pixel] * 248;
+      this.rawAlpha[pixel] = Math.max(
+        keyedAlpha,
+        detailBoost,
+        protectedCoreAlpha
+      );
     }
-    for (let y = 1; y < MASK_SIZE - 1; y += 1) {
-      enqueue(y * MASK_SIZE);
-      enqueue(y * MASK_SIZE + MASK_SIZE - 1);
-    }
 
-    while (start < end) {
-      const pixel = queue[start];
-      start += 1;
-      const x = pixel % MASK_SIZE;
-      const y = Math.floor(pixel / MASK_SIZE);
-      if (x > 0) enqueue(pixel - 1);
-      if (x < MASK_SIZE - 1) enqueue(pixel + 1);
-      if (y > 0) enqueue(pixel - MASK_SIZE);
-      if (y < MASK_SIZE - 1) enqueue(pixel + MASK_SIZE);
-    }
+    stabilizePetAlpha({
+      alpha: this.rawAlpha,
+      previousAlpha: this.previousAlpha,
+      envelope: this.envelope,
+      width: size,
+      height: size,
+      hasPrevious: this.hasPreviousMask,
+      output: this.repairedAlpha,
+      scratch: this.maskScratch,
+    });
 
-    const mask = context.createImageData(MASK_SIZE, MASK_SIZE);
     for (let pixel = 0; pixel < pixelCount; pixel += 1) {
       const index = pixel * 4;
-      const previous = this.previousAlpha[pixel];
-      const rawAlpha = connected[pixel]
-        ? Math.round(
-            smoothstep(
-              this.threshold - (previous > 128 ? 9 : 6),
-              this.threshold + (previous > 128 ? 15 : 19),
-              scores[pixel]
-            ) * 255
-          )
-        : 255;
-      const alpha = this.hasPreviousMask
-        ? previous * 0.45 + rawAlpha * 0.55
-        : rawAlpha;
+      const alpha = this.repairedAlpha[pixel];
       this.previousAlpha[pixel] = alpha;
       mask.data[index] = 255;
       mask.data[index + 1] = 255;
       mask.data[index + 2] = 255;
-      mask.data[index + 3] = Math.round(alpha);
+      mask.data[index + 3] = Math.round(clamp(alpha, 0, 255));
     }
     this.hasPreviousMask = true;
     context.putImageData(mask, 0, 0);
   }
 
   renderSource(source) {
+    if (this.currentMatteMode === 'packed-horizontal') {
+      this.renderPackedAlpha(source);
+      return;
+    }
     this.context.clearRect(0, 0, FRAME_SIZE, FRAME_SIZE);
     this.context.drawImage(source, 0, 0, FRAME_SIZE, FRAME_SIZE);
     this.createStableMask(source);
     this.context.save();
     this.context.globalCompositeOperation = 'destination-in';
     this.context.filter = 'blur(0.65px)';
+    this.context.drawImage(
+      this.maskCanvas,
+      0,
+      0,
+      FRAME_SIZE,
+      FRAME_SIZE
+    );
+    this.context.restore();
+    this.context.filter = 'none';
+    this.applyTransitionOverlay();
+  }
+
+  renderPackedAlpha(source) {
+    const sourceWidth = source.videoWidth || source.naturalWidth;
+    const sourceHeight = source.videoHeight || source.naturalHeight;
+    if (!sourceWidth || !sourceHeight || sourceWidth < 2) return;
+
+    const colorWidth = sourceWidth / 2;
+    this.context.clearRect(0, 0, FRAME_SIZE, FRAME_SIZE);
+    this.context.drawImage(
+      source,
+      0,
+      0,
+      colorWidth,
+      sourceHeight,
+      0,
+      0,
+      FRAME_SIZE,
+      FRAME_SIZE
+    );
+
+    this.maskContext.clearRect(0, 0, this.maskSize, this.maskSize);
+    this.maskContext.drawImage(
+      source,
+      colorWidth,
+      0,
+      colorWidth,
+      sourceHeight,
+      0,
+      0,
+      this.maskSize,
+      this.maskSize
+    );
+    const matte = this.maskContext.getImageData(
+      0,
+      0,
+      this.maskSize,
+      this.maskSize
+    );
+    for (let index = 0; index < matte.data.length; index += 4) {
+      const alpha = Math.round(
+        matte.data[index] * 0.2126 +
+          matte.data[index + 1] * 0.7152 +
+          matte.data[index + 2] * 0.0722
+      );
+      matte.data[index] = 255;
+      matte.data[index + 1] = 255;
+      matte.data[index + 2] = 255;
+      matte.data[index + 3] = alpha;
+    }
+    this.maskContext.putImageData(matte, 0, 0);
+
+    this.context.save();
+    this.context.globalCompositeOperation = 'destination-in';
+    this.context.filter = 'blur(0.35px)';
     this.context.drawImage(
       this.maskCanvas,
       0,
@@ -307,6 +388,7 @@ export default class StableVideoPetPlayer {
     this.cancelRendering();
     if (!instant) this.captureTransitionFrame();
     this.currentAction = null;
+    this.currentMatteMode = null;
     this.resetMask();
     if (instant || !this.transitionActive) {
       this.drawCachedBase();
@@ -371,6 +453,7 @@ export default class StableVideoPetPlayer {
       this.cancelRendering();
       this.captureTransitionFrame();
       this.resetMask();
+      this.currentMatteMode = action.matteMode ?? null;
       this.renderSource(target);
       if (target !== this.activeVideo) {
         const previous = this.activeVideo;
