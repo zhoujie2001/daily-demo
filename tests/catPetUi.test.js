@@ -157,8 +157,21 @@ test('运行时配置、隐藏恢复、响应式和无障碍交互保持可用',
   assert.equal(config.position.bottom, 32);
   assert.equal(config.size.desktop, 96);
   assert.equal(config.size.mobile, 72);
+  assert.equal(config.render.chromaTolerance, 20);
   assert.match(componentSource, /fetch\('\/alisha\.config\.json'/);
   assert.match(componentSource, /daily-demo-alisha-hidden-v1/);
+  assert.match(
+    componentSource,
+    /daily-demo-alisha-video-position-v3/
+  );
+  assert.match(
+    componentSource,
+    /threshold: config\.render\.chromaTolerance/
+  );
+  assert.match(
+    componentSource,
+    /data-chroma-tolerance=\{config\.render\.chromaTolerance\}/
+  );
   assert.match(componentSource, /aria-label="隐藏页面宠物阿丽莎"/);
   assert.match(componentSource, /aria-label="显示页面宠物阿丽莎"/);
   assert.match(componentSource, /tabIndex=\{0\}/);

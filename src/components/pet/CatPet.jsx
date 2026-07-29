@@ -28,7 +28,7 @@ import {
 import './CatPet.css';
 
 const HIDDEN_KEY = 'daily-demo-alisha-hidden-v1';
-const POSITION_KEY = 'daily-demo-alisha-video-position-v2';
+const POSITION_KEY = 'daily-demo-alisha-video-position-v3';
 const WELCOMED_KEY = 'daily-demo-alisha-video-welcomed-v1';
 const AFFINITY_KEY = 'daily-demo-alisha-video-affinity-v1';
 const BASE_ASSET = '/videos/alisha/base-image.jpg';
@@ -209,6 +209,7 @@ export default function CatPet() {
       canvas: canvasRef.current,
       videos: [videoARef.current, videoBRef.current],
       baseImage: baseImageRef.current,
+      threshold: config.render.chromaTolerance,
       onEnded: finishCurrentAction,
       onError: () => {
         if (!disposed) {
@@ -700,6 +701,8 @@ export default function CatPet() {
       aria-label="页面宠物阿丽莎"
       style={cssVariables}
       data-action={action || 'quiet'}
+      data-chroma-tolerance={config.render.chromaTolerance}
+      data-position-revision="3"
     >
       <button
         type="button"

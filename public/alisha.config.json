@@ -36,5 +36,8 @@
     "mobileMode": "lite",
     "respectReducedMotion": true
   },
+  "render": {
+    "chromaTolerance": 20
+  },
   "sound": false
 }

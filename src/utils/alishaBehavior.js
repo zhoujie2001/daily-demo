@@ -65,6 +65,9 @@ export const DEFAULT_ALISHA_CONFIG = Object.freeze({
     mobileMode: 'lite',
     respectReducedMotion: true,
   },
+  render: {
+    chromaTolerance: 20,
+  },
   sound: false,
 });
 
