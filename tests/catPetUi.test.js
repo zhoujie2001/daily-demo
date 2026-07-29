@@ -68,7 +68,7 @@ test('十段筛选后的视频动作均为可识别 MP4，且不再包含形象�
   }
 });
 
-test('播放器使用固定背景参考、时间平滑蒙版和交叉过渡抑制闪烁', async () => {
+test('播放器使用 V6 容差、固定背景参考、时间平滑蒙版和交叉过渡抑制闪烁', async () => {
   const source = await readFile(
     new URL(
       'src/components/pet/StableVideoPetPlayer.js',
@@ -78,6 +78,7 @@ test('播放器使用固定背景参考、时间平滑蒙版和交叉过渡抑�
   );
 
   assert.match(source, /const MASK_SIZE = 176/);
+  assert.match(source, /threshold = 20/);
   assert.match(source, /this\.backgroundReference/);
   assert.match(source, /this\.previousAlpha/);
   assert.match(source, /previous \* 0\.45 \+ rawAlpha \* 0\.55/);
@@ -167,4 +168,11 @@ test('运行时配置、隐藏恢复、响应式和无障碍交互保持可用',
   assert.match(cssSource, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(cssSource, /env\(safe-area-inset-bottom\)/);
   assert.match(cssSource, /touch-action: none/);
+  assert.match(cssSource, /contain: layout style/);
+  assert.match(cssSource, /overflow-wrap: anywhere/);
+  assert.match(cssSource, /translate3d\(27%, 20%, 0\)/);
+  assert.doesNotMatch(
+    cssSource,
+    /\.cat-video-pet\.is-avoiding-controls\s*\{[^}]*calc\(/s
+  );
 });

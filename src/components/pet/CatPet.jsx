@@ -28,7 +28,7 @@ import {
 import './CatPet.css';
 
 const HIDDEN_KEY = 'daily-demo-alisha-hidden-v1';
-const POSITION_KEY = 'daily-demo-alisha-video-position-v1';
+const POSITION_KEY = 'daily-demo-alisha-video-position-v2';
 const WELCOMED_KEY = 'daily-demo-alisha-video-welcomed-v1';
 const AFFINITY_KEY = 'daily-demo-alisha-video-affinity-v1';
 const BASE_ASSET = '/videos/alisha/base-image.jpg';

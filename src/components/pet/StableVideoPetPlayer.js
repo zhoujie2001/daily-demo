@@ -41,7 +41,7 @@ export default class StableVideoPetPlayer {
     canvas,
     videos,
     baseImage,
-    threshold = 36,
+    threshold = 20,
     onEnded,
     onError,
     onFps,
