@@ -3,103 +3,168 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const root = new URL('../', import.meta.url);
+const actionAssets = [
+  'v8_blink.mp4',
+  'v8_look.mp4',
+  'v8_stretch.mp4',
+  'v8_lick.mp4',
+  'v8_tail.mp4',
+  'state_happy.mp4',
+  'state_annoyed.mp4',
+  'state_observe.mp4',
+  'state_sleep.mp4',
+  'state_wake.mp4',
+];
 
-test('页面挂载轻量 2D 阿丽莎并彻底移除 WebGL 渲染器', async () => {
-  const [appSource, componentSource, asset] = await Promise.all([
-    readFile(new URL('src/App.jsx', root), 'utf8'),
-    readFile(new URL('src/components/pet/CatPet.jsx', root), 'utf8'),
-    readFile(new URL('public/images/alisha-pet-v2.png', root)),
-  ]);
+test('主站挂载视频版阿丽莎并保留静态降级图', async () => {
+  const [appSource, componentSource, baseAsset, fallbackAsset] =
+    await Promise.all([
+      readFile(new URL('src/App.jsx', root), 'utf8'),
+      readFile(
+        new URL('src/components/pet/CatPet.jsx', root),
+        'utf8'
+      ),
+      readFile(
+        new URL('public/videos/alisha/base-image.jpg', root)
+      ),
+      readFile(
+        new URL('public/images/alisha-pet-v2.png', root)
+      ),
+    ]);
 
   assert.match(appSource, /import CatPet/);
   assert.match(appSource, /<CatPet \/>/);
+  assert.match(componentSource, /StableVideoPetPlayer/);
+  assert.match(componentSource, /<canvas/);
+  assert.equal((componentSource.match(/<video/g) ?? []).length, 2);
+  assert.match(componentSource, /\/videos\/alisha\/base-image\.jpg/);
   assert.match(componentSource, /\/images\/alisha-pet-v2\.png/);
-  assert.doesNotMatch(componentSource, /createCatPetEngine|<canvas|getContext\('webgl'/);
-  assert.deepEqual([...asset.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
-  assert.ok(asset.length > 80_000);
-  assert.ok(asset.length < 250_000);
+  assert.doesNotMatch(componentSource, /getContext\(['"]webgl/);
+  assert.deepEqual([...baseAsset.subarray(0, 3)], [255, 216, 255]);
+  assert.deepEqual(
+    [...fallbackAsset.subarray(0, 8)],
+    [137, 80, 78, 71, 13, 10, 26, 10]
+  );
 });
 
-test('基础陪伴动作由 CSS 驱动，鼠标事件才使用单帧调度', async () => {
-  const [componentSource, cssSource] = await Promise.all([
-    readFile(new URL('src/components/pet/CatPet.jsx', root), 'utf8'),
-    readFile(new URL('src/components/pet/CatPet.css', root), 'utf8'),
+test('十段筛选后的视频动作均为可识别 MP4，且不再包含形象不一致的行走片段', async () => {
+  const runtimeSource = await readFile(
+    new URL('src/components/pet/videoPetRuntime.js', root),
+    'utf8'
+  );
+  const assets = await Promise.all(
+    actionAssets.map((asset) =>
+      readFile(new URL(`public/videos/alisha/${asset}`, root))
+    )
+  );
+
+  for (const asset of assets) {
+    assert.ok(asset.length > 180_000);
+    assert.equal(asset.subarray(4, 8).toString('ascii'), 'ftyp');
+  }
+  assert.doesNotMatch(runtimeSource, /walk_(left|right|forward)/);
+  for (const asset of actionAssets) {
+    assert.match(runtimeSource, new RegExp(asset.replace('.', '\\.')));
+  }
+});
+
+test('播放器使用固定背景参考、时间平滑蒙版和交叉过渡抑制闪烁', async () => {
+  const source = await readFile(
+    new URL(
+      'src/components/pet/StableVideoPetPlayer.js',
+      root
+    ),
+    'utf8'
+  );
+
+  assert.match(source, /const MASK_SIZE = 176/);
+  assert.match(source, /this\.backgroundReference/);
+  assert.match(source, /this\.previousAlpha/);
+  assert.match(source, /previous \* 0\.45 \+ rawAlpha \* 0\.55/);
+  assert.match(source, /const TRANSITION_MS = 150/);
+  assert.match(source, /requestVideoFrameCallback/);
+  assert.match(source, /this\.fpsStartedAt = performance\.now\(\)/);
+  assert.doesNotMatch(source, /sampleBackground\([^)]*\)\s*;\s*this\.backgroundReference\s*=/);
+});
+
+test('随机行为、动作队列、睡眠唤醒和防连点状态由统一运行时管理', async () => {
+  const [componentSource, runtimeSource] = await Promise.all([
+    readFile(
+      new URL('src/components/pet/CatPet.jsx', root),
+      'utf8'
+    ),
+    readFile(
+      new URL('src/components/pet/videoPetRuntime.js', root),
+      'utf8'
+    ),
   ]);
 
-  assert.match(componentSource, /setBlinking/);
-  assert.match(componentSource, /setEarFlicking/);
-  assert.match(componentSource, /window\.addEventListener\('pointermove'/);
-  assert.match(componentSource, /requestAnimationFrame\(renderGaze\)/);
-  assert.doesNotMatch(componentSource, /requestAnimationFrame\(render\)/);
-  assert.match(cssSource, /alisha-breathe/);
-  assert.match(cssSource, /alisha-tail-rest/);
-  assert.match(cssSource, /alisha-ear-flick/);
-  assert.match(cssSource, /--gaze-x/);
+  assert.match(componentSource, /selectVideoPetAmbient/);
+  assert.match(componentSource, /requestVideoPetAction/);
+  assert.match(componentSource, /requestVideoPetSleep/);
+  assert.match(componentSource, /completeVideoPetAction/);
+  assert.match(componentSource, /setInterval\(behaviorTick, 500\)/);
+  assert.match(runtimeSource, /quietWeight: 38/);
+  assert.match(runtimeSource, /count >= 5/);
+  assert.match(runtimeSource, /value: 'annoyed', weight: 88/);
+  assert.match(runtimeSource, /request\.source === 'ambient'/);
+  assert.match(runtimeSource, /action: 'wake'/);
 });
 
-test('欢迎、待机、点击升级和板块联动全部接入统一动作系统', async () => {
+test('点击、长按、拖动、鼠标靠近、滚动停止和页面板块均接入互动', async () => {
   const source = await readFile(
     new URL('src/components/pet/CatPet.jsx', root),
     'utf8'
   );
 
-  assert.match(source, /ALISHA_ACTION\.WELCOME/);
-  assert.match(source, /pickIdleAction/);
-  assert.match(source, /recordRapidClick/);
-  assert.match(source, /ALISHA_ACTION\.ANNOYED/);
-  assert.match(source, /SECTION_ACTIONS/);
-  assert.match(source, /sectionDwellMs/);
-  assert.match(source, /is-diary/);
-  assert.match(source, /is-camera/);
-  assert.match(source, /is-backpack/);
+  assert.match(source, /onPointerDown=\{handlePointerDown\}/);
+  assert.match(source, /onPointerMove=\{handlePointerMove\}/);
+  assert.match(source, /onPointerUp=\{handlePointerUp\}/);
+  assert.match(source, /reactionRef\.current\('longpress'\)/);
+  assert.match(source, /event: 'proximity'/);
+  assert.match(source, /event: 'scrollStop'/);
+  assert.match(source, /SECTION_IDS/);
+  for (const id of [
+    'about',
+    'daily',
+    'reading',
+    'travel',
+    'photography',
+    'song',
+  ]) {
+    assert.match(source, new RegExp(`'${id}'`));
+  }
 });
 
-test('五分钟星星、七日蝴蝶结和首次欢迎语均有持久化状态', async () => {
-  const source = await readFile(
-    new URL('src/components/pet/CatPet.jsx', root),
-    'utf8'
-  );
-
-  assert.match(source, /daily-demo-alisha-welcomed-v1/);
-  assert.match(source, /daily-demo-alisha-visits-v1/);
-  assert.match(source, /daily-demo-alisha-star-v1/);
-  assert.match(source, /shouldCountActiveTime/);
-  assert.match(source, /updateVisitStreak/);
-  assert.match(source, /has-bow/);
-  assert.match(source, /has-star/);
-});
-
-test('运行时配置可以控制位置、尺寸、行为与时间参数', async () => {
-  const [componentSource, config] = await Promise.all([
-    readFile(new URL('src/components/pet/CatPet.jsx', root), 'utf8'),
-    readFile(new URL('public/alisha.config.json', root), 'utf8').then(JSON.parse),
+test('运行时配置、隐藏恢复、响应式和无障碍交互保持可用', async () => {
+  const [componentSource, cssSource, config] = await Promise.all([
+    readFile(
+      new URL('src/components/pet/CatPet.jsx', root),
+      'utf8'
+    ),
+    readFile(
+      new URL('src/components/pet/CatPet.css', root),
+      'utf8'
+    ),
+    readFile(
+      new URL('public/alisha.config.json', root),
+      'utf8'
+    ).then(JSON.parse),
   ]);
 
   assert.equal(config.position.right, 32);
   assert.equal(config.position.bottom, 32);
   assert.equal(config.size.desktop, 96);
   assert.equal(config.size.mobile, 72);
-  assert.equal(config.timings.starActiveMs, 300000);
-  assert.equal(config.motion.mobileMode, 'lite');
   assert.match(componentSource, /fetch\('\/alisha\.config\.json'/);
-  assert.match(componentSource, /mergeAlishaConfig/);
-  assert.match(componentSource, /--alisha-size-mobile/);
-});
-
-test('宠物支持隐藏恢复、自动避让、键盘、图片降级和减少动画', async () => {
-  const [componentSource, cssSource] = await Promise.all([
-    readFile(new URL('src/components/pet/CatPet.jsx', root), 'utf8'),
-    readFile(new URL('src/components/pet/CatPet.css', root), 'utf8'),
-  ]);
-
   assert.match(componentSource, /daily-demo-alisha-hidden-v1/);
   assert.match(componentSource, /aria-label="隐藏页面宠物阿丽莎"/);
   assert.match(componentSource, /aria-label="显示页面宠物阿丽莎"/);
   assert.match(componentSource, /tabIndex=\{0\}/);
-  assert.match(componentSource, /CatPetFallback/);
-  assert.match(componentSource, /IntersectionObserver/);
+  assert.match(componentSource, /StaticFallback/);
   assert.match(componentSource, /is-avoiding-controls/);
   assert.match(cssSource, /@media \(max-width: 700px\)/);
   assert.match(cssSource, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(cssSource, /env\(safe-area-inset-bottom\)/);
+  assert.match(cssSource, /touch-action: none/);
 });
