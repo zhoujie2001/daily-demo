@@ -8,10 +8,11 @@ import {
   createVideoPetController,
   requestVideoPetAction,
   requestVideoPetSleep,
+  recordVideoPetAction,
   selectVideoPetAmbient,
 } from '../src/components/pet/videoPetRuntime.js';
 
-test('生产动作清单只保留同一形象的十段素材', () => {
+test('生产动作清单包含原有动作和三段行走素材', () => {
   assert.deepEqual(Object.keys(VIDEO_PET_ACTIONS), [
     'blink',
     'look',
@@ -23,12 +24,22 @@ test('生产动作清单只保留同一形象的十段素材', () => {
     'observe',
     'sleep',
     'wake',
+    'walkLeft',
+    'walkRight',
+    'walkForward',
   ]);
   assert.ok(
     Object.values(VIDEO_PET_ACTIONS).every(
       (action) => action.src.startsWith('/videos/alisha/')
     )
   );
+  for (const actionKey of ['walkLeft', 'walkRight', 'walkForward']) {
+    assert.equal(VIDEO_PET_ACTIONS[actionKey].kind, 'movement');
+    assert.equal(
+      VIDEO_PET_ACTIONS[actionKey].matteMode,
+      'packed-horizontal'
+    );
+  }
 });
 
 test('连续点击五次会进入防打扰反馈', () => {
@@ -94,4 +105,39 @@ test('环境选择包含安静概率且尊重最近动作', () => {
     random: () => 0,
   });
   assert.notEqual(noBlink, 'blink');
+});
+
+test('移动动作会消耗精力并受每分钟主要动作上限保护', () => {
+  const now = 80_000;
+  const base = createVideoPetBehavior({ now: 0, random: () => 0 });
+  const afterWalk = recordVideoPetAction(base, 'walkLeft', now);
+
+  assert.equal(afterWalk.energy, 72);
+  assert.equal(afterWalk.curiosity, 41);
+  assert.deepEqual(afterWalk.majorActions, [now]);
+
+  const cooling = Object.fromEntries(
+    Object.keys(VIDEO_PET_ACTIONS)
+      .filter(
+        (key) =>
+          VIDEO_PET_ACTIONS[key].weight > 0 &&
+          VIDEO_PET_ACTIONS[key].kind !== 'movement'
+      )
+      .map((key) => [key, now])
+  );
+  const majorLimited = {
+    ...base,
+    lastPlayed: cooling,
+    majorActions: [now - 2_000, now - 1_000],
+  };
+
+  assert.equal(
+    selectVideoPetAmbient({
+      state: majorLimited,
+      now,
+      context: 'travel',
+      random: () => 0,
+    }),
+    null
+  );
 });

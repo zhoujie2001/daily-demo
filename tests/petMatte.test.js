@@ -7,6 +7,7 @@ import {
   createPetEnvelopeMask,
   createPetProtectionMask,
   createSpatialBackgroundModel,
+  findMovementLowerBounds,
   resolvePetMaskSize,
   sampleSpatialBackground,
   stabilizePetAlpha,
@@ -120,4 +121,36 @@ test('主体修复不会强留保护区背景，且不透明区域恢复较快',
   });
 
   assert.ok(output[4] > 170);
+});
+
+test('移动蒙版会按每一列的有效细节估算脚部下沿', () => {
+  const width = 9;
+  const height = 10;
+  const scores = new Float32Array(width * height);
+  const luma = new Float32Array(width * height);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      luma[y * width + x] = x * 20;
+    }
+  }
+
+  for (let x = 2; x <= 6; x += 1) {
+    for (let y = 4; y <= 8; y += 1) {
+      const index = y * width + x;
+      scores[index] = 40;
+    }
+  }
+
+  const bounds = findMovementLowerBounds({
+    scores,
+    luma,
+    width,
+    height,
+    threshold: 20,
+  });
+
+  assert.ok(bounds[4] >= 8);
+  assert.ok(bounds[0] < bounds[4]);
+  assert.equal(bounds.length, width);
 });

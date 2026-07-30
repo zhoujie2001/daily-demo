@@ -136,6 +136,38 @@ export function createPetEnvelopeMask(width, height) {
   return envelope;
 }
 
+export function findMovementLowerBounds({
+  scores,
+  luma,
+  width,
+  height,
+  threshold = 20,
+  output = new Int16Array(width),
+}) {
+  const searchStart = Math.round(height * 0.42);
+  const searchEnd = Math.round(height * 0.9);
+  const fallback = Math.round(height * 0.67);
+
+  for (let x = 0; x < width; x += 1) {
+    let lowerBound = -1;
+    for (let y = searchStart; y <= searchEnd; y += 1) {
+      const pixel = y * width + x;
+      const left = luma[y * width + Math.max(0, x - 1)];
+      const right = luma[y * width + Math.min(width - 1, x + 1)];
+      const horizontalDetail = Math.abs(right - left);
+      if (
+        scores[pixel] >= threshold + 6 &&
+        horizontalDetail >= 7
+      ) {
+        lowerBound = y;
+      }
+    }
+    output[x] = lowerBound >= 0 ? lowerBound : fallback;
+  }
+
+  return output;
+}
+
 export function createSpatialBackgroundModel(data, width, height) {
   const rowLeft = new Float32Array(height * 3);
   const rowRight = new Float32Array(height * 3);

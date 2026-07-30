@@ -81,13 +81,40 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     weight: 0,
     cooldown: 0,
   },
+  walkLeft: {
+    src: '/videos/alisha/walk_left_rgb_alpha.webm',
+    matteMode: 'packed-horizontal',
+    label: '向左散步',
+    speech: '去左边看看。',
+    kind: 'movement',
+    weight: 2.8,
+    cooldown: 45_000,
+  },
+  walkRight: {
+    src: '/videos/alisha/walk_right_rgb_alpha.webm',
+    matteMode: 'packed-horizontal',
+    label: '向右散步',
+    speech: '右边好像有点动静。',
+    kind: 'movement',
+    weight: 2.8,
+    cooldown: 45_000,
+  },
+  walkForward: {
+    src: '/videos/alisha/walk_forward_rgb_alpha.webm',
+    matteMode: 'packed-horizontal',
+    label: '走近一点',
+    speech: '我过来陪你一会儿。',
+    kind: 'movement',
+    weight: 2.4,
+    cooldown: 50_000,
+  },
 });
 
 export const VIDEO_PET_CONFIG = Object.freeze({
-  ambientDelay: { min: 8_000, max: 16_000 },
+  ambientDelay: { min: 5_000, max: 9_000 },
   sleepDelay: { min: 90_000, max: 150_000 },
-  quietWeight: 38,
-  mobileQuietWeight: 48,
+  quietWeight: 24,
+  mobileQuietWeight: 32,
   recentActionWindow: 2,
   majorActionLimit: 2,
   majorActionWindow: 60_000,
@@ -101,12 +128,53 @@ const AMBIENT_ACTIONS = Object.freeze(
 );
 
 const CONTEXT_MULTIPLIERS = Object.freeze({
-  about: { look: 1.25, observe: 1.2 },
-  daily: { look: 1.45, lick: 1.1, stretch: 0.7 },
-  reading: { blink: 1.65, look: 1.15, tail: 0.55, stretch: 0.55 },
-  travel: { look: 1.55, tail: 1.75, stretch: 1.2, observe: 1.25 },
-  photography: { look: 1.55, observe: 2.25 },
-  song: { tail: 2.4, blink: 1.15 },
+  about: {
+    look: 1.25,
+    observe: 1.2,
+    walkLeft: 0.8,
+    walkRight: 0.8,
+    walkForward: 1.15,
+  },
+  daily: {
+    look: 1.45,
+    lick: 1.1,
+    stretch: 0.7,
+    walkLeft: 0.55,
+    walkRight: 0.55,
+    walkForward: 0.4,
+  },
+  reading: {
+    blink: 1.65,
+    look: 1.15,
+    tail: 0.55,
+    stretch: 0.55,
+    walkLeft: 0.25,
+    walkRight: 0.25,
+    walkForward: 0.18,
+  },
+  travel: {
+    look: 1.55,
+    tail: 1.75,
+    stretch: 1.2,
+    observe: 1.25,
+    walkLeft: 2.8,
+    walkRight: 2.8,
+    walkForward: 2.3,
+  },
+  photography: {
+    look: 1.55,
+    observe: 2.25,
+    walkLeft: 0.45,
+    walkRight: 0.45,
+    walkForward: 0.55,
+  },
+  song: {
+    tail: 2.4,
+    blink: 1.15,
+    walkLeft: 0.65,
+    walkRight: 0.65,
+    walkForward: 0.45,
+  },
 });
 
 export const VIDEO_PET_PRIORITY = Object.freeze({
@@ -243,14 +311,23 @@ export function selectVideoPetAmbient({
     if (
       recent.has(actionKey) ||
       isCoolingDown(state, actionKey, now) ||
-      (majorLimited && action.kind === 'selfcare')
+      (majorLimited &&
+        ['selfcare', 'movement'].includes(action.kind))
     ) {
       return [];
     }
     let weight = action.weight * (multipliers[actionKey] ?? 1);
     if (isMobile && action.kind === 'selfcare') weight *= 0.45;
+    if (isMobile && action.kind === 'movement') weight *= 0.45;
     if ((hour >= 23 || hour < 7) && actionKey === 'blink') weight *= 1.35;
+    if (
+      (hour >= 23 || hour < 7) &&
+      action.kind === 'movement'
+    ) {
+      weight *= 0.35;
+    }
     if (state.energy < 35 && action.kind === 'selfcare') weight *= 0.6;
+    if (state.energy < 35 && action.kind === 'movement') weight *= 0.25;
     return [{ value: actionKey, weight }];
   });
   entries.push({
@@ -375,13 +452,19 @@ export function recordVideoPetAction(
   const recentActions = [...state.recentActions, actionKey].slice(-4);
   const majorActions = state.majorActions
     .filter((timestamp) => now - timestamp <= config.majorActionWindow)
-    .concat(action.kind === 'selfcare' ? now : [])
+    .concat(
+      ['selfcare', 'movement'].includes(action.kind) ? now : []
+    )
     .slice(-config.majorActionLimit);
   let energy = state.energy;
   let curiosity = state.curiosity;
   let affinity = state.affinity;
   let annoyance = state.annoyance;
   if (action.kind === 'selfcare') energy += 4;
+  if (action.kind === 'movement') {
+    energy -= 10;
+    curiosity -= 4;
+  }
   if (actionKey === 'happy') affinity += 1;
   if (actionKey === 'observe' || actionKey === 'look') curiosity -= 8;
   if (actionKey === 'annoyed') annoyance = 100;

@@ -14,6 +14,12 @@ const actionAssets = [
   'state_sleep.mp4',
   'state_wake.mp4',
 ];
+const packedActionAssets = [
+  'v8_blink_rgb_alpha.webm',
+  'walk_left_rgb_alpha.webm',
+  'walk_right_rgb_alpha.webm',
+  'walk_forward_rgb_alpha.webm',
+];
 
 test('主站挂载视频版阿丽莎并保留静态降级图', async () => {
   const [appSource, componentSource, baseAsset, fallbackAsset] =
@@ -46,7 +52,7 @@ test('主站挂载视频版阿丽莎并保留静态降级图', async () => {
   );
 });
 
-test('九段实时抠图动作均为可识别 MP4，且不再包含形象不一致的行走片段', async () => {
+test('九段实时抠图动作均为可识别 MP4', async () => {
   const runtimeSource = await readFile(
     new URL('src/components/pet/videoPetRuntime.js', root),
     'utf8'
@@ -61,14 +67,13 @@ test('九段实时抠图动作均为可识别 MP4，且不再包含形象不一�
     assert.ok(asset.length > 180_000);
     assert.equal(asset.subarray(4, 8).toString('ascii'), 'ftyp');
   }
-  assert.doesNotMatch(runtimeSource, /walk_(left|right|forward)/);
   for (const asset of actionAssets) {
     assert.match(runtimeSource, new RegExp(asset.replace('.', '\\.')));
   }
 });
 
-test('眨眼动作使用同帧 RGB 与 Alpha 素材，避免背景穿透主体', async () => {
-  const [runtimeSource, playerSource, packedAsset] = await Promise.all([
+test('眨眼和行走动作使用同帧 RGB 与 Alpha 素材，避免背景穿透主体', async () => {
+  const [runtimeSource, playerSource, ...packedAssets] = await Promise.all([
     readFile(
       new URL('src/components/pet/videoPetRuntime.js', root),
       'utf8'
@@ -80,20 +85,21 @@ test('眨眼动作使用同帧 RGB 与 Alpha 素材，避免背景穿透主体',
       ),
       'utf8'
     ),
-    readFile(
-      new URL(
-        'public/videos/alisha/v8_blink_rgb_alpha.webm',
-        root
-      )
+    ...packedActionAssets.map((asset) =>
+      readFile(new URL(`public/videos/alisha/${asset}`, root))
     ),
   ]);
 
-  assert.ok(packedAsset.length > 100_000);
-  assert.deepEqual(
-    [...packedAsset.subarray(0, 4)],
-    [0x1a, 0x45, 0xdf, 0xa3]
-  );
-  assert.match(runtimeSource, /v8_blink_rgb_alpha\.webm/);
+  for (const packedAsset of packedAssets) {
+    assert.ok(packedAsset.length > 100_000);
+    assert.deepEqual(
+      [...packedAsset.subarray(0, 4)],
+      [0x1a, 0x45, 0xdf, 0xa3]
+    );
+  }
+  for (const asset of packedActionAssets) {
+    assert.match(runtimeSource, new RegExp(asset.replace('.', '\\.')));
+  }
   assert.match(runtimeSource, /matteMode: 'packed-horizontal'/);
   assert.match(playerSource, /renderPackedAlpha/);
   assert.match(playerSource, /source\.videoWidth/);
@@ -141,7 +147,10 @@ test('随机行为、动作队列、睡眠唤醒和防连点状态由统一运�
   assert.match(componentSource, /requestVideoPetSleep/);
   assert.match(componentSource, /completeVideoPetAction/);
   assert.match(componentSource, /setInterval\(behaviorTick, 500\)/);
-  assert.match(runtimeSource, /quietWeight: 38/);
+  assert.match(runtimeSource, /ambientDelay: \{ min: 5_000, max: 9_000 \}/);
+  assert.match(runtimeSource, /quietWeight: 24/);
+  assert.match(runtimeSource, /mobileQuietWeight: 32/);
+  assert.match(runtimeSource, /action\.kind === 'movement'/);
   assert.match(runtimeSource, /count >= 5/);
   assert.match(runtimeSource, /value: 'annoyed', weight: 88/);
   assert.match(runtimeSource, /request\.source === 'ambient'/);

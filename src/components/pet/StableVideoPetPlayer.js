@@ -2,6 +2,7 @@ import {
   createPetEnvelopeMask,
   createPetProtectionMask,
   createSpatialBackgroundModel,
+  findMovementLowerBounds,
   resolvePetMaskSize,
   sampleSpatialBackground,
   stabilizePetAlpha,
@@ -51,6 +52,7 @@ export default class StableVideoPetPlayer {
     baseImage,
     threshold = 20,
     maskSize = null,
+    matteProfile = 'portrait',
     onEnded,
     onError,
     onFps,
@@ -65,6 +67,7 @@ export default class StableVideoPetPlayer {
     this.inactiveVideo = videos[1];
     this.baseImage = baseImage;
     this.threshold = threshold;
+    this.matteProfile = matteProfile;
     this.currentAction = null;
     this.currentMatteMode = null;
     this.switchToken = 0;
@@ -90,6 +93,7 @@ export default class StableVideoPetPlayer {
     this.maskScratch = new Float32Array(this.maskPixelCount);
     this.scores = new Float32Array(this.maskPixelCount);
     this.luma = new Float32Array(this.maskPixelCount);
+    this.movementLowerBounds = new Int16Array(this.maskSize);
     this.protection = createPetProtectionMask(
       this.maskSize,
       this.maskSize
@@ -209,6 +213,17 @@ export default class StableVideoPetPlayer {
       scores[pixel] = colorDistance * 0.58 + chromaDistance * 0.72;
     }
 
+    if (this.matteProfile === 'movement') {
+      findMovementLowerBounds({
+        scores,
+        luma,
+        width: size,
+        height: size,
+        threshold: this.threshold,
+        output: this.movementLowerBounds,
+      });
+    }
+
     const mask = context.createImageData(size, size);
     for (let pixel = 0; pixel < pixelCount; pixel += 1) {
       const previous = this.previousAlpha[pixel];
@@ -232,12 +247,45 @@ export default class StableVideoPetPlayer {
           scores[pixel]
         ) * 255
       );
-      const protectedCoreAlpha = this.protection[pixel] * 248;
-      this.rawAlpha[pixel] = Math.max(
+      const protectedCoreAlpha =
+        this.matteProfile === 'movement'
+          ? 0
+          : this.protection[pixel] * 248;
+      let rawAlpha = Math.max(
         keyedAlpha,
         detailBoost,
         protectedCoreAlpha
       );
+      if (this.matteProfile === 'movement') {
+        const lowerZone = smoothstep(
+          size * 0.66,
+          size * 0.86,
+          y
+        );
+        const detailKeep = smoothstep(5, 18, detail);
+        const groundSuppression =
+          lowerZone *
+          (1 - detailKeep) *
+          0.98;
+        rawAlpha *= 1 - groundSuppression;
+
+        let lowerBound = 0;
+        for (let offset = -3; offset <= 3; offset += 1) {
+          lowerBound = Math.max(
+            lowerBound,
+            this.movementLowerBounds[
+              clamp(x + offset, 0, size - 1)
+            ]
+          );
+        }
+        const lowerFade = 1 - smoothstep(
+          lowerBound + 2,
+          lowerBound + Math.max(6, size * 0.035),
+          y
+        );
+        rawAlpha *= lowerFade;
+      }
+      this.rawAlpha[pixel] = rawAlpha;
     }
 
     stabilizePetAlpha({

@@ -133,6 +133,15 @@
       const status = document.querySelector('#status');
       const generate = document.querySelector('#generate');
       const resultData = document.querySelector('#result-data');
+      const searchParams = new URLSearchParams(location.search);
+      const requestedSource = searchParams.get('source');
+      if (requestedSource) {
+        const sourceUrl = new URL(requestedSource, location.href);
+        if (sourceUrl.origin !== location.origin) {
+          throw new Error('素材生成器只接受同源视频');
+        }
+        source.src = `${sourceUrl.pathname}${sourceUrl.search}`;
+      }
       const packedContext = packed.getContext('2d', {
         willReadFrequently: true,
       });
@@ -160,6 +169,7 @@
         baseImage: base,
         threshold: 20,
         maskSize: 224,
+        matteProfile: searchParams.get('profile') || 'portrait',
       });
 
       window.generatorResult = null;
@@ -351,9 +361,7 @@
           const blob = new Blob(chunks, {
             type: recorder.mimeType || 'video/webm',
           });
-          const saveEndpoint = new URLSearchParams(location.search).get(
-            'save'
-          );
+          const saveEndpoint = searchParams.get('save');
           if (saveEndpoint) {
             const response = await fetch(saveEndpoint, {
               method: 'POST',
@@ -403,7 +411,7 @@
       }
 
       generate.addEventListener('click', generateDemo);
-      if (new URLSearchParams(location.search).has('autostart')) {
+      if (searchParams.has('autostart')) {
         generateDemo();
       }
     </script>
