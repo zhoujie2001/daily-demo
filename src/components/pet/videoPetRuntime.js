@@ -3,7 +3,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     src: '/videos/alisha/v8_blink_rgb_alpha.webm',
     matteMode: 'packed-horizontal',
     label: '慢慢眨眼',
-    speech: '眨眨眼，继续陪你。',
+    speech: '在呢。',
     kind: 'micro',
     weight: 18,
     cooldown: 8_000,
@@ -11,7 +11,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
   look: {
     src: '/videos/alisha/v8_look.mp4',
     label: '四处张望',
-    speech: '刚才是不是有什么经过？',
+    speech: '那边有动静。',
     kind: 'micro',
     weight: 14,
     cooldown: 18_000,
@@ -19,7 +19,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
   stretch: {
     src: '/videos/alisha/v8_stretch.mp4',
     label: '伸懒腰',
-    speech: '坐久了，也要活动一下。',
+    speech: '伸个懒腰。',
     kind: 'selfcare',
     weight: 5,
     cooldown: 60_000,
@@ -27,7 +27,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
   lick: {
     src: '/videos/alisha/v8_lick.mp4',
     label: '认真舔毛',
-    speech: '等我把毛整理好。',
+    speech: '整理一下。',
     kind: 'selfcare',
     weight: 6,
     cooldown: 40_000,
@@ -35,7 +35,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
   tail: {
     src: '/videos/alisha/v8_tail.mp4',
     label: '轻轻甩尾',
-    speech: '尾巴有自己的想法。',
+    speech: '尾巴先动了。',
     kind: 'micro',
     weight: 12,
     cooldown: 20_000,
@@ -43,7 +43,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
   happy: {
     src: '/videos/alisha/state_happy.mp4',
     label: '被你逗开心',
-    speech: '今天也很高兴见到你。',
+    speech: '好呀。',
     kind: 'emotion',
     weight: 0,
     cooldown: 12_000,
@@ -59,7 +59,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
   observe: {
     src: '/videos/alisha/state_observe.mp4',
     label: '认真观察',
-    speech: '我在看你做什么。',
+    speech: '我看看。',
     kind: 'emotion',
     weight: 3,
     cooldown: 24_000,
@@ -76,7 +76,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
   wake: {
     src: '/videos/alisha/state_wake.mp4',
     label: '慢慢醒来',
-    speech: '你回来啦。',
+    speech: '醒啦。',
     kind: 'emotion',
     weight: 0,
     cooldown: 0,
@@ -103,7 +103,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     src: '/videos/alisha/walk_forward_rgb_alpha.webm',
     matteMode: 'packed-horizontal',
     label: '走近一点',
-    speech: '我过来陪你一会儿。',
+    speech: '靠近一点。',
     kind: 'movement',
     weight: 2.4,
     cooldown: 50_000,
@@ -111,14 +111,17 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
 });
 
 export const VIDEO_PET_CONFIG = Object.freeze({
-  ambientDelay: { min: 5_000, max: 9_000 },
-  sleepDelay: { min: 90_000, max: 150_000 },
+  ambientDelay: { min: 3_000, max: 3_000 },
+  sleepDelay: { min: 30_000, max: 30_000 },
   quietWeight: 24,
   mobileQuietWeight: 32,
   recentActionWindow: 2,
   majorActionLimit: 2,
   majorActionWindow: 60_000,
   postAnnoyedQuietTime: 6_000,
+  speechCooldown: 12_000,
+  ambientSpeechChance: 0.14,
+  contextSpeechChance: 0.32,
 });
 
 const AMBIENT_ACTIONS = Object.freeze(
@@ -188,8 +191,55 @@ function clamp(value, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
+function numberOr(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
 export function randomBetween(minimum, maximum, random = Math.random) {
   return minimum + (maximum - minimum) * random();
+}
+
+export function createVideoPetRuntimeConfig(
+  timings = {},
+  base = VIDEO_PET_CONFIG
+) {
+  const actionInterval = clamp(
+    numberOr(timings.petActionIntervalMs, base.ambientDelay.min),
+    1_000,
+    60_000
+  );
+  const sleepAfter = clamp(
+    numberOr(timings.sleepAfterMs, base.sleepDelay.min),
+    10_000,
+    10 * 60_000
+  );
+  return {
+    ...base,
+    ambientDelay: { min: actionInterval, max: actionInterval },
+    sleepDelay: { min: sleepAfter, max: sleepAfter },
+    speechCooldown: clamp(
+      numberOr(timings.speechCooldownMs, base.speechCooldown),
+      3_000,
+      60_000
+    ),
+    ambientSpeechChance: clamp(
+      numberOr(
+        timings.ambientSpeechChance,
+        base.ambientSpeechChance
+      ),
+      0,
+      1
+    ),
+    contextSpeechChance: clamp(
+      numberOr(
+        timings.contextSpeechChance,
+        base.contextSpeechChance
+      ),
+      0,
+      1
+    ),
+  };
 }
 
 function weightedPick(entries, random = Math.random) {
@@ -247,7 +297,13 @@ export function registerVideoPetActivity(
   state,
   { type, now, random = Math.random, config = VIDEO_PET_CONFIG }
 ) {
-  const direct = new Set(['tap', 'longpress', 'drop', 'keyboard']);
+  const wakeful = new Set([
+    'tap',
+    'longpress',
+    'drop',
+    'keyboard',
+    'pointerNearby',
+  ]);
   const next = {
     ...state,
     curiosity: clamp(
@@ -257,13 +313,49 @@ export function registerVideoPetActivity(
       100
     ),
   };
-  if (!direct.has(type)) return next;
+  if (!wakeful.has(type)) return next;
   return {
     ...next,
     lastDirectAt: now,
     sleepAt:
       now +
       randomBetween(config.sleepDelay.min, config.sleepDelay.max, random),
+  };
+}
+
+export function resolveVideoPetSpeech({
+  actionKey,
+  source = 'ambient',
+  now = 0,
+  lastSpokenAt = Number.NEGATIVE_INFINITY,
+  lastSpeechAction = null,
+  random = Math.random,
+  config = VIDEO_PET_CONFIG,
+}) {
+  const action = VIDEO_PET_ACTIONS[actionKey];
+  if (!action?.speech || action.kind === 'sleep') return null;
+
+  const isDirect = source === 'direct' || source === 'urgent';
+  if (
+    !isDirect &&
+    (now - lastSpokenAt < config.speechCooldown ||
+      actionKey === lastSpeechAction)
+  ) {
+    return null;
+  }
+
+  const chance =
+    source === 'ambient'
+      ? config.ambientSpeechChance
+      : source === 'context'
+        ? config.contextSpeechChance
+        : 1;
+  if (!isDirect && random() >= chance) return null;
+
+  return {
+    message: action.speech,
+    duration: isDirect ? 2_100 : 1_600,
+    tone: isDirect ? 'direct' : 'whisper',
   };
 }
 
@@ -487,7 +579,7 @@ export function recordVideoPetAction(
 export function shouldVideoPetSleep({ state, now, currentAction }) {
   return (
     now >= state.sleepAt &&
-    !currentAction &&
+    currentAction !== 'sleep' &&
     now >= state.quietUntil
   );
 }
@@ -501,6 +593,7 @@ function normalizeRequest(request) {
       VIDEO_PET_PRIORITY[request.source] ??
       VIDEO_PET_PRIORITY.ambient,
     requestedAt: request.requestedAt ?? 0,
+    canWake: Boolean(request.canWake),
   };
 }
 
@@ -521,7 +614,11 @@ export function requestVideoPetAction(controller, rawRequest) {
     return { controller, command: null, accepted: false };
   }
   if (controller.current?.action === 'sleep') {
-    if (request.action === 'sleep' || request.source === 'ambient') {
+    if (
+      request.action === 'sleep' ||
+      request.source === 'ambient' ||
+      !request.canWake
+    ) {
       return { controller, command: null, accepted: false };
     }
     const wake = normalizeRequest({
@@ -584,7 +681,26 @@ export function completeVideoPetAction(controller) {
   };
 }
 
-export function requestVideoPetSleep(controller, requestedAt) {
+export function requestVideoPetSleep(
+  controller,
+  requestedAt,
+  { force = false } = {}
+) {
+  if (controller.current?.action === 'sleep') {
+    return { controller, command: null, accepted: false };
+  }
+  if (force) {
+    const request = normalizeRequest({
+      action: 'sleep',
+      source: 'ambient',
+      requestedAt,
+    });
+    return {
+      controller: { current: request, queue: [] },
+      command: { type: 'play', action: 'sleep' },
+      accepted: true,
+    };
+  }
   if (controller.current || controller.queue.length) {
     return { controller, command: null, accepted: false };
   }

@@ -147,14 +147,19 @@ test('随机行为、动作队列、睡眠唤醒和防连点状态由统一运�
   assert.match(componentSource, /requestVideoPetSleep/);
   assert.match(componentSource, /completeVideoPetAction/);
   assert.match(componentSource, /setInterval\(behaviorTick, 500\)/);
-  assert.match(runtimeSource, /ambientDelay: \{ min: 5_000, max: 9_000 \}/);
+  assert.match(runtimeSource, /ambientDelay: \{ min: 3_000, max: 3_000 \}/);
+  assert.match(runtimeSource, /sleepDelay: \{ min: 30_000, max: 30_000 \}/);
   assert.match(runtimeSource, /quietWeight: 24/);
   assert.match(runtimeSource, /mobileQuietWeight: 32/);
   assert.match(runtimeSource, /action\.kind === 'movement'/);
   assert.match(runtimeSource, /count >= 5/);
   assert.match(runtimeSource, /value: 'annoyed', weight: 88/);
   assert.match(runtimeSource, /request\.source === 'ambient'/);
+  assert.match(runtimeSource, /!request\.canWake/);
   assert.match(runtimeSource, /action: 'wake'/);
+  assert.match(componentSource, /\{ force: true \}/);
+  assert.match(componentSource, /resolveVideoPetSpeech/);
+  assert.match(componentSource, /speechDecision\.tone/);
 });
 
 test('点击、长按、拖动、鼠标靠近、滚动停止和页面板块均接入互动', async () => {
@@ -203,6 +208,10 @@ test('运行时配置、隐藏恢复、响应式和无障碍交互保持可用',
   assert.equal(config.size.desktop, 96);
   assert.equal(config.size.mobile, 72);
   assert.equal(config.render.chromaTolerance, 20);
+  assert.equal(config.timings.petActionIntervalMs, 3000);
+  assert.equal(config.timings.sleepAfterMs, 30000);
+  assert.equal(config.timings.speechCooldownMs, 12000);
+  assert.equal(config.timings.ambientSpeechChance, 0.14);
   assert.match(componentSource, /fetch\('\/alisha\.config\.json'/);
   assert.match(componentSource, /daily-demo-alisha-hidden-v1/);
   assert.match(
@@ -228,6 +237,8 @@ test('运行时配置、隐藏恢复、响应式和无障碍交互保持可用',
   assert.match(cssSource, /touch-action: none/);
   assert.match(cssSource, /contain: layout style/);
   assert.match(cssSource, /overflow-wrap: anywhere/);
+  assert.match(cssSource, /\.cat-video-pet-speech\.is-whisper/);
+  assert.match(cssSource, /@keyframes alisha-video-speech-out/);
   assert.match(cssSource, /translate3d\(27%, 20%, 0\)/);
   assert.doesNotMatch(
     cssSource,

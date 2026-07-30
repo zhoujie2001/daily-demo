@@ -16,11 +16,13 @@ import {
   completeVideoPetAction,
   createVideoPetBehavior,
   createVideoPetController,
+  createVideoPetRuntimeConfig,
   decayVideoPetBehavior,
   recordVideoPetAction,
   registerVideoPetActivity,
   requestVideoPetAction,
   requestVideoPetSleep,
+  resolveVideoPetSpeech,
   scheduleVideoPetAmbient,
   selectVideoPetAmbient,
   shouldVideoPetSleep,
@@ -93,6 +95,9 @@ export default function CatPet() {
   const tapTimerRef = useRef(null);
   const tapCountRef = useRef(0);
   const speechTimerRef = useRef(null);
+  const speechClearTimerRef = useRef(null);
+  const lastSpeechAtRef = useRef(Number.NEGATIVE_INFINITY);
+  const lastSpeechActionRef = useRef(null);
   const particleTimerRef = useRef(null);
   const [config, setConfig] = useState(DEFAULT_ALISHA_CONFIG);
   const [configReady, setConfigReady] = useState(false);
@@ -102,7 +107,7 @@ export default function CatPet() {
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
   const [action, setAction] = useState(null);
-  const [speech, setSpeech] = useState('');
+  const [speech, setSpeech] = useState(null);
   const [particle, setParticle] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [avoidingControls, setAvoidingControls] = useState(false);
@@ -170,19 +175,53 @@ export default function CatPet() {
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const isMobile = window.matchMedia('(max-width: 700px)').matches;
     const now = () => performance.now();
+    const runtimeConfig = createVideoPetRuntimeConfig(config.timings);
 
     controllerRef.current = createVideoPetController();
     behaviorRef.current = createVideoPetBehavior({
       now: now(),
       affinity: readStorage(AFFINITY_KEY, '0'),
+      config: runtimeConfig,
     });
 
-    const showSpeech = (message, duration = 2_300) => {
+    const dismissSpeech = (immediate = false) => {
       window.clearTimeout(speechTimerRef.current);
-      setSpeech(message || '');
-      if (!message) return;
+      window.clearTimeout(speechClearTimerRef.current);
+      if (immediate) {
+        setSpeech(null);
+        return;
+      }
+      setSpeech((current) =>
+        current ? { ...current, leaving: true } : null
+      );
+      speechClearTimerRef.current = window.setTimeout(
+        () => setSpeech(null),
+        220
+      );
+    };
+
+    const showSpeech = (
+      message,
+      duration = 2_100,
+      tone = 'direct',
+      speechAction = 'system'
+    ) => {
+      window.clearTimeout(speechTimerRef.current);
+      window.clearTimeout(speechClearTimerRef.current);
+      if (!message) {
+        dismissSpeech();
+        return;
+      }
+      lastSpeechAtRef.current = now();
+      lastSpeechActionRef.current = speechAction;
+      setSpeech({
+        message,
+        tone,
+        leaving: false,
+        key: Date.now(),
+      });
       speechTimerRef.current = window.setTimeout(
-        () => setSpeech(''),
+        () => dismissSpeech(),
         duration
       );
     };
@@ -213,7 +252,12 @@ export default function CatPet() {
       onEnded: finishCurrentAction,
       onError: () => {
         if (!disposed) {
-          showSpeech('这个动作暂时没有加载好。');
+          showSpeech(
+            '这个动作暂时没有加载好。',
+            2_300,
+            'direct',
+            'error'
+          );
         }
       },
     });
@@ -223,24 +267,45 @@ export default function CatPet() {
       if (command.type === 'base') {
         player.drawBase();
         setAction(null);
+        behaviorRef.current = scheduleVideoPetAmbient(
+          behaviorRef.current,
+          now(),
+          Math.random,
+          runtimeConfig
+        );
         return;
       }
       const actionKey = command.action;
       const actionConfig = VIDEO_PET_ACTIONS[actionKey];
+      const actionSource =
+        controllerRef.current.current?.source ?? 'ambient';
       behaviorRef.current = recordVideoPetAction(
         behaviorRef.current,
         actionKey,
-        now()
-      );
-      behaviorRef.current = scheduleVideoPetAmbient(
-        behaviorRef.current,
-        now()
+        now(),
+        runtimeConfig
       );
       setAction(actionKey);
-      showSpeech(
-        actionConfig.speech,
-        actionKey === 'sleep' ? 3_500 : 2_300
-      );
+      if (actionKey === 'sleep') {
+        dismissSpeech();
+      } else {
+        const speechDecision = resolveVideoPetSpeech({
+          actionKey,
+          source: actionSource,
+          now: now(),
+          lastSpokenAt: lastSpeechAtRef.current,
+          lastSpeechAction: lastSpeechActionRef.current,
+          config: runtimeConfig,
+        });
+        if (speechDecision) {
+          showSpeech(
+            speechDecision.message,
+            speechDecision.duration,
+            speechDecision.tone,
+            actionKey
+          );
+        }
+      }
       if (actionKey === 'happy') showParticle('♥');
       if (actionKey === 'annoyed') showParticle('…');
       const played = await player.play(actionKey, actionConfig);
@@ -255,12 +320,17 @@ export default function CatPet() {
       }
     }
 
-    const enqueue = (actionKey, source = 'ambient') => {
+    const enqueue = (
+      actionKey,
+      source = 'ambient',
+      canWake = false
+    ) => {
       if (!actionKey || !VIDEO_PET_ACTIONS[actionKey]) return false;
       const result = requestVideoPetAction(controllerRef.current, {
         action: actionKey,
         source,
         requestedAt: now(),
+        canWake,
       });
       controllerRef.current = result.controller;
       runCommand(result.command);
@@ -270,7 +340,7 @@ export default function CatPet() {
     const register = (type) => {
       behaviorRef.current = registerVideoPetActivity(
         behaviorRef.current,
-        { type, now: now() }
+        { type, now: now(), config: runtimeConfig }
       );
     };
 
@@ -296,14 +366,19 @@ export default function CatPet() {
       });
       enqueue(
         selected,
-        reactionCount >= 5 ? 'urgent' : 'direct'
+        reactionCount >= 5 ? 'urgent' : 'direct',
+        true
       );
     };
 
     reactionRef.current = reactTo;
 
     const requestSleep = () => {
-      const result = requestVideoPetSleep(controllerRef.current, now());
+      const result = requestVideoPetSleep(
+        controllerRef.current,
+        now(),
+        { force: true }
+      );
       controllerRef.current = result.controller;
       if (result.accepted) runCommand(result.command);
     };
@@ -346,12 +421,26 @@ export default function CatPet() {
         context: contextRef.current,
         isMobile,
         hour: new Date().getHours(),
+        config: runtimeConfig,
       });
-      behaviorRef.current = scheduleVideoPetAmbient(
-        behaviorRef.current,
-        timestamp
-      );
-      if (selected) enqueue(selected, 'ambient');
+      if (selected) {
+        const accepted = enqueue(selected, 'ambient');
+        if (!accepted) {
+          behaviorRef.current = scheduleVideoPetAmbient(
+            behaviorRef.current,
+            timestamp,
+            Math.random,
+            runtimeConfig
+          );
+        }
+      } else {
+        behaviorRef.current = scheduleVideoPetAmbient(
+          behaviorRef.current,
+          timestamp,
+          Math.random,
+          runtimeConfig
+        );
+      }
     };
 
     const contextObserver =
@@ -398,14 +487,23 @@ export default function CatPet() {
         proximityTimer = null;
         return;
       }
+      if (controllerRef.current.current?.action === 'sleep') {
+        window.clearTimeout(proximityTimer);
+        proximityTimer = null;
+        proximityCooldownUntil = now() + 2_000;
+        register('pointerNearby');
+        enqueue('wake', 'direct', true);
+        return;
+      }
       if (proximityTimer || now() < proximityCooldownUntil) return;
       proximityTimer = window.setTimeout(() => {
         proximityTimer = null;
         proximityCooldownUntil = now() + 20_000;
-        behaviorRef.current = registerVideoPetActivity(
-          behaviorRef.current,
-          { type: 'pointerNearby', now: now() }
-        );
+        register('pointerNearby');
+        if (controllerRef.current.current?.action === 'sleep') {
+          enqueue('wake', 'direct', true);
+          return;
+        }
         const selected = chooseVideoPetReaction({
           event: 'proximity',
           state: behaviorRef.current,
@@ -422,7 +520,11 @@ export default function CatPet() {
       scrollTimer = window.setTimeout(() => {
         behaviorRef.current = registerVideoPetActivity(
           behaviorRef.current,
-          { type: 'scrollStop', now: now() }
+          {
+            type: 'scrollStop',
+            now: now(),
+            config: runtimeConfig,
+          }
         );
         const selected = chooseVideoPetReaction({
           event: 'scrollStop',
@@ -474,7 +576,9 @@ export default function CatPet() {
       const hiddenFor = hiddenAt ? Date.now() - hiddenAt : 0;
       hiddenAt = null;
       player.resume();
-      if (hiddenFor > 30_000) enqueue('stretch', 'context');
+      if (hiddenFor > runtimeConfig.sleepDelay.min) {
+        requestSleep();
+      }
     };
 
     window.addEventListener('pointermove', handlePointerProximity, {
@@ -501,7 +605,12 @@ export default function CatPet() {
             'true',
             'sessionStorage'
           );
-          showSpeech('你来啦，我先看看这里。', 2_800);
+          showSpeech(
+            '你来啦，我先看看这里。',
+            2_800,
+            'direct',
+            'welcome'
+          );
           welcomeTimer = window.setTimeout(
             () => enqueue(Math.random() < 0.6 ? 'observe' : 'happy', 'context'),
             650
@@ -522,6 +631,7 @@ export default function CatPet() {
       window.clearTimeout(proximityTimer);
       window.clearTimeout(welcomeTimer);
       window.clearTimeout(speechTimerRef.current);
+      window.clearTimeout(speechClearTimerRef.current);
       window.clearTimeout(particleTimerRef.current);
       window.removeEventListener(
         'pointermove',
@@ -758,8 +868,18 @@ export default function CatPet() {
         />
         <span className="cat-video-pet-ground" aria-hidden="true" />
         {speech ? (
-          <span className="cat-video-pet-speech" role="status">
-            {speech}
+          <span
+            key={speech.key}
+            className={[
+              'cat-video-pet-speech',
+              `is-${speech.tone}`,
+              speech.leaving ? 'is-leaving' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            role="status"
+          >
+            {speech.message}
           </span>
         ) : null}
         {particle ? (

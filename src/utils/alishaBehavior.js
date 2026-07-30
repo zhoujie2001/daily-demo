@@ -59,6 +59,11 @@ export const DEFAULT_ALISHA_CONFIG = Object.freeze({
     sectionDwellMs: 700,
     starActiveMs: 300000,
     activeGraceMs: 60000,
+    petActionIntervalMs: 3000,
+    sleepAfterMs: 30000,
+    speechCooldownMs: 12000,
+    ambientSpeechChance: 0.14,
+    contextSpeechChance: 0.32,
   },
   motion: {
     intensity: 'soft',
