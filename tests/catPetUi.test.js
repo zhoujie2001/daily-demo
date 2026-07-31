@@ -147,10 +147,10 @@ test('随机行为、动作队列、睡眠唤醒和防连点状态由统一运�
   assert.match(componentSource, /requestVideoPetSleep/);
   assert.match(componentSource, /completeVideoPetAction/);
   assert.match(componentSource, /setInterval\(behaviorTick, 500\)/);
-  assert.match(runtimeSource, /ambientDelay: \{ min: 3_000, max: 3_000 \}/);
+  assert.match(runtimeSource, /ambientDelay: \{ min: 2_000, max: 2_000 \}/);
   assert.match(runtimeSource, /sleepDelay: \{ min: 30_000, max: 30_000 \}/);
-  assert.match(runtimeSource, /quietWeight: 24/);
-  assert.match(runtimeSource, /mobileQuietWeight: 32/);
+  assert.match(runtimeSource, /quietWeight: 0/);
+  assert.match(runtimeSource, /mobileQuietWeight: 0/);
   assert.match(runtimeSource, /action\.kind === 'movement'/);
   assert.match(runtimeSource, /count >= 5/);
   assert.match(runtimeSource, /value: 'annoyed', weight: 88/);
@@ -208,10 +208,11 @@ test('运行时配置、隐藏恢复、响应式和无障碍交互保持可用',
   assert.equal(config.size.desktop, 96);
   assert.equal(config.size.mobile, 72);
   assert.equal(config.render.chromaTolerance, 20);
-  assert.equal(config.timings.petActionIntervalMs, 3000);
+  assert.equal(config.timings.petActionIntervalMs, 2000);
   assert.equal(config.timings.sleepAfterMs, 30000);
-  assert.equal(config.timings.speechCooldownMs, 12000);
-  assert.equal(config.timings.ambientSpeechChance, 0.14);
+  assert.equal(config.timings.speechCooldownMs, 18000);
+  assert.equal(config.timings.ambientSpeechChance, 0.05);
+  assert.equal(config.timings.contextSpeechChance, 0.18);
   assert.match(componentSource, /fetch\('\/alisha\.config\.json'/);
   assert.match(componentSource, /daily-demo-alisha-hidden-v1/);
   assert.match(

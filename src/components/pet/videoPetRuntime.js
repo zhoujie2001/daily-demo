@@ -3,7 +3,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     src: '/videos/alisha/v8_blink_rgb_alpha.webm',
     matteMode: 'packed-horizontal',
     label: '慢慢眨眼',
-    speech: '在呢。',
+    speech: '嗯。',
     kind: 'micro',
     weight: 18,
     cooldown: 8_000,
@@ -11,7 +11,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
   look: {
     src: '/videos/alisha/v8_look.mp4',
     label: '四处张望',
-    speech: '那边有动静。',
+    speech: '那边。',
     kind: 'micro',
     weight: 14,
     cooldown: 18_000,
@@ -19,7 +19,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
   stretch: {
     src: '/videos/alisha/v8_stretch.mp4',
     label: '伸懒腰',
-    speech: '伸个懒腰。',
+    speech: '活动一下。',
     kind: 'selfcare',
     weight: 5,
     cooldown: 60_000,
@@ -27,7 +27,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
   lick: {
     src: '/videos/alisha/v8_lick.mp4',
     label: '认真舔毛',
-    speech: '整理一下。',
+    speech: '理理毛。',
     kind: 'selfcare',
     weight: 6,
     cooldown: 40_000,
@@ -35,7 +35,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
   tail: {
     src: '/videos/alisha/v8_tail.mp4',
     label: '轻轻甩尾',
-    speech: '尾巴先动了。',
+    speech: '尾巴动了。',
     kind: 'micro',
     weight: 12,
     cooldown: 20_000,
@@ -51,7 +51,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
   annoyed: {
     src: '/videos/alisha/state_annoyed.mp4',
     label: '假装不耐烦',
-    speech: '……不要一直戳我啦。',
+    speech: '别戳啦。',
     kind: 'emotion',
     weight: 0,
     cooldown: 45_000,
@@ -85,7 +85,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     src: '/videos/alisha/walk_left_rgb_alpha.webm',
     matteMode: 'packed-horizontal',
     label: '向左散步',
-    speech: '去左边看看。',
+    speech: '去左边。',
     kind: 'movement',
     weight: 2.8,
     cooldown: 45_000,
@@ -94,7 +94,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     src: '/videos/alisha/walk_right_rgb_alpha.webm',
     matteMode: 'packed-horizontal',
     label: '向右散步',
-    speech: '右边好像有点动静。',
+    speech: '去右边。',
     kind: 'movement',
     weight: 2.8,
     cooldown: 45_000,
@@ -103,7 +103,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     src: '/videos/alisha/walk_forward_rgb_alpha.webm',
     matteMode: 'packed-horizontal',
     label: '走近一点',
-    speech: '靠近一点。',
+    speech: '来啦。',
     kind: 'movement',
     weight: 2.4,
     cooldown: 50_000,
@@ -111,17 +111,17 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
 });
 
 export const VIDEO_PET_CONFIG = Object.freeze({
-  ambientDelay: { min: 3_000, max: 3_000 },
+  ambientDelay: { min: 2_000, max: 2_000 },
   sleepDelay: { min: 30_000, max: 30_000 },
-  quietWeight: 24,
-  mobileQuietWeight: 32,
+  quietWeight: 0,
+  mobileQuietWeight: 0,
   recentActionWindow: 2,
   majorActionLimit: 2,
   majorActionWindow: 60_000,
   postAnnoyedQuietTime: 6_000,
-  speechCooldown: 12_000,
-  ambientSpeechChance: 0.14,
-  contextSpeechChance: 0.32,
+  speechCooldown: 18_000,
+  ambientSpeechChance: 0.05,
+  contextSpeechChance: 0.18,
 });
 
 const AMBIENT_ACTIONS = Object.freeze(

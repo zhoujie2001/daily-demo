@@ -115,14 +115,14 @@ test('睡眠只允许明确的桌面靠近或移动端点击互动唤醒', () =>
   assert.equal(result.command.action, 'wake');
 });
 
-test('环境选择包含安静概率且尊重最近动作', () => {
+test('环境选择不再主动保持安静且尊重最近动作', () => {
   const base = createVideoPetBehavior({ now: 0, random: () => 0 });
   const quiet = selectVideoPetAmbient({
     state: base,
     now: 20_000,
     random: () => 0.999,
   });
-  assert.equal(quiet, null);
+  assert.notEqual(quiet, null);
 
   const noBlink = selectVideoPetAmbient({
     state: {
@@ -171,9 +171,9 @@ test('移动动作会消耗精力并受每分钟主要动作上限保护', () =>
   );
 });
 
-test('运行时采用三秒动作节拍和三十秒无互动睡眠', () => {
+test('运行时采用两秒动作节拍和三十秒无互动睡眠', () => {
   const config = createVideoPetRuntimeConfig({
-    petActionIntervalMs: 3_000,
+    petActionIntervalMs: 2_000,
     sleepAfterMs: 30_000,
   });
   const base = createVideoPetBehavior({
@@ -182,7 +182,7 @@ test('运行时采用三秒动作节拍和三十秒无互动睡眠', () => {
     config,
   });
 
-  assert.equal(base.nextAmbientAt, 4_000);
+  assert.equal(base.nextAmbientAt, 3_000);
   assert.equal(base.sleepAt, 31_000);
   assert.equal(
     shouldVideoPetSleep({
@@ -230,9 +230,9 @@ test('强制睡眠会停止当前动作并清空等待队列', () => {
 
 test('环境动作文字限频且低概率，直接互动始终得到简短反馈', () => {
   const config = createVideoPetRuntimeConfig({
-    speechCooldownMs: 12_000,
-    ambientSpeechChance: 0.14,
-    contextSpeechChance: 0.32,
+    speechCooldownMs: 18_000,
+    ambientSpeechChance: 0.05,
+    contextSpeechChance: 0.18,
   });
 
   assert.equal(
