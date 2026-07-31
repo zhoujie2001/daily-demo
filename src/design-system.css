@@ -1316,3 +1316,59 @@ select {
     animation: none;
   }
 }
+
+/* Mobile Daily media: keep photos full-width and avoid a heavy nested-card look. */
+@media (max-width: 700px) {
+  .daily-section .entry {
+    border-color: rgba(48, 43, 35, 0.07);
+    box-shadow:
+      0 1px 2px rgba(48, 43, 35, 0.025),
+      0 5px 16px rgba(48, 43, 35, 0.025);
+  }
+
+  .daily-section .daily-media-entry {
+    gap: 12px;
+    overflow: visible;
+    background: transparent;
+    border-radius: 0;
+  }
+
+  .daily-section .daily-media-entry > .daily-lazy-wrapper {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    overflow: hidden;
+    background: transparent;
+    border: 1px solid rgba(48, 43, 35, 0.055);
+    border-radius: 12px;
+    box-shadow:
+      0 1px 2px rgba(48, 43, 35, 0.035),
+      0 8px 18px rgba(48, 43, 35, 0.055);
+  }
+
+  .daily-section .daily-media-entry > .daily-lazy-wrapper:not(.is-loaded):not(.is-error) {
+    min-height: min(68vh, 520px);
+    background: rgba(238, 232, 220, 0.38);
+  }
+
+  .daily-section .daily-media-entry .daily-lazy-img {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    max-height: none;
+    margin: 0;
+    object-fit: contain;
+    border-radius: 11px;
+    box-shadow: none;
+  }
+
+  .daily-section .daily-media-entry.media-grid-2 > .daily-lazy-wrapper,
+  .daily-section .daily-media-entry.media-grid-3 > .daily-lazy-wrapper {
+    min-height: 0;
+  }
+
+  .daily-section .daily-media-entry.media-grid-2 > .daily-lazy-wrapper:not(.is-loaded):not(.is-error),
+  .daily-section .daily-media-entry.media-grid-3 > .daily-lazy-wrapper:not(.is-loaded):not(.is-error) {
+    min-height: 220px;
+  }
+}
