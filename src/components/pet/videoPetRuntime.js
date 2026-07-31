@@ -130,6 +130,13 @@ const AMBIENT_ACTIONS = Object.freeze(
   )
 );
 
+const AMBIENT_RECOVERY_ACTIONS = Object.freeze([
+  'blink',
+  'look',
+  'tail',
+  'observe',
+]);
+
 const CONTEXT_MULTIPLIERS = Object.freeze({
   about: {
     look: 1.25,
@@ -426,7 +433,19 @@ export function selectVideoPetAmbient({
     value: null,
     weight: isMobile ? config.mobileQuietWeight : config.quietWeight,
   });
-  return weightedPick(entries, random);
+  const selected = weightedPick(entries, random);
+  if (selected) return selected;
+
+  const lastAction = state.recentActions.at(-1);
+  return weightedPick(
+    AMBIENT_RECOVERY_ACTIONS.filter(
+      (actionKey) => actionKey !== lastAction
+    ).map((actionKey) => ({
+      value: actionKey,
+      weight: VIDEO_PET_ACTIONS[actionKey].weight,
+    })),
+    random
+  );
 }
 
 function reactionPick(entries, state, now, random) {
@@ -649,6 +668,24 @@ export function requestVideoPetAction(controller, rawRequest) {
     };
   }
   if (request.source === 'ambient') {
+    const hasWaitingInteraction = controller.queue.some(
+      (item) => item.source !== 'ambient'
+    );
+    if (
+      controller.current.source === 'ambient' &&
+      !hasWaitingInteraction
+    ) {
+      return {
+        controller: {
+          current: request,
+          queue: controller.queue.filter(
+            (item) => item.source !== 'ambient'
+          ),
+        },
+        command: { type: 'play', action: request.action },
+        accepted: true,
+      };
+    }
     return { controller, command: null, accepted: false };
   }
   let queue = controller.queue.filter((item) => item.source !== 'ambient');

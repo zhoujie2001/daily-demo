@@ -146,7 +146,15 @@ test('随机行为、动作队列、睡眠唤醒和防连点状态由统一运�
   assert.match(componentSource, /requestVideoPetAction/);
   assert.match(componentSource, /requestVideoPetSleep/);
   assert.match(componentSource, /completeVideoPetAction/);
-  assert.match(componentSource, /setInterval\(behaviorTick, 500\)/);
+  assert.match(componentSource, /setInterval\(behaviorTick, 200\)/);
+  assert.match(
+    componentSource,
+    /controllerRef\.current\.current\?\.action !== finishedAction/
+  );
+  assert.match(
+    componentSource,
+    /behaviorRef\.current = scheduleVideoPetAmbient\([\s\S]*timestamp/
+  );
   assert.match(runtimeSource, /ambientDelay: \{ min: 2_000, max: 2_000 \}/);
   assert.match(runtimeSource, /sleepDelay: \{ min: 30_000, max: 30_000 \}/);
   assert.match(runtimeSource, /quietWeight: 0/);
@@ -155,6 +163,8 @@ test('随机行为、动作队列、睡眠唤醒和防连点状态由统一运�
   assert.match(runtimeSource, /count >= 5/);
   assert.match(runtimeSource, /value: 'annoyed', weight: 88/);
   assert.match(runtimeSource, /request\.source === 'ambient'/);
+  assert.match(runtimeSource, /controller\.current\.source === 'ambient'/);
+  assert.match(runtimeSource, /AMBIENT_RECOVERY_ACTIONS/);
   assert.match(runtimeSource, /!request\.canWake/);
   assert.match(runtimeSource, /action: 'wake'/);
   assert.match(componentSource, /\{ force: true \}/);

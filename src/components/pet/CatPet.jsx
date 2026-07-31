@@ -235,7 +235,13 @@ export default function CatPet() {
       );
     };
 
-    const finishCurrentAction = () => {
+    const finishCurrentAction = (finishedAction = null) => {
+      if (
+        finishedAction &&
+        controllerRef.current.current?.action !== finishedAction
+      ) {
+        return;
+      }
       const result = completeVideoPetAction(controllerRef.current);
       controllerRef.current = result.controller;
       window.setTimeout(
@@ -267,12 +273,6 @@ export default function CatPet() {
       if (command.type === 'base') {
         player.drawBase();
         setAction(null);
-        behaviorRef.current = scheduleVideoPetAmbient(
-          behaviorRef.current,
-          now(),
-          Math.random,
-          runtimeConfig
-        );
         return;
       }
       const actionKey = command.action;
@@ -423,23 +423,18 @@ export default function CatPet() {
         hour: new Date().getHours(),
         config: runtimeConfig,
       });
+      let accepted = false;
       if (selected) {
-        const accepted = enqueue(selected, 'ambient');
-        if (!accepted) {
-          behaviorRef.current = scheduleVideoPetAmbient(
-            behaviorRef.current,
-            timestamp,
-            Math.random,
-            runtimeConfig
-          );
-        }
-      } else {
-        behaviorRef.current = scheduleVideoPetAmbient(
-          behaviorRef.current,
-          timestamp,
-          Math.random,
-          runtimeConfig
-        );
+        accepted = enqueue(selected, 'ambient');
+      }
+      behaviorRef.current = scheduleVideoPetAmbient(
+        behaviorRef.current,
+        timestamp,
+        Math.random,
+        runtimeConfig
+      );
+      if (!accepted && selected) {
+        player.preload(selected, VIDEO_PET_ACTIONS[selected].src);
       }
     };
 
@@ -587,7 +582,7 @@ export default function CatPet() {
     window.addEventListener('scroll', handleScroll, { passive: true });
     window.addEventListener('resize', applyStoredPosition);
     document.addEventListener('visibilitychange', handleVisibility);
-    behaviorTimer = window.setInterval(behaviorTick, 500);
+    behaviorTimer = window.setInterval(behaviorTick, 200);
 
     player
       .initialize()

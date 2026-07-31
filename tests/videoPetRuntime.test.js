@@ -136,7 +136,7 @@ test('环境选择不再主动保持安静且尊重最近动作', () => {
   assert.notEqual(noBlink, 'blink');
 });
 
-test('移动动作会消耗精力并受每分钟主要动作上限保护', () => {
+test('移动动作受每分钟上限保护，候选耗尽时回退到轻动作', () => {
   const now = 80_000;
   const base = createVideoPetBehavior({ now: 0, random: () => 0 });
   const afterWalk = recordVideoPetAction(base, 'walkLeft', now);
@@ -167,7 +167,7 @@ test('移动动作会消耗精力并受每分钟主要动作上限保护', () =>
       context: 'travel',
       random: () => 0,
     }),
-    null
+    'blink'
   );
 });
 
@@ -207,6 +207,56 @@ test('运行时采用两秒动作节拍和三十秒无互动睡眠', () => {
     config,
   });
   assert.equal(scrolled.sleepAt, 50_000);
+});
+
+test('两秒节拍可以替换未结束的环境动作', () => {
+  let result = requestVideoPetAction(
+    createVideoPetController(),
+    {
+      action: 'look',
+      source: 'ambient',
+      requestedAt: 2_000,
+    }
+  );
+  assert.equal(result.accepted, true);
+  assert.equal(result.controller.current.action, 'look');
+
+  result = requestVideoPetAction(result.controller, {
+    action: 'blink',
+    source: 'ambient',
+    requestedAt: 4_000,
+  });
+  assert.equal(result.accepted, true);
+  assert.equal(result.command.action, 'blink');
+  assert.equal(result.controller.current.action, 'blink');
+});
+
+test('等待中的直接互动不会被下一次环境动作饿死', () => {
+  let result = requestVideoPetAction(
+    createVideoPetController(),
+    {
+      action: 'look',
+      source: 'ambient',
+      requestedAt: 2_000,
+    }
+  );
+  result = requestVideoPetAction(result.controller, {
+    action: 'happy',
+    source: 'direct',
+    requestedAt: 2_500,
+    canWake: true,
+  });
+  assert.equal(result.accepted, true);
+  assert.equal(result.controller.queue[0].action, 'happy');
+
+  result = requestVideoPetAction(result.controller, {
+    action: 'blink',
+    source: 'ambient',
+    requestedAt: 4_000,
+  });
+  assert.equal(result.accepted, false);
+  assert.equal(result.controller.current.action, 'look');
+  assert.equal(result.controller.queue[0].action, 'happy');
 });
 
 test('强制睡眠会停止当前动作并清空等待队列', () => {
