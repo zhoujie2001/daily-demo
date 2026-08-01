@@ -1,4 +1,4 @@
-import { API_BASE } from '../config';
+import { API_BASE } from '../config.js';
 
 /**
  * 归一化媒体资源 URL：
@@ -8,6 +8,7 @@ import { API_BASE } from '../config';
  */
 export function resolveMediaUrl(url) {
   if (!url) return url;
+  if (url.startsWith('data:') || url.startsWith('blob:')) return url;
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
   if (url.startsWith('/images/') || url.startsWith('/videos/')) {
     // Vercel deployment uses root mapping, so we don't need the repository prefix

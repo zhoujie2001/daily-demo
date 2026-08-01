@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { resolveMediaUrl } from '../src/utils/media.js';
 
 const root = new URL('../', import.meta.url);
+
+test('Daily local previews keep browser-owned data and blob URLs intact', () => {
+  assert.equal(resolveMediaUrl('blob:https://example.com/local-preview'), 'blob:https://example.com/local-preview');
+  assert.equal(resolveMediaUrl('data:image/jpeg;base64,AA=='), 'data:image/jpeg;base64,AA==');
+});
 
 test('Daily 视频使用可视区静音循环播放并通过共享浮层开启声音', async () => {
   const source = await readFile(
@@ -31,9 +37,25 @@ test('共享视频浮层自动播放、显示控制栏且明确关闭静音', as
     'utf8'
   );
 
-  assert.match(source, /<TravelVideo[\s\S]*?autoPlay[\s\S]*?controls/);
-  assert.match(source, /muted=\{false\}/);
-  assert.match(source, /disableHover/);
+  assert.match(source, /<video[\s\S]*?preload="auto"[\s\S]*?controls[\s\S]*?playsInline/);
+  assert.match(source, /video\.muted = false/);
+  assert.match(source, /video\.muted = true/);
+  assert.match(source, /await video\.play\(\)/);
+  assert.match(source, /播放并开启声音/);
+  assert.match(source, /视频加载失败/);
+  assert.doesNotMatch(source, /<TravelVideo/);
+});
+
+test('Daily media resolves backend-relative image and video URLs', async () => {
+  const source = await readFile(
+    new URL('src/components/daily/DailyMedia.jsx', root),
+    'utf8'
+  );
+
+  assert.match(source, /resolveMediaUrl/);
+  assert.match(source, /const resolvedUrl = resolveMediaUrl\(item\.url\)/);
+  assert.match(source, /<DailyVideo[\s\S]*?url=\{resolvedUrl\}/);
+  assert.match(source, /<LazyImage[\s\S]*?src=\{resolvedUrl\}/);
 });
 
 test('可视区播放器进入视口播放并在离开视口后暂停', async () => {

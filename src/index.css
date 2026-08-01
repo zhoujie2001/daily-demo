@@ -845,8 +845,13 @@ h2 {
 }
 
 .video-lightbox-content {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: min(90vw, 1200px);
   max-width: 1200px;
+  min-height: min(70vh, 680px);
   max-height: 90vh;
   overflow: hidden;
   background: #000;
@@ -860,10 +865,71 @@ h2 {
 }
 
 .video-lightbox-media {
+  display: block;
   width: 100%;
   max-height: 85vh;
   object-fit: contain;
   background: #000;
+}
+
+.video-lightbox-status,
+.video-lightbox-start {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.video-lightbox-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.85rem;
+  background: rgba(24, 22, 19, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  pointer-events: none;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.video-lightbox-status.is-error {
+  flex-direction: column;
+  min-width: 180px;
+  border-radius: 16px;
+  pointer-events: auto;
+}
+
+.video-lightbox-status.is-error button,
+.video-lightbox-start {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 10px 16px;
+  color: #28231d;
+  background: rgba(255, 253, 249, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+}
+
+.video-lightbox-start {
+  white-space: nowrap;
+}
+
+.video-lightbox-spinner {
+  width: 17px;
+  height: 17px;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: video-lightbox-spin 700ms linear infinite;
 }
 
 .video-lightbox-close {
@@ -884,10 +950,12 @@ h2 {
   color: #fff;
   pointer-events: none;
   background: linear-gradient(to top, rgba(0, 0, 0, 0.78), transparent);
+  z-index: 2;
 }
 
 .video-lightbox-caption h3 {
   margin: 0;
+  color: #fff;
   font-size: 18px;
   font-weight: 500;
 }
@@ -900,6 +968,7 @@ h2 {
   .video-lightbox-content {
     width: 100vw;
     max-width: none;
+    min-height: 100dvh;
     max-height: 100dvh;
     border-radius: 0;
   }
@@ -908,6 +977,10 @@ h2 {
   .video-lightbox-media {
     max-height: 100dvh;
   }
+}
+
+@keyframes video-lightbox-spin {
+  to { transform: rotate(360deg); }
 }
 
 /* 动画 */

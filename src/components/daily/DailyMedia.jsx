@@ -3,6 +3,7 @@ import { VolumeX } from 'lucide-react';
 import LazyImage from '../ui/LazyImage';
 import VideoLightbox from '../ui/VideoLightbox';
 import TravelVideo from '../travel/TravelVideo';
+import { resolveMediaUrl } from '../../utils/media';
 
 function DailyVideo({ url, title }) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -47,6 +48,7 @@ function DailyVideo({ url, title }) {
 
 function renderMediaItem(item, index, title) {
   const key = item.url || item.value || `${item.type}-${index}`;
+  const resolvedUrl = resolveMediaUrl(item.url);
 
   if (item.type === 'color') {
     return <div key={key} style={{ backgroundColor: item.value }} />;
@@ -68,7 +70,7 @@ function renderMediaItem(item, index, title) {
     return (
       <LazyImage
         key={key}
-        src={item.url}
+        src={resolvedUrl}
         alt={title || 'Daily 图片'}
         className="daily-lazy-wrapper"
         imgClassName="daily-lazy-img"
@@ -79,7 +81,7 @@ function renderMediaItem(item, index, title) {
   }
 
   if (item.type === 'video') {
-    return <DailyVideo key={key} url={item.url} title={title} />;
+    return <DailyVideo key={key} url={resolvedUrl} title={title} />;
   }
 
   return null;
