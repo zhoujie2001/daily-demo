@@ -20,6 +20,13 @@ const packedActionAssets = [
   'walk_right_rgb_alpha.webm',
   'walk_forward_rgb_alpha.webm',
 ];
+const h264ActionAssets = [
+  'v8_blink_rgb_alpha.mp4',
+  ...actionAssets,
+  'walk_left_rgb_alpha.mp4',
+  'walk_right_rgb_alpha.mp4',
+  'walk_forward_rgb_alpha.mp4',
+];
 
 test('主站挂载视频版阿丽莎并保留静态降级图', async () => {
   const [appSource, componentSource, baseAsset, fallbackAsset] =
@@ -70,6 +77,27 @@ test('九段实时抠图动作均为可识别 MP4', async () => {
   for (const asset of actionAssets) {
     assert.match(runtimeSource, new RegExp(asset.replace('.', '\\.')));
   }
+});
+
+test('十三段生产动作均提供浏览器通用的 H.264 主资源', async () => {
+  const [runtimeSource, ...assets] = await Promise.all([
+    readFile(
+      new URL('src/components/pet/videoPetRuntime.js', root),
+      'utf8'
+    ),
+    ...h264ActionAssets.map((asset) =>
+      readFile(new URL(`public/videos/alisha/h264/${asset}`, root))
+    ),
+  ]);
+
+  for (const asset of assets) {
+    assert.ok(asset.length > 180_000);
+    assert.equal(asset.subarray(4, 8).toString('ascii'), 'ftyp');
+    assert.match(asset.toString('latin1'), /avc1/);
+    assert.doesNotMatch(asset.toString('latin1'), /hvc1|hev1/);
+  }
+  assert.match(runtimeSource, /video\/mp4; codecs="avc1\.42E01E"/);
+  assert.match(runtimeSource, /video\/webm; codecs="vp9"/);
 });
 
 test('眨眼和行走动作使用同帧 RGB 与 Alpha 素材，避免背景穿透主体', async () => {
@@ -170,6 +198,14 @@ test('随机行为、动作队列、睡眠唤醒和防连点状态由统一运�
   assert.match(componentSource, /\{ force: true \}/);
   assert.match(componentSource, /resolveVideoPetSpeech/);
   assert.match(componentSource, /speechDecision\.tone/);
+  assert.match(componentSource, /selectVideoPetRecovery/);
+  assert.match(componentSource, /unavailableActions\.add\(actionKey\)/);
+  assert.match(componentSource, /playbackResult\.status === 'failed'/);
+  assert.doesNotMatch(
+    componentSource,
+    /这个动作暂时没有加载好/
+  );
+  assert.match(runtimeSource, /unavailableActions\.has\(actionKey\)/);
 });
 
 test('点击、长按、拖动、鼠标靠近、滚动停止和页面板块均接入互动', async () => {

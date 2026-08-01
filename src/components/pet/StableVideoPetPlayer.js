@@ -7,6 +7,7 @@ import {
   sampleSpatialBackground,
   stabilizePetAlpha,
 } from '../../utils/petMatte.js';
+import { resolveVideoPetActionSources } from './videoPetRuntime.js';
 
 const FRAME_SIZE = 360;
 const MEDIA_TIMEOUT = 12_000;
@@ -137,8 +138,11 @@ export default class StableVideoPetPlayer {
         }
       });
       video.addEventListener('error', () => {
-        if (video === this.activeVideo) {
-          this.onError?.(new Error('当前动作视频无法播放'));
+        if (video === this.activeVideo && !this.switching) {
+          this.onError?.(new Error('当前动作视频无法播放'), {
+            actionKey: this.currentAction,
+            source: video.currentSrc || video.src,
+          });
         }
       });
     });
@@ -456,10 +460,14 @@ export default class StableVideoPetPlayer {
   }
 
   async prepare(video, actionKey, source) {
-    if (video.dataset.action !== actionKey) {
+    if (
+      video.dataset.action !== actionKey ||
+      video.dataset.source !== source
+    ) {
       video.pause();
       video.src = source;
       video.dataset.action = actionKey;
+      video.dataset.source = source;
       video.load();
     }
     if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
@@ -468,63 +476,106 @@ export default class StableVideoPetPlayer {
     video.currentTime = 0;
   }
 
-  async preload(actionKey, source) {
+  getActionSources(action) {
+    return resolveVideoPetActionSources(
+      action,
+      (type) => this.inactiveVideo.canPlayType(type)
+    );
+  }
+
+  async preload(actionKey, action) {
     if (
       this.switching ||
       this.currentAction === actionKey ||
       this.inactiveVideo.dataset.action === actionKey
     ) {
-      return;
+      return null;
     }
-    try {
-      await this.prepare(this.inactiveVideo, actionKey, source);
-    } catch {
-      // 预加载失败不阻断当前动作，正式播放时会再次报告。
+    for (const candidate of this.getActionSources(action)) {
+      try {
+        await this.prepare(
+          this.inactiveVideo,
+          actionKey,
+          candidate.src
+        );
+        return candidate.src;
+      } catch {
+        // 继续尝试同一动作的下一个编码版本。
+      }
     }
+    return null;
   }
 
   async play(actionKey, action) {
     const token = (this.switchToken += 1);
     this.switching = true;
-    try {
+    const attemptedSources = [];
+    let lastError = null;
+    const candidates = this.getActionSources(action);
+    for (const candidate of candidates) {
+      attemptedSources.push(candidate.src);
       let target = this.inactiveVideo;
-      if (
-        this.activeVideo.dataset.action === actionKey &&
-        this.activeVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
-      ) {
-        target = this.activeVideo;
-      } else {
-        await this.prepare(target, actionKey, action.src);
-      }
-      if (token !== this.switchToken) return false;
+      try {
+        if (
+          this.activeVideo.dataset.action === actionKey &&
+          this.activeVideo.dataset.source === candidate.src &&
+          this.activeVideo.readyState >=
+            HTMLMediaElement.HAVE_CURRENT_DATA
+        ) {
+          target = this.activeVideo;
+        } else {
+          await this.prepare(target, actionKey, candidate.src);
+        }
+        if (token !== this.switchToken) {
+          target.pause();
+          return { status: 'superseded' };
+        }
 
-      this.cancelRendering();
-      this.captureTransitionFrame();
-      this.resetMask();
-      this.currentMatteMode = action.matteMode ?? null;
-      this.renderSource(target);
-      if (target !== this.activeVideo) {
-        const previous = this.activeVideo;
-        this.activeVideo = target;
-        this.inactiveVideo = previous;
-        this.inactiveVideo.pause();
-        this.inactiveVideo.loop = false;
+        target.loop = Boolean(action.loop);
+        target.playbackRate = 1;
+        target.currentTime = 0;
+        await target.play();
+        if (token !== this.switchToken) {
+          target.pause();
+          return { status: 'superseded' };
+        }
+
+        this.cancelRendering();
+        this.captureTransitionFrame();
+        this.resetMask();
+        this.currentMatteMode = action.matteMode ?? null;
+        this.renderSource(target);
+        if (target !== this.activeVideo) {
+          const previous = this.activeVideo;
+          this.activeVideo = target;
+          this.inactiveVideo = previous;
+          this.inactiveVideo.pause();
+          this.inactiveVideo.loop = false;
+        }
+        this.currentAction = actionKey;
+        this.startRendering();
+        this.switching = false;
+        return { status: 'played', source: candidate.src };
+      } catch (error) {
+        lastError = error;
+        target.pause();
+        if (target !== this.activeVideo) {
+          target.removeAttribute('src');
+          delete target.dataset.action;
+          delete target.dataset.source;
+          target.load();
+        }
       }
-      this.currentAction = actionKey;
-      this.activeVideo.loop = Boolean(action.loop);
-      this.activeVideo.playbackRate = 1;
-      this.activeVideo.currentTime = 0;
-      await this.activeVideo.play();
-      if (token !== this.switchToken) return false;
-      this.startRendering();
-      return true;
-    } catch (error) {
-      this.drawBase();
-      this.onError?.(error);
-      return false;
-    } finally {
-      if (token === this.switchToken) this.switching = false;
     }
+    if (token === this.switchToken) {
+      this.switching = false;
+      this.drawBase();
+    }
+    return {
+      status: 'failed',
+      error: lastError ?? new Error('没有可播放的动作视频'),
+      attemptedSources,
+    };
   }
 
   updateFps(timestamp) {

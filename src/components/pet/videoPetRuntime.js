@@ -1,6 +1,16 @@
 export const VIDEO_PET_ACTIONS = Object.freeze({
   blink: {
-    src: '/videos/alisha/v8_blink_rgb_alpha.webm',
+    src: '/videos/alisha/h264/v8_blink_rgb_alpha.mp4',
+    sources: [
+      {
+        src: '/videos/alisha/h264/v8_blink_rgb_alpha.mp4',
+        type: 'video/mp4; codecs="avc1.42E01E"',
+      },
+      {
+        src: '/videos/alisha/v8_blink_rgb_alpha.webm',
+        type: 'video/webm; codecs="vp9"',
+      },
+    ],
     matteMode: 'packed-horizontal',
     label: '慢慢眨眼',
     speech: '嗯。',
@@ -9,7 +19,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     cooldown: 8_000,
   },
   look: {
-    src: '/videos/alisha/v8_look.mp4',
+    src: '/videos/alisha/h264/v8_look.mp4',
     label: '四处张望',
     speech: '那边。',
     kind: 'micro',
@@ -17,7 +27,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     cooldown: 18_000,
   },
   stretch: {
-    src: '/videos/alisha/v8_stretch.mp4',
+    src: '/videos/alisha/h264/v8_stretch.mp4',
     label: '伸懒腰',
     speech: '活动一下。',
     kind: 'selfcare',
@@ -25,7 +35,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     cooldown: 60_000,
   },
   lick: {
-    src: '/videos/alisha/v8_lick.mp4',
+    src: '/videos/alisha/h264/v8_lick.mp4',
     label: '认真舔毛',
     speech: '理理毛。',
     kind: 'selfcare',
@@ -33,7 +43,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     cooldown: 40_000,
   },
   tail: {
-    src: '/videos/alisha/v8_tail.mp4',
+    src: '/videos/alisha/h264/v8_tail.mp4',
     label: '轻轻甩尾',
     speech: '尾巴动了。',
     kind: 'micro',
@@ -41,7 +51,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     cooldown: 20_000,
   },
   happy: {
-    src: '/videos/alisha/state_happy.mp4',
+    src: '/videos/alisha/h264/state_happy.mp4',
     label: '被你逗开心',
     speech: '好呀。',
     kind: 'emotion',
@@ -49,7 +59,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     cooldown: 12_000,
   },
   annoyed: {
-    src: '/videos/alisha/state_annoyed.mp4',
+    src: '/videos/alisha/h264/state_annoyed.mp4',
     label: '假装不耐烦',
     speech: '别戳啦。',
     kind: 'emotion',
@@ -57,7 +67,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     cooldown: 45_000,
   },
   observe: {
-    src: '/videos/alisha/state_observe.mp4',
+    src: '/videos/alisha/h264/state_observe.mp4',
     label: '认真观察',
     speech: '我看看。',
     kind: 'emotion',
@@ -65,7 +75,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     cooldown: 24_000,
   },
   sleep: {
-    src: '/videos/alisha/state_sleep.mp4',
+    src: '/videos/alisha/h264/state_sleep.mp4',
     label: '安静睡着',
     speech: 'Z z z…',
     kind: 'sleep',
@@ -74,7 +84,7 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     loop: true,
   },
   wake: {
-    src: '/videos/alisha/state_wake.mp4',
+    src: '/videos/alisha/h264/state_wake.mp4',
     label: '慢慢醒来',
     speech: '醒啦。',
     kind: 'emotion',
@@ -82,7 +92,17 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     cooldown: 0,
   },
   walkLeft: {
-    src: '/videos/alisha/walk_left_rgb_alpha.webm',
+    src: '/videos/alisha/h264/walk_left_rgb_alpha.mp4',
+    sources: [
+      {
+        src: '/videos/alisha/h264/walk_left_rgb_alpha.mp4',
+        type: 'video/mp4; codecs="avc1.42E01E"',
+      },
+      {
+        src: '/videos/alisha/walk_left_rgb_alpha.webm',
+        type: 'video/webm; codecs="vp9"',
+      },
+    ],
     matteMode: 'packed-horizontal',
     label: '向左散步',
     speech: '去左边。',
@@ -91,7 +111,17 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     cooldown: 45_000,
   },
   walkRight: {
-    src: '/videos/alisha/walk_right_rgb_alpha.webm',
+    src: '/videos/alisha/h264/walk_right_rgb_alpha.mp4',
+    sources: [
+      {
+        src: '/videos/alisha/h264/walk_right_rgb_alpha.mp4',
+        type: 'video/mp4; codecs="avc1.42E01E"',
+      },
+      {
+        src: '/videos/alisha/walk_right_rgb_alpha.webm',
+        type: 'video/webm; codecs="vp9"',
+      },
+    ],
     matteMode: 'packed-horizontal',
     label: '向右散步',
     speech: '去右边。',
@@ -100,7 +130,17 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     cooldown: 45_000,
   },
   walkForward: {
-    src: '/videos/alisha/walk_forward_rgb_alpha.webm',
+    src: '/videos/alisha/h264/walk_forward_rgb_alpha.mp4',
+    sources: [
+      {
+        src: '/videos/alisha/h264/walk_forward_rgb_alpha.mp4',
+        type: 'video/mp4; codecs="avc1.42E01E"',
+      },
+      {
+        src: '/videos/alisha/walk_forward_rgb_alpha.webm',
+        type: 'video/webm; codecs="vp9"',
+      },
+    ],
     matteMode: 'packed-horizontal',
     label: '走近一点',
     speech: '来啦。',
@@ -109,6 +149,38 @@ export const VIDEO_PET_ACTIONS = Object.freeze({
     cooldown: 50_000,
   },
 });
+
+const DEFAULT_H264_TYPE = 'video/mp4; codecs="avc1.42E01E"';
+
+function normalizeActionSources(action) {
+  const configured = Array.isArray(action?.sources)
+    ? action.sources
+    : action?.src
+      ? [{ src: action.src, type: DEFAULT_H264_TYPE }]
+      : [];
+  const seen = new Set();
+  return configured.flatMap((source) => {
+    const entry =
+      typeof source === 'string'
+        ? { src: source, type: '' }
+        : source;
+    if (!entry?.src || seen.has(entry.src)) return [];
+    seen.add(entry.src);
+    return [{ src: entry.src, type: entry.type ?? '' }];
+  });
+}
+
+export function resolveVideoPetActionSources(
+  action,
+  canPlayType = null
+) {
+  const candidates = normalizeActionSources(action);
+  if (typeof canPlayType !== 'function') return candidates;
+  const supported = candidates.filter(
+    ({ type }) => !type || canPlayType(type) !== ''
+  );
+  return supported.length ? supported : candidates;
+}
 
 export const VIDEO_PET_CONFIG = Object.freeze({
   ambientDelay: { min: 2_000, max: 2_000 },
@@ -398,6 +470,7 @@ export function selectVideoPetAmbient({
   hour = 12,
   random = Math.random,
   config = VIDEO_PET_CONFIG,
+  unavailableActions = new Set(),
 }) {
   if (now < state.quietUntil) return null;
   const recent = new Set(
@@ -408,6 +481,7 @@ export function selectVideoPetAmbient({
   const entries = AMBIENT_ACTIONS.flatMap((actionKey) => {
     const action = VIDEO_PET_ACTIONS[actionKey];
     if (
+      unavailableActions.has(actionKey) ||
       recent.has(actionKey) ||
       isCoolingDown(state, actionKey, now) ||
       (majorLimited &&
@@ -439,7 +513,27 @@ export function selectVideoPetAmbient({
   const lastAction = state.recentActions.at(-1);
   return weightedPick(
     AMBIENT_RECOVERY_ACTIONS.filter(
-      (actionKey) => actionKey !== lastAction
+      (actionKey) =>
+        actionKey !== lastAction &&
+        !unavailableActions.has(actionKey)
+    ).map((actionKey) => ({
+      value: actionKey,
+      weight: VIDEO_PET_ACTIONS[actionKey].weight,
+    })),
+    random
+  );
+}
+
+export function selectVideoPetRecovery({
+  failedAction = null,
+  unavailableActions = new Set(),
+  random = Math.random,
+} = {}) {
+  const blocked = new Set(unavailableActions);
+  if (failedAction) blocked.add(failedAction);
+  return weightedPick(
+    AMBIENT_RECOVERY_ACTIONS.filter(
+      (actionKey) => !blocked.has(actionKey)
     ).map((actionKey) => ({
       value: actionKey,
       weight: VIDEO_PET_ACTIONS[actionKey].weight,

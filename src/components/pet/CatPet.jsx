@@ -25,6 +25,7 @@ import {
   resolveVideoPetSpeech,
   scheduleVideoPetAmbient,
   selectVideoPetAmbient,
+  selectVideoPetRecovery,
   shouldVideoPetSleep,
 } from './videoPetRuntime';
 import './CatPet.css';
@@ -176,6 +177,7 @@ export default function CatPet() {
     const isMobile = window.matchMedia('(max-width: 700px)').matches;
     const now = () => performance.now();
     const runtimeConfig = createVideoPetRuntimeConfig(config.timings);
+    const unavailableActions = new Set();
 
     controllerRef.current = createVideoPetController();
     behaviorRef.current = createVideoPetBehavior({
@@ -250,21 +252,56 @@ export default function CatPet() {
       );
     };
 
+    const recoverFromPlaybackFailure = (
+      actionKey,
+      playbackResult = {}
+    ) => {
+      if (
+        disposed ||
+        !actionKey ||
+        controllerRef.current.current?.action !== actionKey
+      ) {
+        return;
+      }
+      unavailableActions.add(actionKey);
+      console.warn('[Alisha] action disabled for this session', {
+        action: actionKey,
+        sources: playbackResult.attemptedSources ?? [],
+        error: playbackResult.error?.message ?? 'media error',
+      });
+
+      const replacement = selectVideoPetRecovery({
+        failedAction: actionKey,
+        unavailableActions,
+      });
+      if (!replacement) {
+        finishCurrentAction(actionKey);
+        return;
+      }
+
+      const failedRequest = controllerRef.current.current;
+      controllerRef.current = {
+        ...controllerRef.current,
+        current: {
+          ...failedRequest,
+          action: replacement,
+          requestedAt: now(),
+        },
+      };
+      runCommand({ type: 'play', action: replacement });
+    };
+
     const player = new StableVideoPetPlayer({
       canvas: canvasRef.current,
       videos: [videoARef.current, videoBRef.current],
       baseImage: baseImageRef.current,
       threshold: config.render.chromaTolerance,
       onEnded: finishCurrentAction,
-      onError: () => {
-        if (!disposed) {
-          showSpeech(
-            '这个动作暂时没有加载好。',
-            2_300,
-            'direct',
-            'error'
-          );
-        }
+      onError: (error, details = {}) => {
+        recoverFromPlaybackFailure(details.actionKey, {
+          error,
+          attemptedSources: details.source ? [details.source] : [],
+        });
       },
     });
 
@@ -279,6 +316,13 @@ export default function CatPet() {
       const actionConfig = VIDEO_PET_ACTIONS[actionKey];
       const actionSource =
         controllerRef.current.current?.source ?? 'ambient';
+      const playbackResult = await player.play(actionKey, actionConfig);
+      if (disposed || playbackResult.status === 'superseded') return;
+      if (playbackResult.status === 'failed') {
+        recoverFromPlaybackFailure(actionKey, playbackResult);
+        return;
+      }
+
       behaviorRef.current = recordVideoPetAction(
         behaviorRef.current,
         actionKey,
@@ -308,15 +352,9 @@ export default function CatPet() {
       }
       if (actionKey === 'happy') showParticle('♥');
       if (actionKey === 'annoyed') showParticle('…');
-      const played = await player.play(actionKey, actionConfig);
-      if (disposed) return;
-      if (!played && controllerRef.current.current?.action === actionKey) {
-        finishCurrentAction();
-        return;
-      }
       const queued = controllerRef.current.queue[0]?.action;
       if (queued) {
-        player.preload(queued, VIDEO_PET_ACTIONS[queued].src);
+        player.preload(queued, VIDEO_PET_ACTIONS[queued]);
       }
     }
 
@@ -326,6 +364,15 @@ export default function CatPet() {
       canWake = false
     ) => {
       if (!actionKey || !VIDEO_PET_ACTIONS[actionKey]) return false;
+      if (unavailableActions.has(actionKey)) {
+        const replacement = selectVideoPetRecovery({
+          failedAction: actionKey,
+          unavailableActions,
+        });
+        return replacement
+          ? enqueue(replacement, source, canWake)
+          : false;
+      }
       const result = requestVideoPetAction(controllerRef.current, {
         action: actionKey,
         source,
@@ -422,6 +469,7 @@ export default function CatPet() {
         isMobile,
         hour: new Date().getHours(),
         config: runtimeConfig,
+        unavailableActions,
       });
       let accepted = false;
       if (selected) {
@@ -434,7 +482,7 @@ export default function CatPet() {
         runtimeConfig
       );
       if (!accepted && selected) {
-        player.preload(selected, VIDEO_PET_ACTIONS[selected].src);
+        player.preload(selected, VIDEO_PET_ACTIONS[selected]);
       }
     };
 

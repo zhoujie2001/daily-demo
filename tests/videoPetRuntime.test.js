@@ -11,8 +11,10 @@ import {
   requestVideoPetAction,
   requestVideoPetSleep,
   recordVideoPetAction,
+  resolveVideoPetActionSources,
   resolveVideoPetSpeech,
   selectVideoPetAmbient,
+  selectVideoPetRecovery,
   shouldVideoPetSleep,
 } from '../src/components/pet/videoPetRuntime.js';
 
@@ -34,7 +36,7 @@ test('生产动作清单包含原有动作和三段行走素材', () => {
   ]);
   assert.ok(
     Object.values(VIDEO_PET_ACTIONS).every(
-      (action) => action.src.startsWith('/videos/alisha/')
+      (action) => action.src.startsWith('/videos/alisha/h264/')
     )
   );
   for (const actionKey of ['walkLeft', 'walkRight', 'walkForward']) {
@@ -43,7 +45,21 @@ test('生产动作清单包含原有动作和三段行走素材', () => {
       VIDEO_PET_ACTIONS[actionKey].matteMode,
       'packed-horizontal'
     );
+    assert.equal(VIDEO_PET_ACTIONS[actionKey].sources.length, 2);
   }
+});
+
+test('动作资源优先使用 H.264，并为同帧透明素材保留 VP9 备选', () => {
+  const sources = resolveVideoPetActionSources(
+    VIDEO_PET_ACTIONS.walkLeft,
+    (type) => (type.includes('video/mp4') ? 'probably' : '')
+  );
+  assert.deepEqual(sources, [
+    {
+      src: '/videos/alisha/h264/walk_left_rgb_alpha.mp4',
+      type: 'video/mp4; codecs="avc1.42E01E"',
+    },
+  ]);
 });
 
 test('连续点击五次会进入防打扰反馈', () => {
@@ -134,6 +150,28 @@ test('环境选择不再主动保持安静且尊重最近动作', () => {
     random: () => 0,
   });
   assert.notEqual(noBlink, 'blink');
+});
+
+test('加载失败的动作在当前会话熔断并立即选择可用姿态', () => {
+  const state = createVideoPetBehavior({ now: 0, random: () => 0 });
+  const unavailableActions = new Set(['blink']);
+  assert.notEqual(
+    selectVideoPetAmbient({
+      state,
+      now: 20_000,
+      random: () => 0,
+      unavailableActions,
+    }),
+    'blink'
+  );
+  assert.equal(
+    selectVideoPetRecovery({
+      failedAction: 'look',
+      unavailableActions,
+      random: () => 0,
+    }),
+    'tail'
+  );
 });
 
 test('移动动作受每分钟上限保护，候选耗尽时回退到轻动作', () => {
