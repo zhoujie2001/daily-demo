@@ -381,6 +381,15 @@ export default function CatPet() {
       });
       controllerRef.current = result.controller;
       runCommand(result.command);
+      if (result.accepted && !result.command) {
+        const queuedAction = result.controller.queue[0]?.action;
+        if (queuedAction) {
+          player.preload(
+            queuedAction,
+            VIDEO_PET_ACTIONS[queuedAction]
+          );
+        }
+      }
       return result.accepted;
     };
 

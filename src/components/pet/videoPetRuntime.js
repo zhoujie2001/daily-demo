@@ -775,12 +775,10 @@ export function requestVideoPetAction(controller, rawRequest) {
     ) {
       return {
         controller: {
-          current: request,
-          queue: controller.queue.filter(
-            (item) => item.source !== 'ambient'
-          ),
+          current: controller.current,
+          queue: [request],
         },
-        command: { type: 'play', action: request.action },
+        command: null,
         accepted: true,
       };
     }
@@ -830,6 +828,16 @@ export function requestVideoPetSleep(
       source: 'ambient',
       requestedAt,
     });
+    if (controller.current) {
+      return {
+        controller: {
+          current: controller.current,
+          queue: [request],
+        },
+        command: null,
+        accepted: true,
+      };
+    }
     return {
       controller: { current: request, queue: [] },
       command: { type: 'play', action: 'sleep' },

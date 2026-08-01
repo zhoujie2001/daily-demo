@@ -260,7 +260,7 @@ test('运行时采用两秒动作节拍和三十秒无互动睡眠', () => {
   assert.equal(scrolled.sleepAt, 50_000);
 });
 
-test('两秒节拍可以替换未结束的环境动作', () => {
+test('两秒节拍只预排下一动作，不截断未结束的环境动作', () => {
   let result = requestVideoPetAction(
     createVideoPetController(),
     {
@@ -278,8 +278,13 @@ test('两秒节拍可以替换未结束的环境动作', () => {
     requestedAt: 4_000,
   });
   assert.equal(result.accepted, true);
-  assert.equal(result.command.action, 'blink');
-  assert.equal(result.controller.current.action, 'blink');
+  assert.equal(result.command, null);
+  assert.equal(result.controller.current.action, 'look');
+  assert.equal(result.controller.queue[0].action, 'blink');
+
+  const completed = completeVideoPetAction(result.controller);
+  assert.equal(completed.command.action, 'blink');
+  assert.equal(completed.controller.current.action, 'blink');
 });
 
 test('等待中的直接互动不会被下一次环境动作饿死', () => {
@@ -310,7 +315,7 @@ test('等待中的直接互动不会被下一次环境动作饿死', () => {
   assert.equal(result.controller.queue[0].action, 'happy');
 });
 
-test('强制睡眠会停止当前动作并清空等待队列', () => {
+test('睡眠请求等待当前动作完成并清除普通等待队列', () => {
   let controller = requestVideoPetAction(
     createVideoPetController(),
     {
@@ -324,9 +329,13 @@ test('强制睡眠会停止当前动作并清空等待队列', () => {
     force: true,
   });
   assert.equal(result.accepted, true);
-  assert.equal(result.command.action, 'sleep');
-  assert.equal(result.controller.current.action, 'sleep');
-  assert.deepEqual(result.controller.queue, []);
+  assert.equal(result.command, null);
+  assert.equal(result.controller.current.action, 'walkForward');
+  assert.equal(result.controller.queue[0].action, 'sleep');
+
+  const completed = completeVideoPetAction(result.controller);
+  assert.equal(completed.command.action, 'sleep');
+  assert.equal(completed.controller.current.action, 'sleep');
 });
 
 test('环境动作文字限频且低概率，直接互动始终得到简短反馈', () => {

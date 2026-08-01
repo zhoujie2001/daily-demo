@@ -192,6 +192,8 @@ test('随机行为、动作队列、睡眠唤醒和防连点状态由统一运�
   assert.match(runtimeSource, /value: 'annoyed', weight: 88/);
   assert.match(runtimeSource, /request\.source === 'ambient'/);
   assert.match(runtimeSource, /controller\.current\.source === 'ambient'/);
+  assert.match(runtimeSource, /current: controller\.current/);
+  assert.match(runtimeSource, /queue: \[request\]/);
   assert.match(runtimeSource, /AMBIENT_RECOVERY_ACTIONS/);
   assert.match(runtimeSource, /!request\.canWake/);
   assert.match(runtimeSource, /action: 'wake'/);
@@ -206,6 +208,7 @@ test('随机行为、动作队列、睡眠唤醒和防连点状态由统一运�
   );
   assert.match(componentSource, /unavailableActions\.add\(actionKey\)/);
   assert.match(componentSource, /playbackResult\.status === 'failed'/);
+  assert.match(componentSource, /result\.accepted && !result\.command/);
   assert.doesNotMatch(
     componentSource,
     /这个动作暂时没有加载好/
