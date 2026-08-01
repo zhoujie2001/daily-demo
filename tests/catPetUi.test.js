@@ -199,6 +199,11 @@ test('随机行为、动作队列、睡眠唤醒和防连点状态由统一运�
   assert.match(componentSource, /resolveVideoPetSpeech/);
   assert.match(componentSource, /speechDecision\.tone/);
   assert.match(componentSource, /selectVideoPetRecovery/);
+  assert.match(componentSource, /reducedMotion,/);
+  assert.doesNotMatch(
+    componentSource,
+    /document\.hidden\s*\|\|\s*reducedMotion/
+  );
   assert.match(componentSource, /unavailableActions\.add\(actionKey\)/);
   assert.match(componentSource, /playbackResult\.status === 'failed'/);
   assert.doesNotMatch(

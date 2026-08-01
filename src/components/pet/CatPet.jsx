@@ -439,7 +439,6 @@ export default function CatPet() {
       lastTickAt = timestamp;
       if (
         document.hidden ||
-        reducedMotion ||
         !config.behaviors.idle
       ) {
         return;
@@ -470,6 +469,7 @@ export default function CatPet() {
         hour: new Date().getHours(),
         config: runtimeConfig,
         unavailableActions,
+        reducedMotion,
       });
       let accepted = false;
       if (selected) {

@@ -471,6 +471,7 @@ export function selectVideoPetAmbient({
   random = Math.random,
   config = VIDEO_PET_CONFIG,
   unavailableActions = new Set(),
+  reducedMotion = false,
 }) {
   if (now < state.quietUntil) return null;
   const recent = new Set(
@@ -492,6 +493,9 @@ export function selectVideoPetAmbient({
     let weight = action.weight * (multipliers[actionKey] ?? 1);
     if (isMobile && action.kind === 'selfcare') weight *= 0.45;
     if (isMobile && action.kind === 'movement') weight *= 0.45;
+    if (reducedMotion && action.kind === 'selfcare') weight *= 0.7;
+    if (reducedMotion && action.kind === 'movement') weight *= 0.35;
+    if (reducedMotion && actionKey === 'blink') weight *= 1.6;
     if ((hour >= 23 || hour < 7) && actionKey === 'blink') weight *= 1.35;
     if (
       (hour >= 23 || hour < 7) &&

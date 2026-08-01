@@ -174,6 +174,19 @@ test('加载失败的动作在当前会话熔断并立即选择可用姿态', ()
   );
 });
 
+test('系统减少动态效果时仍然每轮选择轻动作，而不是停止调度', () => {
+  const state = createVideoPetBehavior({ now: 0, random: () => 0 });
+  assert.equal(
+    selectVideoPetAmbient({
+      state,
+      now: 20_000,
+      random: () => 0,
+      reducedMotion: true,
+    }),
+    'blink'
+  );
+});
+
 test('移动动作受每分钟上限保护，候选耗尽时回退到轻动作', () => {
   const now = 80_000;
   const base = createVideoPetBehavior({ now: 0, random: () => 0 });
