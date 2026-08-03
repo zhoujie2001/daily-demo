@@ -1418,6 +1418,440 @@ select {
   }
 }
 
+/* Daily sound postcards */
+.editor-attachment.has-sound-details {
+  grid-column: 1 / -1;
+  min-height: 118px;
+  aspect-ratio: auto;
+  padding: 10px;
+  overflow: visible;
+  background:
+    linear-gradient(135deg, rgba(183, 102, 66, 0.08), transparent 52%),
+    rgba(255, 253, 249, 0.94);
+  border-color: var(--accent-line);
+}
+
+.editor-attachment-sound-preview {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 5px 12px;
+  min-width: 0;
+  padding-right: 30px;
+}
+
+.editor-attachment-sound-preview > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.editor-attachment-sound-preview > small {
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-size: 0.62rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-attachment-sound-preview audio {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 36px;
+  margin-top: 5px;
+}
+
+.editor-tool-sound {
+  color: var(--accent);
+}
+
+.editor-tool-sound.is-active {
+  color: var(--ink);
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+
+.editor-sound-importer {
+  position: relative;
+  margin: 10px 0 14px;
+  padding: 14px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 88% 12%, rgba(183, 102, 66, 0.12), transparent 38%),
+    rgba(255, 253, 249, 0.94);
+  border: 1px solid var(--accent-line);
+  border-radius: 13px;
+  box-shadow: 0 12px 30px rgba(63, 49, 33, 0.08);
+}
+
+.editor-sound-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.editor-sound-heading > span:last-child,
+.editor-sound-heading strong,
+.editor-sound-heading small {
+  display: block;
+}
+
+.editor-sound-heading strong {
+  color: var(--ink);
+  font-size: 0.78rem;
+}
+
+.editor-sound-heading small {
+  margin-top: 3px;
+  color: var(--ink-muted);
+  font-size: 0.62rem;
+  line-height: 1.45;
+}
+
+.editor-sound-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  color: var(--accent-deep);
+  background: var(--accent-soft);
+  border-radius: 11px;
+}
+
+.editor-sound-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.editor-sound-actions button,
+.editor-sound-actions label,
+.editor-sound-recording button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 42px;
+  padding: 8px 10px;
+  color: var(--ink-soft);
+  background: var(--surface-elevated);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font: inherit;
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+
+.editor-sound-actions button:hover,
+.editor-sound-actions label:hover,
+.editor-sound-recording button:hover:not(:disabled) {
+  color: var(--accent-deep);
+  border-color: var(--accent-line);
+}
+
+.editor-sound-actions :disabled,
+.editor-sound-actions .is-disabled,
+.editor-sound-recording button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.editor-sound-importer > p {
+  margin: 9px 0 0;
+  color: var(--ink-muted);
+  font-size: 0.61rem;
+  line-height: 1.45;
+}
+
+.editor-sound-importer > p.is-error {
+  color: #a54a43;
+}
+
+.editor-sound-recording {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-height: 58px;
+  padding: 9px 10px 11px;
+  overflow: hidden;
+  background: rgba(183, 102, 66, 0.07);
+  border: 1px solid var(--accent-line);
+  border-radius: 10px;
+}
+
+.editor-sound-recording-dot {
+  width: 10px;
+  height: 10px;
+  background: #b94f45;
+  border-radius: 999px;
+  box-shadow: 0 0 0 5px rgba(185, 79, 69, 0.1);
+  animation: sound-recording-pulse 1.4s ease-in-out infinite;
+}
+
+.editor-sound-recording > div strong,
+.editor-sound-recording > div small {
+  display: block;
+}
+
+.editor-sound-recording > div strong {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.editor-sound-recording > div small {
+  margin-top: 2px;
+  color: var(--ink-muted);
+  font-size: 0.6rem;
+}
+
+.editor-sound-recording button {
+  min-height: 36px;
+  padding-inline: 11px;
+}
+
+.editor-sound-recording-progress {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent) var(--sound-progress), rgba(183, 102, 66, 0.12) var(--sound-progress));
+}
+
+@keyframes sound-recording-pulse {
+  50% { transform: scale(0.72); opacity: 0.58; }
+}
+
+.daily-sound-postcards {
+  display: grid;
+  gap: 10px;
+  margin-top: 1.15rem;
+}
+
+.daily-sound-postcard {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px 18px;
+  overflow: hidden;
+  color: var(--ink);
+  background:
+    linear-gradient(110deg, rgba(183, 102, 66, 0.09), transparent 34%),
+    repeating-linear-gradient(0deg, transparent 0 20px, rgba(48, 43, 35, 0.025) 20px 21px),
+    var(--surface-elevated);
+  border: 1px solid var(--accent-line);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(63, 49, 33, 0.07);
+}
+
+.daily-sound-postcard::after {
+  content: '';
+  position: absolute;
+  top: -19px;
+  right: -17px;
+  width: 64px;
+  height: 64px;
+  border: 1px dashed rgba(166, 95, 66, 0.26);
+  border-radius: 50%;
+}
+
+.daily-sound-postcard audio {
+  display: none;
+}
+
+.daily-sound-play {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  color: #fffaf4;
+  background: var(--accent-deep);
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 7px 18px rgba(130, 69, 45, 0.2);
+  cursor: pointer;
+  transition: transform 160ms ease, background-color 160ms ease;
+}
+
+.daily-sound-play:hover:not(:disabled) {
+  background: var(--ink);
+  transform: translateY(-1px);
+}
+
+.daily-sound-play:focus-visible,
+.daily-sound-progress input:focus-visible {
+  outline: 2px solid var(--accent-deep);
+  outline-offset: 3px;
+}
+
+.daily-sound-play:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.daily-sound-body {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.daily-sound-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.daily-sound-label > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent-deep);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.daily-sound-label > small {
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-size: 0.64rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.daily-sound-wave {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 25px;
+  overflow: hidden;
+}
+
+.daily-sound-wave i {
+  flex: 1 1 0;
+  min-width: 2px;
+  max-width: 5px;
+  height: var(--wave-height);
+  background: linear-gradient(180deg, var(--accent), rgba(166, 95, 66, 0.38));
+  border-radius: 999px;
+  opacity: 0.58;
+  transform-origin: center;
+}
+
+.daily-sound-postcard.is-playing .daily-sound-wave i {
+  animation: sound-wave 720ms ease-in-out var(--wave-delay) infinite alternate;
+  opacity: 0.9;
+}
+
+@keyframes sound-wave {
+  from { transform: scaleY(0.45); }
+  to { transform: scaleY(1); }
+}
+
+.daily-sound-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+}
+
+.daily-sound-progress input {
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent-deep);
+  cursor: pointer;
+}
+
+.daily-sound-progress > span {
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  white-space: nowrap;
+}
+
+.daily-sound-volume {
+  position: relative;
+  z-index: 1;
+  color: var(--ink-muted);
+}
+
+.daily-sound-postcard.is-compact {
+  gap: 9px;
+  padding: 10px 11px;
+  border-radius: 10px;
+}
+
+.daily-sound-postcard.is-compact .daily-sound-play {
+  width: 38px;
+  height: 38px;
+}
+
+.daily-sound-postcard.is-compact .daily-sound-wave {
+  height: 18px;
+}
+
+.daily-sound-postcard.is-compact .daily-sound-volume,
+.daily-sound-postcard.is-compact .daily-sound-label > small {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .editor-sound-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-sound-postcard {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 11px;
+    padding: 14px;
+  }
+
+  .daily-sound-volume {
+    display: none;
+  }
+
+  .daily-sound-label {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .daily-sound-label > small {
+    max-width: 100%;
+  }
+
+  .daily-sound-play {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .editor-sound-recording-dot,
+  .daily-sound-postcard.is-playing .daily-sound-wave i {
+    animation: none;
+  }
+}
+
 .entry-media .daily-live-photo,
 .entry-media .daily-photo-with-metadata {
   display: block;

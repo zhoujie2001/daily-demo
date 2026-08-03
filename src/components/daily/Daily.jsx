@@ -16,6 +16,7 @@ import {
   normalizePhotoMetadata,
 } from '../../utils/photoMetadata';
 import { isLivePhotoMotion, pairLivePhotoFiles } from '../../utils/livePhotoImport';
+import { inspectSoundPostcard } from '../../utils/soundPostcard';
 import {
   chooseTimeMachinePost,
   createTravelSequence,
@@ -91,6 +92,9 @@ function mediaToAttachment(media) {
     motionUrl: media.motionUrl || media.motionValue || '',
     motionValue: media.motionValue || media.motionUrl || '',
     metadata: normalizePhotoMetadata(media.metadata),
+    duration: Number(media.duration) || 0,
+    name: media.name || '',
+    mimeType: media.mimeType || '',
     compressionStatus: 'ready',
     isExisting: true,
   };
@@ -642,6 +646,41 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
     }
   };
 
+  const handleSoundFileSelected = async (file, options = {}) => {
+    if (!file) return false;
+    if (attachments.some((attachment) => attachment.type === 'audio')) {
+      toast.error('每条 Daily 只能添加一张声音明信片');
+      return false;
+    }
+
+    try {
+      const sound = await inspectSoundPostcard(file, options);
+      const previewUrl = await readFileAsDataUrl(file);
+      setAttachments((prev) => [
+        ...prev,
+        {
+          id: createAttachmentId('audio', file),
+          file,
+          originalFile: file,
+          type: 'audio',
+          url: previewUrl,
+          value: previewUrl,
+          duration: sound.duration,
+          name: sound.name,
+          mimeType: sound.mimeType,
+          compressionStatus: 'ready',
+          originalSize: file.size,
+          compressedSize: file.size,
+        },
+      ]);
+      toast.success('声音明信片已加入 Daily');
+      return true;
+    } catch (error) {
+      toast.error(error.message || '声音文件读取失败');
+      return false;
+    }
+  };
+
   const handleAttachmentMetadataChange = (attachmentIndex, key, checked) => {
     setAttachments((prev) => prev.map((att, index) => {
       if (index !== attachmentIndex || (att.type !== 'image' && att.type !== 'live-photo')) return att;
@@ -868,6 +907,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
             onFilesSelected={handleFileSelect}
             onLivePhotoFilesSelected={handleLivePhotoBundleSelect}
             onLiveMotionSelected={handleLiveMotionSelect}
+            onSoundFileSelected={handleSoundFileSelected}
             onAttachmentMetadataChange={handleAttachmentMetadataChange}
             onRemoveAttachment={removeAttachment}
             onRetryCompression={retryCompression}

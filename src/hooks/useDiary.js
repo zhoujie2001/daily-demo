@@ -102,6 +102,11 @@ function createMediaRecord(att, url, motionUrl = '') {
     record.motionUrl = motionUrl;
     record.motionValue = motionUrl;
   }
+  if (att.type === 'audio') {
+    record.duration = Number(att.duration) || 0;
+    record.name = att.name || '';
+    record.mimeType = att.mimeType || att.file?.type || '';
+  }
   return record;
 }
 
@@ -195,16 +200,17 @@ export function useDiary(token) {
         }
       }
 
+      const visualAttachmentCount = attachments.filter((attachment) => attachment.type !== 'audio').length;
       const payload = {
         text: text.trim(),
         media: finalMedia,
         tags: Array.isArray(tags) ? tags : [],
         mediaGrid:
-          attachments.length === 1
+          visualAttachmentCount === 1
             ? 'media-single'
-            : attachments.length === 2
+            : visualAttachmentCount === 2
             ? 'media-grid-2'
-            : attachments.length >= 3
+            : visualAttachmentCount >= 3
             ? 'media-grid-3'
             : '',
       };

@@ -7,12 +7,15 @@ import {
   Image as ImageIcon,
   Link as LinkIcon,
   MapPin,
+  Mic2,
   Send,
   Tag as TagIcon,
   X,
 } from 'lucide-react';
 import { LoadingSpinner } from '../ui/Loading';
 import { getPhotoMetadataAvailability } from '../../utils/photoMetadata';
+import { formatSoundDuration } from '../../utils/soundPostcard';
+import SoundPostcardComposer from './SoundPostcardComposer';
 
 const PRESET_TAGS = ['生活', '工作', '旅行', '读书', '随想', '摄影'];
 
@@ -28,6 +31,7 @@ export default function DailyEditor({
   onFilesSelected,
   onLivePhotoFilesSelected,
   onLiveMotionSelected,
+  onSoundFileSelected,
   onAttachmentMetadataChange,
   onRemoveAttachment,
   onRetryCompression,
@@ -37,6 +41,8 @@ export default function DailyEditor({
   const canPublish = (text.trim().length > 0 || attachments.length > 0) && !publishing && !hasAttachmentErrors;
   const [tagInput, setTagInput] = useState('');
   const [liveImporterOpen, setLiveImporterOpen] = useState(false);
+  const [soundImporterOpen, setSoundImporterOpen] = useState(false);
+  const hasSoundPostcard = attachments.some((att) => att.type === 'audio');
   const pendingLivePhotoIndex = attachments.findIndex(
     (att) => att.type === 'live-photo' && !att.motionFile && !att.motionUrl
   );
@@ -112,7 +118,7 @@ export default function DailyEditor({
             onChange={(e) => onTextChange(e.target.value)}
           />
           <div className="editor-meta-row">
-            <span>{editingId ? '正在编辑已有 Daily' : '支持文字、图片、视频与标签'}</span>
+            <span>{editingId ? '正在编辑已有 Daily' : '支持文字、图片、视频、实况与声音'}</span>
             <span>{text.trim().length} 字</span>
           </div>
         </div>
@@ -122,9 +128,15 @@ export default function DailyEditor({
             {attachments.map((att, i) => (
               <div
                 key={att.id || att.url || i}
-                className={`editor-attachment ${att.type === 'image' || att.type === 'live-photo' ? 'has-photo-details' : ''}`}
+                className={`editor-attachment ${att.type === 'image' || att.type === 'live-photo' ? 'has-photo-details' : ''} ${att.type === 'audio' ? 'has-sound-details' : ''}`.trim()}
               >
-                {att.type === 'image' || att.type === 'live-photo' ? (
+                {att.type === 'audio' ? (
+                  <div className="editor-attachment-sound-preview">
+                    <span><Mic2 size={15} /> 声音明信片</span>
+                    <small>{formatSoundDuration(att.duration)} · {att.name || '现场录音'}</small>
+                    <audio src={att.url} controls preload="metadata" />
+                  </div>
+                ) : att.type === 'image' || att.type === 'live-photo' ? (
                   <div className="editor-attachment-photo-preview">
                     <img src={att.url} alt="" />
                     {att.type === 'live-photo' ? (
@@ -186,7 +198,7 @@ export default function DailyEditor({
                 <button
                   className="editor-attachment-remove"
                   onClick={() => onRemoveAttachment(i)}
-                  aria-label="remove"
+                  aria-label="移除附件"
                 >
                   <X size={11} />
                 </button>
@@ -257,6 +269,17 @@ export default function DailyEditor({
                 : '拍摄日期和相机信息默认展示；精确位置出于隐私考虑默认关闭。'}
             </p>
           </section>
+        ) : null}
+
+        {soundImporterOpen ? (
+          <SoundPostcardComposer
+            disabled={hasSoundPostcard}
+            onFileSelected={async (...args) => {
+              const accepted = await onSoundFileSelected?.(...args);
+              if (accepted) setSoundImporterOpen(false);
+              return accepted;
+            }}
+          />
         ) : null}
 
         <div className="editor-tags">
@@ -340,10 +363,27 @@ export default function DailyEditor({
               className={`editor-tool editor-tool-labeled editor-tool-live ${liveImporterOpen ? 'is-active' : ''}`.trim()}
               title="添加实况照片"
               aria-expanded={liveImporterOpen}
-              onClick={() => setLiveImporterOpen((open) => !open)}
+              onClick={() => {
+                setSoundImporterOpen(false);
+                setLiveImporterOpen((open) => !open);
+              }}
             >
               <CircleDot size={14} />
               <span>实况</span>
+            </button>
+            <button
+              type="button"
+              className={`editor-tool editor-tool-labeled editor-tool-sound ${soundImporterOpen ? 'is-active' : ''}`.trim()}
+              title={hasSoundPostcard ? '请先移除已有声音明信片' : '添加声音明信片'}
+              aria-expanded={soundImporterOpen}
+              disabled={hasSoundPostcard && !soundImporterOpen}
+              onClick={() => {
+                setLiveImporterOpen(false);
+                setSoundImporterOpen((open) => !open);
+              }}
+            >
+              <Mic2 size={14} />
+              <span>声音</span>
             </button>
             <button className="editor-tool" title="占位（暂未接入）" disabled>
               <LinkIcon size={14} />

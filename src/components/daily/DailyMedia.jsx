@@ -4,6 +4,7 @@ import LazyImage from '../ui/LazyImage';
 import VideoLightbox from '../ui/VideoLightbox';
 import TravelVideo from '../travel/TravelVideo';
 import LivePhoto from './LivePhoto';
+import SoundPostcard from './SoundPostcard';
 import { resolveMediaUrl } from '../../utils/media';
 import {
   formatCamera,
@@ -29,8 +30,8 @@ function PhotoMetadata({ metadata }) {
 
   return (
     <div className="daily-photo-metadata" aria-label="照片拍摄信息">
-      {rows.map(({ icon: Icon, label }) => (
-        <span key={label}><Icon size={13} />{label}</span>
+      {rows.map(({ icon, label }) => (
+        <span key={label}>{React.createElement(icon, { size: 13 })}{label}</span>
       ))}
     </div>
   );
@@ -147,9 +148,29 @@ export default function DailyMedia({
 }) {
   if (!Array.isArray(media) || !media.length) return null;
 
+  const soundMedia = media.filter((item) => item.type === 'audio');
+  const visualMedia = media.filter((item) => item.type !== 'audio');
+
   return (
-    <div className={`entry-media ${mediaGrid || 'media-single'} daily-media-${variant}`}>
-      {media.map((item, index) => renderMediaItem(item, index, title))}
-    </div>
+    <>
+      {visualMedia.length ? (
+        <div className={`entry-media ${mediaGrid || 'media-single'} daily-media-${variant}`}>
+          {visualMedia.map((item, index) => renderMediaItem(item, index, title))}
+        </div>
+      ) : null}
+      {soundMedia.length ? (
+        <div className={`daily-sound-postcards daily-sound-postcards-${variant}`}>
+          {soundMedia.map((item, index) => (
+            <SoundPostcard
+              key={item.url || item.value || `audio-${index}`}
+              src={resolveMediaUrl(item.url || item.value)}
+              duration={item.duration}
+              title={title}
+              compact={variant === 'note'}
+            />
+          ))}
+        </div>
+      ) : null}
+    </>
   );
 }
