@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import staticFallback from '../data/dailyData.json';
 import * as diaryApi from '../api/diary';
 import * as uploadApi from '../api/upload';
+import { normalizePhotoMetadata } from '../utils/photoMetadata';
 
 /** 把后端返回的一条 diary 归一化为前端使用的 post 结构 */
 function safeParseMedia(media) {
@@ -86,6 +87,24 @@ async function resolveAttachmentUrl(att, uploadedUrl) {
   return att.url;
 }
 
+async function resolveLiveMotionUrl(att, uploadedUrl) {
+  if (uploadedUrl) return uploadedUrl;
+  if (att.motionFile) return readFileAsDataURL(att.motionFile);
+  return att.motionUrl || att.motionValue || '';
+}
+
+function createMediaRecord(att, url, motionUrl = '') {
+  const record = { type: att.type, url, value: url };
+  if (att.type === 'image' || att.type === 'live-photo') {
+    record.metadata = normalizePhotoMetadata(att.metadata);
+  }
+  if (att.type === 'live-photo') {
+    record.motionUrl = motionUrl;
+    record.motionValue = motionUrl;
+  }
+  return record;
+}
+
 function dedupePostsByDate(list) {
   const map = new Map();
   (list || []).forEach((post) => {
@@ -146,7 +165,7 @@ export function useDiary(token) {
       if (attachments.length > 0 && token) {
         for (const att of attachments) {
           if (att.isExisting) {
-            finalMedia.push({ type: att.type, url: att.url, value: att.value || att.url });
+            finalMedia.push(createMediaRecord(att, att.url, att.motionUrl || att.motionValue));
             continue;
           }
 
@@ -155,8 +174,15 @@ export function useDiary(token) {
           }
 
           try {
-            const [uploadedUrl] = await uploadApi.uploadFiles(att.file, token);
-            finalMedia.push({ type: att.type, url: uploadedUrl, value: uploadedUrl });
+            if (att.type === 'live-photo') {
+              if (!att.motionFile) throw new Error('实况照片缺少动态片段');
+              const [uploadedImageUrl] = await uploadApi.uploadFiles(att.file, token);
+              const [uploadedMotionUrl] = await uploadApi.uploadFiles(att.motionFile, token);
+              finalMedia.push(createMediaRecord(att, uploadedImageUrl, uploadedMotionUrl));
+            } else {
+              const [uploadedUrl] = await uploadApi.uploadFiles(att.file, token);
+              finalMedia.push(createMediaRecord(att, uploadedUrl));
+            }
           } catch (err) {
             throw new Error(`${att.file.name} 上传失败：${err.message || '未知错误'}`, { cause: err });
           }
@@ -164,7 +190,8 @@ export function useDiary(token) {
       } else {
         for (const att of attachments) {
           const resolvedUrl = await resolveAttachmentUrl(att);
-          finalMedia.push({ type: att.type, url: resolvedUrl, value: resolvedUrl });
+          const motionUrl = att.type === 'live-photo' ? await resolveLiveMotionUrl(att) : '';
+          finalMedia.push(createMediaRecord(att, resolvedUrl, motionUrl));
         }
       }
 

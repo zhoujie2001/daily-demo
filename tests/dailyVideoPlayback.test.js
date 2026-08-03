@@ -58,7 +58,7 @@ test('Daily media resolves backend-relative image and video URLs', async () => {
   );
 
   assert.match(source, /resolveMediaUrl/);
-  assert.match(source, /const resolvedUrl = resolveMediaUrl\(item\.url\)/);
+  assert.match(source, /const resolvedUrl = resolveMediaUrl\(item\.url \|\| item\.value\)/);
   assert.match(source, /<DailyVideo[\s\S]*?url=\{resolvedUrl\}/);
   assert.match(source, /<LazyImage[\s\S]*?src=\{resolvedUrl\}/);
 });

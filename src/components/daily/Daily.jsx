@@ -9,6 +9,7 @@ import { TimeArrival, TimeTravelOverlay } from './TimeMachine';
 import MemoryActions from './MemoryActions';
 import { useDialog } from '../../context/DialogContext';
 import { compressVideo, VIDEO_COMPRESSION_THRESHOLD } from '../../utils/compressVideo';
+import { extractPhotoMetadata, normalizePhotoMetadata } from '../../utils/photoMetadata';
 import {
   chooseTimeMachinePost,
   createTravelSequence,
@@ -45,6 +46,20 @@ function readFileAsDataUrl(file) {
     reader.onerror = () => reject(reader.error || new Error('文件读取失败'));
     reader.readAsDataURL(file);
   });
+}
+
+function mediaToAttachment(media) {
+  return {
+    id: `existing-${media.type}-${media.url || media.value || Math.random().toString(36).slice(2)}`,
+    type: media.type,
+    url: media.url,
+    value: media.value || media.url,
+    motionUrl: media.motionUrl || media.motionValue || '',
+    motionValue: media.motionValue || media.motionUrl || '',
+    metadata: normalizePhotoMetadata(media.metadata),
+    compressionStatus: 'ready',
+    isExisting: true,
+  };
 }
 
 const TIME_TRAVEL_MESSAGES = [
@@ -255,12 +270,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
         setText(editorSource.text || '');
         setTags(editorSource.tags || []);
         setAttachments(
-          (editorSource.media || []).map((m) => ({
-            type: m.type,
-            url: m.url,
-            value: m.value || m.url,
-            isExisting: true,
-          }))
+          (editorSource.media || []).map(mediaToAttachment)
         );
         return;
       }
@@ -367,14 +377,24 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
   };
 
   const handleFileSelect = async (e, type) => {
-    const files = Array.from(e.target.files || []);
+    const selectedFiles = Array.from(e.target.files || []);
+    const files = type === 'live-photo' ? selectedFiles.slice(0, 1) : selectedFiles;
     e.target.value = '';
     if (files.length === 0) {
       return;
     }
 
     try {
-      const previewUrls = await Promise.all(files.map((file) => readFileAsDataUrl(file)));
+      const [previewUrls, metadataList] = await Promise.all([
+        Promise.all(files.map((file) => readFileAsDataUrl(file))),
+        Promise.all(
+          files.map((file) =>
+            type === 'image' || type === 'live-photo'
+              ? extractPhotoMetadata(file).catch(() => ({}))
+              : Promise.resolve({})
+          )
+        ),
+      ]);
       const newAtt = files.map((file, index) => {
         const previewUrl = previewUrls[index];
         const id = `${type}-${Date.now()}-${index}-${file.name}`;
@@ -385,6 +405,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
           type,
           url: previewUrl,
           value: previewUrl,
+          metadata: normalizePhotoMetadata(metadataList[index]),
           compressionStatus: type === 'video' && file.size >= VIDEO_COMPRESSION_THRESHOLD ? 'queued' : 'ready',
           originalSize: file.size,
           compressedSize: type === 'video' && file.size < VIDEO_COMPRESSION_THRESHOLD ? file.size : null,
@@ -458,9 +479,108 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
     }
   };
 
+  const handleLiveMotionSelect = async (event, attachmentIndex) => {
+    const motionFile = Array.from(event.target.files || [])[0];
+    event.target.value = '';
+    if (!motionFile) return;
+    if (!motionFile.type?.startsWith('video/') && !/\.mov$/i.test(motionFile.name || '')) {
+      toast.error('实况照片的动态片段需要选择视频文件');
+      return;
+    }
+
+    const attachment = attachments[attachmentIndex];
+    if (!attachment || attachment.type !== 'live-photo') return;
+
+    try {
+      const motionUrl = await readFileAsDataUrl(motionFile);
+      const needsCompatibilityTranscode = /\.mov$/i.test(motionFile.name || '') || /quicktime/i.test(motionFile.type || '');
+      const shouldCompress = motionFile.size >= VIDEO_COMPRESSION_THRESHOLD || needsCompatibilityTranscode;
+      setAttachments((prev) => prev.map((att, index) => (
+        index === attachmentIndex
+          ? {
+              ...att,
+              motionFile,
+              motionOriginalFile: motionFile,
+              motionUrl,
+              motionValue: motionUrl,
+              forceVideoCompression: needsCompatibilityTranscode,
+              compressionStatus: shouldCompress ? 'queued' : 'ready',
+              originalSize: motionFile.size,
+              compressedSize: shouldCompress ? null : motionFile.size,
+              compressionError: null,
+            }
+          : att
+      )));
+
+      if (!shouldCompress) return;
+      const attachmentId = attachment.id;
+      setCompressingCount((count) => count + 1);
+      setAttachments((prev) => prev.map((att) => (
+        att.id === attachmentId
+          ? { ...att, compressing: true, compressionStatus: 'queued', compressionProgress: 0 }
+          : att
+      )));
+
+      try {
+        const compressedFile = await compressVideo(motionFile, (percent) => {
+          setAttachments((prev) => prev.map((att) => (
+            att.id === attachmentId
+              ? { ...att, compressionStatus: 'compressing', compressionProgress: Math.round(percent) }
+              : att
+          )));
+        }, { force: needsCompatibilityTranscode });
+        setAttachments((prev) => prev.map((att) => (
+          att.id === attachmentId
+            ? {
+                ...att,
+                motionFile: compressedFile,
+                compressing: false,
+                compressionStatus: 'ready',
+                compressionProgress: 100,
+                compressedSize: compressedFile.size,
+                compressionError: null,
+              }
+            : att
+        )));
+      } catch (error) {
+        setAttachments((prev) => prev.map((att) => (
+          att.id === attachmentId
+            ? {
+                ...att,
+                compressing: false,
+                compressionStatus: 'error',
+                compressionProgress: null,
+                compressionError: error.message || '动态片段压缩失败',
+              }
+            : att
+        )));
+        toast.error(`${motionFile.name} 压缩失败：${error.message || '未知错误'}`);
+      } finally {
+        setCompressingCount((count) => Math.max(0, count - 1));
+      }
+    } catch (error) {
+      toast.error(error.message || '动态片段读取失败');
+    }
+  };
+
+  const handleAttachmentMetadataChange = (attachmentIndex, key, checked) => {
+    setAttachments((prev) => prev.map((att, index) => {
+      if (index !== attachmentIndex || (att.type !== 'image' && att.type !== 'live-photo')) return att;
+      return {
+        ...att,
+        metadata: normalizePhotoMetadata({ ...att.metadata, [key]: checked }),
+      };
+    }));
+  };
+
   const retryCompression = async (attachmentId) => {
     const attachment = attachments.find((att) => att.id === attachmentId);
-    if (!attachment || attachment.type !== 'video' || attachment.compressionStatus !== 'error') return;
+    const isLivePhoto = attachment?.type === 'live-photo';
+    if (!attachment || (attachment.type !== 'video' && !isLivePhoto) || attachment.compressionStatus !== 'error') return;
+    const sourceFile = isLivePhoto
+      ? attachment.motionOriginalFile || attachment.motionFile
+      : attachment.originalFile || attachment.file;
+    if (!sourceFile) return;
 
     setCompressingCount((count) => count + 1);
     setAttachments((prev) =>
@@ -472,7 +592,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
     );
 
     try {
-      const compressedFile = await compressVideo(attachment.originalFile || attachment.file, (percent) => {
+      const compressedFile = await compressVideo(sourceFile, (percent) => {
         setAttachments((prev) =>
           prev.map((att) =>
             att.id === attachmentId
@@ -480,13 +600,13 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
               : att
           )
         );
-      });
+      }, { force: Boolean(attachment.forceVideoCompression) });
       setAttachments((prev) =>
         prev.map((att) =>
           att.id === attachmentId
-            ? {
+              ? {
                 ...att,
-                file: compressedFile,
+                ...(isLivePhoto ? { motionFile: compressedFile } : { file: compressedFile }),
                 compressing: false,
                 compressionStatus: 'ready',
                 compressionProgress: 100,
@@ -503,7 +623,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
             : att
         )
       );
-      toast.error(`${attachment.file.name} 压缩仍然失败：${err.message || '未知错误'}`);
+      toast.error(`${sourceFile.name} 压缩仍然失败：${err.message || '未知错误'}`);
     } finally {
       setCompressingCount((count) => Math.max(0, count - 1));
     }
@@ -524,17 +644,16 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
     setText(post.text || '');
     setTags(post.tags || []);
     setAttachments(
-      (post.media || []).map((m) => ({
-        type: m.type,
-        url: m.url,
-        value: m.value || m.url,
-        isExisting: true,
-      }))
+      (post.media || []).map(mediaToAttachment)
     );
   };
 
   const handlePublish = async () => {
     if (publishing || compressingCount > 0) return;
+    if (attachments.some((att) => att.type === 'live-photo' && !att.motionFile && !att.motionUrl)) {
+      toast.error('请先为实况照片选择动态片段');
+      return;
+    }
     if (attachments.some((att) => att.compressionStatus === 'error')) {
       toast.error('请先重试或移除压缩失败的视频');
       return;
@@ -662,10 +781,14 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
             attachments={attachments}
             tags={tags}
             publishing={publishing || compressingCount > 0}
-            hasAttachmentErrors={attachments.some((att) => att.compressionStatus === 'error')}
+            hasAttachmentErrors={attachments.some(
+              (att) => att.compressionStatus === 'error' || (att.type === 'live-photo' && !att.motionFile && !att.motionUrl)
+            )}
             onTextChange={setText}
             onTagsChange={setTags}
             onFilesSelected={handleFileSelect}
+            onLiveMotionSelected={handleLiveMotionSelect}
+            onAttachmentMetadataChange={handleAttachmentMetadataChange}
             onRemoveAttachment={removeAttachment}
             onRetryCompression={retryCompression}
             onPublish={handlePublish}

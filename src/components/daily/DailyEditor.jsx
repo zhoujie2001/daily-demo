@@ -1,6 +1,18 @@
 import React, { useState } from 'react';
-import { Film, Image as ImageIcon, Link as LinkIcon, Send, Tag as TagIcon, X } from 'lucide-react';
+import {
+  CalendarDays,
+  Camera,
+  CircleDot,
+  Film,
+  Image as ImageIcon,
+  Link as LinkIcon,
+  MapPin,
+  Send,
+  Tag as TagIcon,
+  X,
+} from 'lucide-react';
 import { LoadingSpinner } from '../ui/Loading';
+import { getPhotoMetadataAvailability } from '../../utils/photoMetadata';
 
 const PRESET_TAGS = ['生活', '工作', '旅行', '读书', '随想', '摄影'];
 
@@ -14,6 +26,8 @@ export default function DailyEditor({
   onTextChange,
   onTagsChange,
   onFilesSelected,
+  onLiveMotionSelected,
+  onAttachmentMetadataChange,
   onRemoveAttachment,
   onRetryCompression,
   onPublish,
@@ -31,6 +45,42 @@ export default function DailyEditor({
     const v = tagInput.trim();
     if (v && !tags.includes(v) && onTagsChange) onTagsChange([...tags, v]);
     setTagInput('');
+  };
+
+  const renderMetadataOptions = (att, index) => {
+    const availability = getPhotoMetadataAvailability(att.metadata);
+    const options = [
+      { key: 'showCapturedAt', available: availability.capturedAt, icon: CalendarDays, label: '拍摄日期' },
+      { key: 'showLocation', available: availability.location, icon: MapPin, label: '拍摄位置' },
+      { key: 'showCamera', available: availability.camera, icon: Camera, label: '相机信息' },
+    ];
+
+    return (
+      <div className="editor-photo-metadata-options" aria-label="照片拍摄信息选项">
+        <div className="editor-photo-metadata-title">照片信息</div>
+        <div className="editor-photo-metadata-toggles">
+          {options.map(({ key, available, icon: Icon, label }) => (
+            <label
+              key={key}
+              className={`editor-photo-metadata-toggle ${available ? '' : 'is-disabled'}`}
+              title={available ? `在 Daily 中显示${label}` : `照片未包含${label}`}
+            >
+              <input
+                type="checkbox"
+                checked={Boolean(att.metadata?.[key])}
+                disabled={!available}
+                onChange={(event) => onAttachmentMetadataChange?.(index, key, event.target.checked)}
+              />
+              <Icon size={12} />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+        {!availability.capturedAt && !availability.location && !availability.camera ? (
+          <span className="editor-photo-metadata-empty">此照片没有可读取的 EXIF 信息</span>
+        ) : null}
+      </div>
+    );
   };
 
   return (
@@ -65,9 +115,17 @@ export default function DailyEditor({
         {attachments.length > 0 && (
           <div className="editor-attachments">
             {attachments.map((att, i) => (
-              <div key={att.url || i} className="editor-attachment">
-                {att.type === 'image' ? (
-                  <img src={att.url} alt="" />
+              <div
+                key={att.id || att.url || i}
+                className={`editor-attachment ${att.type === 'image' || att.type === 'live-photo' ? 'has-photo-details' : ''}`}
+              >
+                {att.type === 'image' || att.type === 'live-photo' ? (
+                  <div className="editor-attachment-photo-preview">
+                    <img src={att.url} alt="" />
+                    {att.type === 'live-photo' ? (
+                      <span className="editor-live-photo-badge"><CircleDot size={11} /> LIVE</span>
+                    ) : null}
+                  </div>
                 ) : (
                   <div className="editor-attachment-video">
                     {att.compressionStatus === 'queued' ? (
@@ -86,6 +144,31 @@ export default function DailyEditor({
                     )}
                   </div>
                 )}
+                {att.type === 'live-photo' ? (
+                  <div className="editor-live-photo-motion-row">
+                    {att.motionUrl || att.motionFile ? (
+                      <span className={att.compressionStatus === 'error' ? 'is-error' : ''}>
+                        <Film size={12} />
+                        {att.compressing
+                          ? `动态片段压缩中 ${att.compressionProgress || 0}%`
+                          : att.compressionStatus === 'error'
+                            ? '动态片段处理失败'
+                            : '动态片段已配对'}
+                      </span>
+                    ) : (
+                      <label className="editor-live-photo-motion-picker">
+                        <input
+                          type="file"
+                          accept="video/*,.mov"
+                          hidden
+                          onChange={(event) => onLiveMotionSelected?.(event, i)}
+                        />
+                        <Film size={12} /> 选择动态片段
+                      </label>
+                    )}
+                  </div>
+                ) : null}
+                {att.type === 'image' || att.type === 'live-photo' ? renderMetadataOptions(att, i) : null}
                 {att.compressionStatus === 'error' ? (
                   <button
                     type="button"
@@ -180,6 +263,15 @@ export default function DailyEditor({
                 onChange={(e) => onFilesSelected(e, 'video')}
               />
               <Film size={14} />
+            </label>
+            <label className="editor-tool editor-tool-live" title="添加实况照片（先选照片，再配对动态片段）">
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) => onFilesSelected(e, 'live-photo')}
+              />
+              <CircleDot size={14} />
             </label>
             <button className="editor-tool" title="占位（暂未接入）" disabled>
               <LinkIcon size={14} />

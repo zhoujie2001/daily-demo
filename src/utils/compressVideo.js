@@ -155,8 +155,8 @@ async function encodeVideo(instance, inputName, outputName, videoBitrate, scaleH
   ]);
 }
 
-export async function compressVideo(file, onProgress) {
-  if (!file || file.size < VIDEO_COMPRESSION_THRESHOLD) {
+export async function compressVideo(file, onProgress, { force = false } = {}) {
+  if (!file || (!force && file.size < VIDEO_COMPRESSION_THRESHOLD)) {
     onProgress?.(100);
     return file;
   }
