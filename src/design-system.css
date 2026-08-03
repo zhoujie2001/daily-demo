@@ -234,17 +234,6 @@ select {
   letter-spacing: -0.055em;
 }
 
-#about h1::after {
-  content: '';
-  display: inline-block;
-  width: 0.42em;
-  height: 0.42em;
-  margin-left: 0.15em;
-  background: var(--accent);
-  border-radius: 50%;
-  vertical-align: 0.08em;
-}
-
 #about .subtitle {
   max-width: 660px;
   margin: 26px 0 0;
