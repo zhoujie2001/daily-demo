@@ -26,6 +26,7 @@ export default function DailyEditor({
   onTextChange,
   onTagsChange,
   onFilesSelected,
+  onLivePhotoFilesSelected,
   onLiveMotionSelected,
   onAttachmentMetadataChange,
   onRemoveAttachment,
@@ -35,6 +36,10 @@ export default function DailyEditor({
 }) {
   const canPublish = (text.trim().length > 0 || attachments.length > 0) && !publishing && !hasAttachmentErrors;
   const [tagInput, setTagInput] = useState('');
+  const [liveImporterOpen, setLiveImporterOpen] = useState(false);
+  const pendingLivePhotoIndex = attachments.findIndex(
+    (att) => att.type === 'live-photo' && !att.motionFile && !att.motionUrl
+  );
 
   const toggleTag = (t) => {
     if (!onTagsChange) return;
@@ -71,7 +76,7 @@ export default function DailyEditor({
                 disabled={!available}
                 onChange={(event) => onAttachmentMetadataChange?.(index, key, event.target.checked)}
               />
-              <Icon size={12} />
+              {React.createElement(Icon, { size: 12 })}
               <span>{label}</span>
             </label>
           ))}
@@ -190,6 +195,70 @@ export default function DailyEditor({
           </div>
         )}
 
+        {liveImporterOpen ? (
+          <section className="editor-live-photo-importer" aria-label="导入实况照片">
+            <div className="editor-live-photo-importer-header">
+              <div>
+                <strong><CircleDot size={14} /> 添加实况照片</strong>
+                <span>封面照片与动态视频会作为同一条 Daily 内容发布</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLiveImporterOpen(false)}
+                aria-label="关闭实况照片导入"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <label className="editor-live-photo-auto-import">
+              <input
+                type="file"
+                accept="image/*,video/*,.heic,.heif,.mov"
+                multiple
+                hidden
+                onChange={onLivePhotoFilesSelected}
+              />
+              <span className="editor-live-photo-auto-icon"><CircleDot size={18} /></span>
+              <span>
+                <strong>同时选择照片和动态视频</strong>
+                <small>支持一次选择多组；IMG_1234.HEIC/JPG 与 IMG_1234.MOV 会自动配对</small>
+              </span>
+            </label>
+
+            <div className="editor-live-photo-divider"><span>手机无法同时选择时</span></div>
+
+            <div className="editor-live-photo-steps">
+              <label>
+                <input
+                  type="file"
+                  accept="image/*,.heic,.heif"
+                  hidden
+                  onChange={(event) => onFilesSelected(event, 'live-photo')}
+                />
+                <span>1</span>
+                <strong>选择封面照片</strong>
+              </label>
+              <label className={pendingLivePhotoIndex < 0 ? 'is-disabled' : ''}>
+                <input
+                  type="file"
+                  accept="video/*,.mov"
+                  hidden
+                  disabled={pendingLivePhotoIndex < 0}
+                  onChange={(event) => onLiveMotionSelected?.(event, pendingLivePhotoIndex)}
+                />
+                <span>2</span>
+                <strong>{pendingLivePhotoIndex < 0 ? '等待选择封面' : '选择动态片段'}</strong>
+              </label>
+            </div>
+            <p className={pendingLivePhotoIndex >= 0 ? 'is-warning' : ''}>
+              {pendingLivePhotoIndex >= 0
+                ? '这张实况照片还缺少动态片段，补选前无法发布。'
+                : '拍摄日期和相机信息默认展示；精确位置出于隐私考虑默认关闭。'}
+            </p>
+          </section>
+        ) : null}
+
         <div className="editor-tags">
           <div className="editor-tags-label-row">
             <div className="editor-tags-label">
@@ -244,7 +313,7 @@ export default function DailyEditor({
 
         <div className="editor-footer">
           <div className="editor-toolbar">
-            <label className="editor-tool" title="上传图片">
+            <label className="editor-tool editor-tool-labeled" title="上传图片">
               <input
                 type="file"
                 accept="image/*"
@@ -253,8 +322,9 @@ export default function DailyEditor({
                 onChange={(e) => onFilesSelected(e, 'image')}
               />
               <ImageIcon size={14} />
+              <span>图片</span>
             </label>
-            <label className="editor-tool" title="上传视频">
+            <label className="editor-tool editor-tool-labeled" title="上传视频">
               <input
                 type="file"
                 accept="video/*"
@@ -263,16 +333,18 @@ export default function DailyEditor({
                 onChange={(e) => onFilesSelected(e, 'video')}
               />
               <Film size={14} />
+              <span>视频</span>
             </label>
-            <label className="editor-tool editor-tool-live" title="添加实况照片（先选照片，再配对动态片段）">
-              <input
-                type="file"
-                accept="image/*"
-                hidden
-                onChange={(e) => onFilesSelected(e, 'live-photo')}
-              />
+            <button
+              type="button"
+              className={`editor-tool editor-tool-labeled editor-tool-live ${liveImporterOpen ? 'is-active' : ''}`.trim()}
+              title="添加实况照片"
+              aria-expanded={liveImporterOpen}
+              onClick={() => setLiveImporterOpen((open) => !open)}
+            >
               <CircleDot size={14} />
-            </label>
+              <span>实况</span>
+            </button>
             <button className="editor-tool" title="占位（暂未接入）" disabled>
               <LinkIcon size={14} />
             </button>

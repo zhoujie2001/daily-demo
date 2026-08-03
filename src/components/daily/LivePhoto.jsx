@@ -13,8 +13,9 @@ let activeLivePhotoStop = null;
 export default function LivePhoto({ imageSrc, motionSrc, metadata, title = 'Daily 实况照片' }) {
   const rootRef = useRef(null);
   const videoRef = useRef(null);
-  const holdTimerRef = useRef(null);
+  const touchArmTimerRef = useRef(null);
   const touchStartRef = useRef(null);
+  const touchPreviewArmedRef = useRef(false);
   const suppressClickRef = useRef(false);
   const stopRef = useRef(() => {});
   const [motionReady, setMotionReady] = useState(() => typeof IntersectionObserver === 'undefined');
@@ -39,7 +40,9 @@ export default function LivePhoto({ imageSrc, motionSrc, metadata, title = 'Dail
     if (activeLivePhotoStop === stopRef.current) activeLivePhotoStop = null;
   }, []);
 
-  stopRef.current = stopPreview;
+  useEffect(() => {
+    stopRef.current = stopPreview;
+  }, [stopPreview]);
 
   const startPreview = useCallback(async () => {
     if (!motionSrc || motionFailed) return false;
@@ -77,9 +80,22 @@ export default function LivePhoto({ imageSrc, motionSrc, metadata, title = 'Dail
   }, [motionReady]);
 
   useEffect(() => () => {
-    window.clearTimeout(holdTimerRef.current);
+    window.clearTimeout(touchArmTimerRef.current);
     stopPreview();
   }, [stopPreview]);
+
+  const clearTouchPreviewArm = () => {
+    window.clearTimeout(touchArmTimerRef.current);
+    touchPreviewArmedRef.current = false;
+  };
+
+  const armTouchPreview = () => {
+    window.clearTimeout(touchArmTimerRef.current);
+    touchPreviewArmedRef.current = true;
+    touchArmTimerRef.current = window.setTimeout(() => {
+      touchPreviewArmedRef.current = false;
+    }, 7000);
+  };
 
   const handlePointerEnter = (event) => {
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -88,11 +104,7 @@ export default function LivePhoto({ imageSrc, motionSrc, metadata, title = 'Dail
 
   const handlePointerDown = (event) => {
     if (event.pointerType === 'mouse') return;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    touchStartRef.current = { x: event.clientX, y: event.clientY };
-    holdTimerRef.current = window.setTimeout(async () => {
-      if (await startPreview()) suppressClickRef.current = true;
-    }, 180);
+    touchStartRef.current = { x: event.clientX, y: event.clientY, moved: false };
   };
 
   const handlePointerMove = (event) => {
@@ -102,17 +114,39 @@ export default function LivePhoto({ imageSrc, motionSrc, metadata, title = 'Dail
       event.clientY - touchStartRef.current.y
     );
     if (distance > 10) {
-      window.clearTimeout(holdTimerRef.current);
-      touchStartRef.current = null;
+      touchStartRef.current.moved = true;
       stopPreview();
     }
   };
 
-  const handlePointerEnd = (event) => {
+  const handlePointerEnd = async (event) => {
     if (event.pointerType === 'mouse') return;
-    window.clearTimeout(holdTimerRef.current);
+    const touch = touchStartRef.current;
     touchStartRef.current = null;
-    if (playing) stopPreview();
+    if (!touch || touch.moved) {
+      suppressClickRef.current = true;
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
+      return;
+    }
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || touchPreviewArmedRef.current) {
+      suppressClickRef.current = true;
+      clearTouchPreviewArm();
+      stopPreview();
+      setExpanded(true);
+      return;
+    }
+
+    suppressClickRef.current = true;
+    if (await startPreview()) armTouchPreview();
+  };
+
+  const handlePointerCancel = (event) => {
+    if (event.pointerType === 'mouse') return;
+    touchStartRef.current = null;
+    stopPreview();
   };
 
   const handleOpen = () => {
@@ -142,22 +176,24 @@ export default function LivePhoto({ imageSrc, motionSrc, metadata, title = 'Dail
         type="button"
         className={`daily-live-photo-frame ${playing ? 'is-playing' : ''}`}
         onPointerEnter={handlePointerEnter}
-        onPointerLeave={() => stopPreview()}
+        onPointerLeave={(event) => {
+          if (event.pointerType === 'mouse') stopPreview();
+        }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerEnd}
-        onPointerCancel={handlePointerEnd}
+        onPointerCancel={handlePointerCancel}
         onClick={handleOpen}
-        aria-label="播放实况照片；鼠标悬停或手机长按可预览"
+        aria-label="播放实况照片；鼠标悬停或手机轻触可预览，再次轻触可全屏播放"
       >
         <img src={imageSrc} alt={title} loading="lazy" decoding="async" className="daily-live-photo-poster" />
-        {motionReady && !motionFailed ? (
+        {!motionFailed ? (
           <video
             ref={videoRef}
             src={motionSrc}
             muted
             playsInline
-            preload="metadata"
+            preload={motionReady ? 'metadata' : 'none'}
             className="daily-live-photo-motion"
             onPlaying={() => setPlaying(true)}
             onEnded={() => stopPreview()}
@@ -177,7 +213,7 @@ export default function LivePhoto({ imageSrc, motionSrc, metadata, title = 'Dail
       {visibleMetadata.length > 0 ? (
         <div className="daily-photo-metadata" aria-label="照片拍摄信息">
           {visibleMetadata.map(({ icon: Icon, label }) => (
-            <span key={label}><Icon size={13} />{label}</span>
+            <span key={label}>{React.createElement(Icon, { size: 13 })}{label}</span>
           ))}
         </div>
       ) : null}

@@ -9,7 +9,13 @@ import { TimeArrival, TimeTravelOverlay } from './TimeMachine';
 import MemoryActions from './MemoryActions';
 import { useDialog } from '../../context/DialogContext';
 import { compressVideo, VIDEO_COMPRESSION_THRESHOLD } from '../../utils/compressVideo';
-import { extractPhotoMetadata, normalizePhotoMetadata } from '../../utils/photoMetadata';
+import { compressImage } from '../../utils/compressImage';
+import {
+  applyDefaultPhotoMetadataVisibility,
+  extractPhotoMetadata,
+  normalizePhotoMetadata,
+} from '../../utils/photoMetadata';
+import { isLivePhotoMotion, pairLivePhotoFiles } from '../../utils/livePhotoImport';
 import {
   chooseTimeMachinePost,
   createTravelSequence,
@@ -46,6 +52,34 @@ function readFileAsDataUrl(file) {
     reader.onerror = () => reject(reader.error || new Error('文件读取失败'));
     reader.readAsDataURL(file);
   });
+}
+
+let attachmentSequence = 0;
+
+function createAttachmentId(type, file) {
+  attachmentSequence += 1;
+  return `${type}-${Date.now()}-${attachmentSequence}-${file?.name || 'media'}`;
+}
+
+async function createPhotoAttachment(file, type = 'image') {
+  const [preparedFile, extractedMetadata] = await Promise.all([
+    compressImage(file),
+    extractPhotoMetadata(file).catch(() => ({})),
+  ]);
+  const previewUrl = await readFileAsDataUrl(preparedFile);
+
+  return {
+    id: createAttachmentId(type, file),
+    file: preparedFile,
+    originalFile: file,
+    type,
+    url: previewUrl,
+    value: previewUrl,
+    metadata: applyDefaultPhotoMetadataVisibility(extractedMetadata),
+    compressionStatus: 'ready',
+    originalSize: file.size,
+    compressedSize: preparedFile.size,
+  };
 }
 
 function mediaToAttachment(media) {
@@ -385,19 +419,19 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
     }
 
     try {
+      if (type === 'image' || type === 'live-photo') {
+        const newAttachments = await Promise.all(files.map((file) => createPhotoAttachment(file, type)));
+        setAttachments((prev) => [...prev, ...newAttachments]);
+        return;
+      }
+
       const [previewUrls, metadataList] = await Promise.all([
         Promise.all(files.map((file) => readFileAsDataUrl(file))),
-        Promise.all(
-          files.map((file) =>
-            type === 'image' || type === 'live-photo'
-              ? extractPhotoMetadata(file).catch(() => ({}))
-              : Promise.resolve({})
-          )
-        ),
+        Promise.all(files.map(() => Promise.resolve({}))),
       ]);
       const newAtt = files.map((file, index) => {
         const previewUrl = previewUrls[index];
-        const id = `${type}-${Date.now()}-${index}-${file.name}`;
+        const id = createAttachmentId(type, file);
         return {
           id,
           file,
@@ -479,24 +513,19 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
     }
   };
 
-  const handleLiveMotionSelect = async (event, attachmentIndex) => {
-    const motionFile = Array.from(event.target.files || [])[0];
-    event.target.value = '';
-    if (!motionFile) return;
-    if (!motionFile.type?.startsWith('video/') && !/\.mov$/i.test(motionFile.name || '')) {
+  const attachLiveMotionFile = async (motionFile, attachmentId) => {
+    if (!motionFile || !attachmentId) return false;
+    if (!isLivePhotoMotion(motionFile)) {
       toast.error('实况照片的动态片段需要选择视频文件');
-      return;
+      return false;
     }
-
-    const attachment = attachments[attachmentIndex];
-    if (!attachment || attachment.type !== 'live-photo') return;
 
     try {
       const motionUrl = await readFileAsDataUrl(motionFile);
       const needsCompatibilityTranscode = /\.mov$/i.test(motionFile.name || '') || /quicktime/i.test(motionFile.type || '');
       const shouldCompress = motionFile.size >= VIDEO_COMPRESSION_THRESHOLD || needsCompatibilityTranscode;
-      setAttachments((prev) => prev.map((att, index) => (
-        index === attachmentIndex
+      setAttachments((prev) => prev.map((att) => (
+        att.id === attachmentId && att.type === 'live-photo'
           ? {
               ...att,
               motionFile,
@@ -512,8 +541,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
           : att
       )));
 
-      if (!shouldCompress) return;
-      const attachmentId = attachment.id;
+      if (!shouldCompress) return true;
       setCompressingCount((count) => count + 1);
       setAttachments((prev) => prev.map((att) => (
         att.id === attachmentId
@@ -558,8 +586,59 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
       } finally {
         setCompressingCount((count) => Math.max(0, count - 1));
       }
+      return true;
     } catch (error) {
       toast.error(error.message || '动态片段读取失败');
+      return false;
+    }
+  };
+
+  const handleLiveMotionSelect = async (event, attachmentIndex) => {
+    const motionFile = Array.from(event.target.files || [])[0];
+    event.target.value = '';
+    const attachment = attachments[attachmentIndex];
+    if (!motionFile || !attachment || attachment.type !== 'live-photo') return;
+    await attachLiveMotionFile(motionFile, attachment.id);
+  };
+
+  const handleLivePhotoBundleSelect = async (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (files.length === 0) return;
+
+    const { pairs, unpairedImages, unpairedMotions, unsupported } = pairLivePhotoFiles(files);
+    if (pairs.length === 0 && unpairedImages.length === 0) {
+      toast.error('没有找到可作为实况封面的照片，请同时选择照片与对应视频');
+      return;
+    }
+
+    try {
+      const imports = [
+        ...pairs.map(({ image, motion }) => ({ image, motion })),
+        ...unpairedImages.map((image) => ({ image, motion: null })),
+      ];
+      const newAttachments = await Promise.all(
+        imports.map(({ image }) => createPhotoAttachment(image, 'live-photo'))
+      );
+      setAttachments((prev) => [...prev, ...newAttachments]);
+
+      await Promise.all(
+        imports.map(({ motion }, index) => (
+          motion ? attachLiveMotionFile(motion, newAttachments[index].id) : Promise.resolve(false)
+        ))
+      );
+
+      const missingCount = unpairedImages.length;
+      if (missingCount > 0) {
+        toast.error(`${missingCount} 张照片没有匹配到动态片段，请在预览卡中补选视频`);
+      } else {
+        toast.success(`已自动配对 ${pairs.length} 组实况照片`);
+      }
+      if (unpairedMotions.length > 0 || unsupported.length > 0) {
+        toast.error('部分文件无法配对，已跳过没有对应照片的视频或不支持的文件');
+      }
+    } catch (error) {
+      toast.error(error.message || '实况照片导入失败');
     }
   };
 
@@ -787,6 +866,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
             onTextChange={setText}
             onTagsChange={setTags}
             onFilesSelected={handleFileSelect}
+            onLivePhotoFilesSelected={handleLivePhotoBundleSelect}
             onLiveMotionSelected={handleLiveMotionSelect}
             onAttachmentMetadataChange={handleAttachmentMetadataChange}
             onRemoveAttachment={removeAttachment}

@@ -192,6 +192,18 @@ export function normalizePhotoMetadata(value = {}) {
   };
 }
 
+export function applyDefaultPhotoMetadataVisibility(value = {}) {
+  const normalized = normalizePhotoMetadata(value);
+  return normalizePhotoMetadata({
+    ...normalized,
+    showCapturedAt: Boolean(normalized.capturedAt),
+    // Location is intentionally opt-in because publishing it can reveal a
+    // private home or workplace address.
+    showLocation: false,
+    showCamera: Boolean(normalized.make || normalized.model),
+  });
+}
+
 export function getPhotoMetadataAvailability(metadata = {}) {
   const value = normalizePhotoMetadata(metadata);
   return {

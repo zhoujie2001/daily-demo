@@ -1,8 +1,20 @@
-import { MAX_UPLOAD_REQUEST_BYTES } from './uploadLimits';
+import { MAX_UPLOAD_REQUEST_BYTES } from './uploadLimits.js';
 
 const MAX_IMAGE_EDGE = 2048;
 const MIN_IMAGE_EDGE = 960;
 const JPEG_QUALITIES = [0.84, 0.76, 0.68, 0.6];
+const IMAGE_EXTENSION = /\.(?:avif|bmp|gif|heic|heif|jpe?g|png|tiff?|webp)$/i;
+const HEIC_EXTENSION = /\.(?:heic|heif)$/i;
+
+function isImageFile(file) {
+  return Boolean(file?.type?.startsWith('image/') || IMAGE_EXTENSION.test(file?.name || ''));
+}
+
+export function needsImageCompatibilityConversion(file) {
+  return Boolean(
+    /image\/(?:heic|heif)/i.test(file?.type || '') || HEIC_EXTENSION.test(file?.name || '')
+  );
+}
 
 function loadImage(file) {
   return new Promise((resolve, reject) => {
@@ -63,7 +75,10 @@ async function renderJpeg(image, width, height, quality) {
 }
 
 export async function compressImage(file) {
-  if (!file || !file.type?.startsWith('image/') || file.size <= MAX_UPLOAD_REQUEST_BYTES) {
+  if (!file || !isImageFile(file)) {
+    return file;
+  }
+  if (!needsImageCompatibilityConversion(file) && file.size <= MAX_UPLOAD_REQUEST_BYTES) {
     return file;
   }
 

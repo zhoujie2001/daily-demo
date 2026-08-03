@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { pairLivePhotoFiles } from '../src/utils/livePhotoImport.js';
+import { needsImageCompatibilityConversion } from '../src/utils/compressImage.js';
 import {
+  applyDefaultPhotoMetadataVisibility,
   formatCapturedAt,
   formatPhotoLocation,
   getPhotoMetadataAvailability,
@@ -107,6 +110,57 @@ test('unavailable metadata stays disabled and cannot be forced visible', () => {
   assert.equal(metadata.showCamera, false);
 });
 
+test('new photo metadata shows capture date and camera by default but keeps location private', () => {
+  const metadata = applyDefaultPhotoMetadataVisibility({
+    capturedAt: '2026-08-03T14:25:30',
+    latitude: 31.2304,
+    longitude: 121.4737,
+    make: 'Apple',
+    model: 'iPhone 15',
+  });
+
+  assert.equal(metadata.showCapturedAt, true);
+  assert.equal(metadata.showCamera, true);
+  assert.equal(metadata.showLocation, false);
+});
+
+test('Live Photo importer pairs Apple still and motion exports by basename', () => {
+  const image = { name: 'IMG_2139.HEIC', type: 'image/heic', lastModified: 10 };
+  const motion = { name: 'IMG_2139.MOV', type: 'video/quicktime', lastModified: 11 };
+  const result = pairLivePhotoFiles([motion, image]);
+
+  assert.equal(result.pairs.length, 1);
+  assert.equal(result.pairs[0].image, image);
+  assert.equal(result.pairs[0].motion, motion);
+  assert.equal(result.pairs[0].match, 'name');
+  assert.equal(result.unpairedImages.length, 0);
+  assert.equal(result.unpairedMotions.length, 0);
+});
+
+test('HEIC Live Photo stills are marked for browser-compatible JPEG conversion', () => {
+  assert.equal(needsImageCompatibilityConversion({ name: 'IMG_2139.HEIC', type: 'image/heic' }), true);
+  assert.equal(needsImageCompatibilityConversion({ name: 'IMG_2139.JPG', type: 'image/jpeg' }), false);
+});
+
+test('Live Photo importer only falls back to positional pairing for one unambiguous pair', () => {
+  const single = pairLivePhotoFiles([
+    { name: 'photo.jpg', type: 'image/jpeg' },
+    { name: 'motion-renamed.mov', type: 'video/quicktime' },
+  ]);
+  assert.equal(single.pairs.length, 1);
+  assert.equal(single.pairs[0].match, 'single');
+
+  const multiple = pairLivePhotoFiles([
+    { name: 'a.jpg', type: 'image/jpeg' },
+    { name: 'b.jpg', type: 'image/jpeg' },
+    { name: 'x.mov', type: 'video/quicktime' },
+    { name: 'y.mov', type: 'video/quicktime' },
+  ]);
+  assert.equal(multiple.pairs.length, 0);
+  assert.equal(multiple.unpairedImages.length, 2);
+  assert.equal(multiple.unpairedMotions.length, 2);
+});
+
 test('Daily editor pairs a still image with one motion clip and exposes disabled metadata controls', async () => {
   const [dailySource, editorSource, diarySource] = await Promise.all([
     readFile(new URL('src/components/daily/Daily.jsx', root), 'utf8'),
@@ -114,7 +168,10 @@ test('Daily editor pairs a still image with one motion clip and exposes disabled
     readFile(new URL('src/hooks/useDiary.js', root), 'utf8'),
   ]);
 
-  assert.match(editorSource, /onFilesSelected\(e, 'live-photo'\)/);
+  assert.match(editorSource, /onFilesSelected\(event, 'live-photo'\)/);
+  assert.match(editorSource, /同时选择照片和动态视频/);
+  assert.match(editorSource, /onLivePhotoFilesSelected/);
+  assert.match(editorSource, />实况</);
   assert.match(editorSource, /选择动态片段/);
   assert.match(editorSource, /disabled=\{!available\}/);
   assert.match(dailySource, /extractPhotoMetadata/);
@@ -126,12 +183,16 @@ test('Daily editor pairs a still image with one motion clip and exposes disabled
   assert.match(diarySource, /motionUrl/);
 });
 
-test('Live Photo rendering supports viewport loading, hover, touch hold, sound lightbox and fallback', async () => {
+test('Live Photo rendering supports viewport loading, hover, tap preview, sound lightbox and fallback', async () => {
   const source = await readFile(new URL('src/components/daily/LivePhoto.jsx', root), 'utf8');
   assert.match(source, /IntersectionObserver/);
   assert.match(source, /onPointerEnter/);
   assert.match(source, /onPointerDown/);
   assert.match(source, /window\.setTimeout/);
+  assert.match(source, /touchPreviewArmedRef/);
+  assert.match(source, /if \(await startPreview\(\)\) armTouchPreview\(\)/);
+  assert.match(source, /手机轻触可预览，再次轻触可全屏播放/);
+  assert.doesNotMatch(source, /长按可预览/);
   assert.match(source, /video\.muted = true/);
   assert.match(source, /activeLivePhotoStop/);
   assert.match(source, /prefers-reduced-motion: reduce/);
