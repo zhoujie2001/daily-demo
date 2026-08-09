@@ -26,6 +26,8 @@ export default function DailyEditor({
   tags = [],
   publishing = false,
   hasAttachmentErrors = false,
+  livePhotoImporting = false,
+  livePhotoImportStatus = '',
   onTextChange,
   onTagsChange,
   onFilesSelected,
@@ -43,7 +45,7 @@ export default function DailyEditor({
   const [liveImporterOpen, setLiveImporterOpen] = useState(false);
   const [soundImporterOpen, setSoundImporterOpen] = useState(false);
   const hasSoundPostcard = attachments.some((att) => att.type === 'audio');
-  const pendingLivePhotoIndex = attachments.findIndex(
+  const hasIncompleteLivePhoto = attachments.some(
     (att) => att.type === 'live-photo' && !att.motionFile && !att.motionUrl
   );
 
@@ -208,11 +210,15 @@ export default function DailyEditor({
         )}
 
         {liveImporterOpen ? (
-          <section className="editor-live-photo-importer" aria-label="导入实况照片">
+          <section
+            className="editor-live-photo-importer"
+            aria-label="导入实况照片"
+            aria-busy={livePhotoImporting}
+          >
             <div className="editor-live-photo-importer-header">
               <div>
                 <strong><CircleDot size={14} /> 添加实况照片</strong>
-                <span>封面照片与动态视频会作为同一条 Daily 内容发布</span>
+                <span>只需一个入口，封面与动态内容会合并成一个实况附件</span>
               </div>
               <button
                 type="button"
@@ -223,50 +229,32 @@ export default function DailyEditor({
               </button>
             </div>
 
-            <label className="editor-live-photo-auto-import">
+            <label className={`editor-live-photo-auto-import ${livePhotoImporting ? 'is-busy' : ''}`.trim()}>
               <input
                 type="file"
                 accept="image/*,video/*,.heic,.heif,.mov"
                 multiple
                 hidden
-                onChange={onLivePhotoFilesSelected}
+                disabled={livePhotoImporting}
+                onChange={async (event) => {
+                  const imported = await onLivePhotoFilesSelected?.(event);
+                  if (imported) setLiveImporterOpen(false);
+                }}
               />
               <span className="editor-live-photo-auto-icon"><CircleDot size={18} /></span>
               <span>
-                <strong>同时选择照片和动态视频</strong>
-                <small>支持一次选择多组；IMG_1234.HEIC/JPG 与 IMG_1234.MOV 会自动配对</small>
+                <strong>{livePhotoImporting ? '正在生成实况照片…' : '选择实况照片'}</strong>
+                <small>
+                  {livePhotoImporting
+                    ? livePhotoImportStatus || '正在读取所选内容'
+                    : '可选择 iPhone 导出的照片与 MOV；也可只选短视频，系统自动生成封面'}
+                </small>
               </span>
             </label>
-
-            <div className="editor-live-photo-divider"><span>手机无法同时选择时</span></div>
-
-            <div className="editor-live-photo-steps">
-              <label>
-                <input
-                  type="file"
-                  accept="image/*,.heic,.heif"
-                  hidden
-                  onChange={(event) => onFilesSelected(event, 'live-photo')}
-                />
-                <span>1</span>
-                <strong>选择封面照片</strong>
-              </label>
-              <label className={pendingLivePhotoIndex < 0 ? 'is-disabled' : ''}>
-                <input
-                  type="file"
-                  accept="video/*,.mov"
-                  hidden
-                  disabled={pendingLivePhotoIndex < 0}
-                  onChange={(event) => onLiveMotionSelected?.(event, pendingLivePhotoIndex)}
-                />
-                <span>2</span>
-                <strong>{pendingLivePhotoIndex < 0 ? '等待选择封面' : '选择动态片段'}</strong>
-              </label>
-            </div>
-            <p className={pendingLivePhotoIndex >= 0 ? 'is-warning' : ''}>
-              {pendingLivePhotoIndex >= 0
-                ? '这张实况照片还缺少动态片段，补选前无法发布。'
-                : '拍摄日期和相机信息默认展示；精确位置出于隐私考虑默认关闭。'}
+            <p className={hasIncompleteLivePhoto ? 'is-warning' : ''}>
+              {hasIncompleteLivePhoto
+                ? '已有实况附件缺少动态内容，请在对应预览卡中补选；新的导入不会再生成残缺附件。'
+                : '若手机浏览器只提供静态照片，它会作为普通照片加入，不会阻止发布。'}
             </p>
           </section>
         ) : null}

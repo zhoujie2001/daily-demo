@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { pairLivePhotoFiles } from '../src/utils/livePhotoImport.js';
+import {
+  createLivePhotoImportPlan,
+  pairLivePhotoFiles,
+} from '../src/utils/livePhotoImport.js';
 import { needsImageCompatibilityConversion } from '../src/utils/compressImage.js';
 import {
   applyDefaultPhotoMetadataVisibility,
@@ -161,23 +164,55 @@ test('Live Photo importer only falls back to positional pairing for one unambigu
   assert.equal(multiple.unpairedMotions.length, 2);
 });
 
-test('Daily editor pairs a still image with one motion clip and exposes disabled metadata controls', async () => {
+test('unified Live Photo import generates covers for motion-only files and never leaves incomplete attachments', () => {
+  const image = { name: 'IMG_2139.HEIC', type: 'image/heic' };
+  const pairedMotion = { name: 'IMG_2139.MOV', type: 'video/quicktime' };
+  const standaloneMotion = { name: 'clip.mov', type: 'video/quicktime' };
+  const still = { name: 'still.jpg', type: 'image/jpeg' };
+  const unsupported = { name: 'notes.txt', type: 'text/plain' };
+  const plan = createLivePhotoImportPlan([
+    image,
+    pairedMotion,
+    standaloneMotion,
+    still,
+    unsupported,
+  ]);
+
+  assert.equal(plan.livePhotos.length, 2);
+  assert.deepEqual(plan.livePhotos[0], {
+    image,
+    motion: pairedMotion,
+    match: 'name',
+  });
+  assert.deepEqual(plan.livePhotos[1], {
+    image: null,
+    motion: standaloneMotion,
+    match: 'generated-cover',
+  });
+  assert.deepEqual(plan.stillImages, [still]);
+  assert.deepEqual(plan.unsupported, [unsupported]);
+});
+
+test('Daily editor exposes one unified Live Photo input and disabled metadata controls', async () => {
   const [dailySource, editorSource, diarySource] = await Promise.all([
     readFile(new URL('src/components/daily/Daily.jsx', root), 'utf8'),
     readFile(new URL('src/components/daily/DailyEditor.jsx', root), 'utf8'),
     readFile(new URL('src/hooks/useDiary.js', root), 'utf8'),
   ]);
 
-  assert.match(editorSource, /onFilesSelected\(event, 'live-photo'\)/);
-  assert.match(editorSource, /同时选择照片和动态视频/);
+  assert.doesNotMatch(editorSource, /onFilesSelected\(event, 'live-photo'\)/);
+  assert.match(editorSource, /选择实况照片/);
   assert.match(editorSource, /onLivePhotoFilesSelected/);
   assert.match(editorSource, />实况</);
   assert.match(editorSource, /选择动态片段/);
   assert.match(editorSource, /disabled=\{!available\}/);
   assert.match(dailySource, /extractPhotoMetadata/);
-  assert.match(dailySource, /handleLiveMotionSelect/);
+  assert.match(dailySource, /createLivePhotoPosterFile/);
+  assert.match(dailySource, /createLivePhotoImportPlan/);
   assert.match(dailySource, /needsCompatibilityTranscode/);
   assert.match(dailySource, /force: needsCompatibilityTranscode/);
+  assert.match(dailySource, /motionCompatibilityFallback: true/);
+  assert.match(dailySource, /livePhotoImportState\.busy/);
   assert.match(diarySource, /uploadedImageUrl/);
   assert.match(diarySource, /uploadedMotionUrl/);
   assert.match(diarySource, /motionUrl/);
