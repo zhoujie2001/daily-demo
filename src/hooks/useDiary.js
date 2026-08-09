@@ -181,8 +181,10 @@ export function useDiary(token) {
           try {
             if (att.type === 'live-photo') {
               if (!att.motionFile) throw new Error('实况照片缺少动态片段');
-              const [uploadedImageUrl] = await uploadApi.uploadFiles(att.file, token);
-              const [uploadedMotionUrl] = await uploadApi.uploadFiles(att.motionFile, token);
+              const [uploadedImageUrl, uploadedMotionUrl] = await uploadApi.uploadFiles(
+                [att.file, att.motionFile],
+                token
+              );
               finalMedia.push(createMediaRecord(att, uploadedImageUrl, uploadedMotionUrl));
             } else {
               const [uploadedUrl] = await uploadApi.uploadFiles(att.file, token);

@@ -232,7 +232,7 @@ export default function DailyEditor({
             <label className={`editor-live-photo-auto-import ${livePhotoImporting ? 'is-busy' : ''}`.trim()}>
               <input
                 type="file"
-                accept="image/*,video/*,.heic,.heif,.mov"
+                accept="image/*,video/quicktime,.heic,.heif,.mov"
                 multiple
                 hidden
                 disabled={livePhotoImporting}
@@ -247,14 +247,14 @@ export default function DailyEditor({
                 <small>
                   {livePhotoImporting
                     ? livePhotoImportStatus || '正在读取所选内容'
-                    : '可选择 iPhone 导出的照片与 MOV；也可只选短视频，系统自动生成封面'}
+                    : '一次同时选择同名照片原片与 MOV，例如 IMG_1234.HEIC + IMG_1234.MOV'}
                 </small>
               </span>
             </label>
             <p className={hasIncompleteLivePhoto ? 'is-warning' : ''}>
               {hasIncompleteLivePhoto
                 ? '已有实况附件缺少动态内容，请在对应预览卡中补选；新的导入不会再生成残缺附件。'
-                : '若手机浏览器只提供静态照片，它会作为普通照片加入，不会阻止发布。'}
+                : '两个文件必须来自同一张 Apple 实况照片且名称相同；单独图片或视频请使用对应的普通入口。'}
             </p>
           </section>
         ) : null}

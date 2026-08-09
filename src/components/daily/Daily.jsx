@@ -17,7 +17,6 @@ import {
 } from '../../utils/photoMetadata';
 import {
   createLivePhotoImportPlan,
-  createLivePhotoPosterFile,
   isLivePhotoMotion,
 } from '../../utils/livePhotoImport';
 import { inspectSoundPostcard } from '../../utils/soundPostcard';
@@ -664,18 +663,11 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
     itemIndex,
     itemCount
   ) => {
+    if (!image || !motion) throw new Error('实况原片必须同时包含同名照片与 MOV');
     const preparedMotion = await prepareLivePhotoMotion(motion, itemIndex, itemCount);
-    let coverFile = image;
-    if (!coverFile) {
-      setLivePhotoImportState({
-        busy: true,
-        status: `正在为第 ${itemIndex + 1}/${itemCount} 个动态内容生成封面`,
-      });
-      coverFile = await createLivePhotoPosterFile(preparedMotion);
-    }
 
     const [attachment, motionUrl] = await Promise.all([
-      createPhotoAttachment(coverFile, 'live-photo'),
+      createPhotoAttachment(image, 'live-photo'),
       readFileAsDataUrl(preparedMotion),
     ]);
     return {
@@ -697,9 +689,22 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
     event.target.value = '';
     if (files.length === 0) return false;
 
-    const { livePhotos, stillImages, unsupported } = createLivePhotoImportPlan(files);
-    if (livePhotos.length === 0 && stillImages.length === 0) {
-      toast.error('没有找到可用的照片或动态内容');
+    const {
+      livePhotos,
+      unpairedImages,
+      unpairedMotions,
+      unsupported,
+    } = createLivePhotoImportPlan(files);
+    if (livePhotos.length === 0) {
+      if (unpairedImages.length > 0 && unpairedMotions.length > 0) {
+        toast.error('照片与 MOV 文件名不匹配；请选择同一张实况导出的同名原片');
+      } else if (unpairedMotions.length > 0) {
+        toast.error('单独视频不会包装成实况，请使用“视频”入口；实况需要同时选择同名照片与 MOV');
+      } else if (unpairedImages.length > 0) {
+        toast.error('只读取到静态照片；真实实况需要同时选择同名照片与 MOV');
+      } else {
+        toast.error('没有找到可配对的实况原片');
+      }
       return false;
     }
 
@@ -721,22 +726,16 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
         }
       }
 
-      if (stillImages.length > 0) {
-        setLivePhotoImportState({ busy: true, status: '正在加入浏览器提供的静态照片' });
-        const staticAttachments = await Promise.all(
-          stillImages.map((image) => createPhotoAttachment(image, 'image'))
-        );
-        newAttachments.push(...staticAttachments);
-      }
-
       if (newAttachments.length > 0) {
         setAttachments((prev) => [...prev, ...newAttachments]);
       }
       if (livePhotos.length > 0 && failedCount === 0) {
         toast.success(`已加入 ${livePhotos.length} 个完整实况照片`);
       }
-      if (stillImages.length > 0) {
-        toast.error(`浏览器只提供了 ${stillImages.length} 张静态照片，已按普通照片加入，不会阻止发布`);
+      if (unpairedImages.length > 0 || unpairedMotions.length > 0) {
+        toast.error(
+          `已忽略 ${unpairedImages.length} 张未配对照片和 ${unpairedMotions.length} 个未配对 MOV`
+        );
       }
       if (unsupported.length > 0) {
         toast.error(`已跳过 ${unsupported.length} 个不支持的文件`);

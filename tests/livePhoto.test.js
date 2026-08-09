@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   createLivePhotoImportPlan,
+  isLivePhotoMotion,
   pairLivePhotoFiles,
 } from '../src/utils/livePhotoImport.js';
 import { needsImageCompatibilityConversion } from '../src/utils/compressImage.js';
@@ -145,13 +146,14 @@ test('HEIC Live Photo stills are marked for browser-compatible JPEG conversion',
   assert.equal(needsImageCompatibilityConversion({ name: 'IMG_2139.JPG', type: 'image/jpeg' }), false);
 });
 
-test('Live Photo importer only falls back to positional pairing for one unambiguous pair', () => {
+test('Live Photo importer rejects arbitrary image and video combinations', () => {
   const single = pairLivePhotoFiles([
     { name: 'photo.jpg', type: 'image/jpeg' },
     { name: 'motion-renamed.mov', type: 'video/quicktime' },
   ]);
-  assert.equal(single.pairs.length, 1);
-  assert.equal(single.pairs[0].match, 'single');
+  assert.equal(single.pairs.length, 0);
+  assert.equal(single.unpairedImages.length, 1);
+  assert.equal(single.unpairedMotions.length, 1);
 
   const multiple = pairLivePhotoFiles([
     { name: 'a.jpg', type: 'image/jpeg' },
@@ -164,7 +166,7 @@ test('Live Photo importer only falls back to positional pairing for one unambigu
   assert.equal(multiple.unpairedMotions.length, 2);
 });
 
-test('unified Live Photo import generates covers for motion-only files and never leaves incomplete attachments', () => {
+test('Live Photo import only accepts same-basename Apple still and MOV resources', () => {
   const image = { name: 'IMG_2139.HEIC', type: 'image/heic' };
   const pairedMotion = { name: 'IMG_2139.MOV', type: 'video/quicktime' };
   const standaloneMotion = { name: 'clip.mov', type: 'video/quicktime' };
@@ -178,19 +180,17 @@ test('unified Live Photo import generates covers for motion-only files and never
     unsupported,
   ]);
 
-  assert.equal(plan.livePhotos.length, 2);
+  assert.equal(plan.livePhotos.length, 1);
   assert.deepEqual(plan.livePhotos[0], {
     image,
     motion: pairedMotion,
     match: 'name',
   });
-  assert.deepEqual(plan.livePhotos[1], {
-    image: null,
-    motion: standaloneMotion,
-    match: 'generated-cover',
-  });
-  assert.deepEqual(plan.stillImages, [still]);
+  assert.deepEqual(plan.unpairedImages, [still]);
+  assert.deepEqual(plan.unpairedMotions, [standaloneMotion]);
   assert.deepEqual(plan.unsupported, [unsupported]);
+  assert.equal(isLivePhotoMotion({ name: 'ordinary.mp4', type: 'video/mp4' }), false);
+  assert.equal(isLivePhotoMotion({ name: 'IMG_2139.MOV', type: 'video/quicktime' }), true);
 });
 
 test('Daily editor exposes one unified Live Photo input and disabled metadata controls', async () => {
@@ -207,14 +207,19 @@ test('Daily editor exposes one unified Live Photo input and disabled metadata co
   assert.match(editorSource, /选择动态片段/);
   assert.match(editorSource, /disabled=\{!available\}/);
   assert.match(dailySource, /extractPhotoMetadata/);
-  assert.match(dailySource, /createLivePhotoPosterFile/);
+  assert.doesNotMatch(dailySource, /createLivePhotoPosterFile/);
   assert.match(dailySource, /createLivePhotoImportPlan/);
   assert.match(dailySource, /needsCompatibilityTranscode/);
   assert.match(dailySource, /force: needsCompatibilityTranscode/);
   assert.match(dailySource, /motionCompatibilityFallback: true/);
   assert.match(dailySource, /livePhotoImportState\.busy/);
+  assert.match(dailySource, /单独视频不会包装成实况/);
+  assert.doesNotMatch(dailySource, /已按普通照片加入/);
+  assert.match(editorSource, /同名照片原片与 MOV/);
+  assert.doesNotMatch(editorSource, /存储为视频/);
   assert.match(diarySource, /uploadedImageUrl/);
   assert.match(diarySource, /uploadedMotionUrl/);
+  assert.match(diarySource, /uploadFiles\(\s*\[att\.file, att\.motionFile\]/);
   assert.match(diarySource, /motionUrl/);
 });
 
