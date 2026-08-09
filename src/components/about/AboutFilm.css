@@ -90,59 +90,6 @@
   content: '';
 }
 
-.about-film-control {
-  position: absolute;
-  z-index: 4;
-  right: 20px;
-  bottom: 18px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 38px;
-  padding: 8px 12px;
-  overflow: hidden;
-  color: rgba(55, 45, 36, 0.84);
-  font-family: var(--font-sans);
-  font-size: 0.74rem;
-  background: rgba(252, 249, 243, 0.78);
-  border: 1px solid rgba(90, 73, 57, 0.18);
-  border-radius: 999px;
-  box-shadow: 0 8px 25px rgba(52, 42, 33, 0.1);
-  backdrop-filter: blur(12px);
-  cursor: pointer;
-  transition:
-    background 180ms ease,
-    transform 180ms ease;
-}
-
-.about-film-control:hover {
-  background: rgba(255, 252, 247, 0.94);
-  transform: translateY(-1px);
-}
-
-.about-film-control-film {
-  color: var(--accent-deep, #9b5c43);
-}
-
-.about-film-control-progress {
-  position: absolute;
-  right: 10px;
-  bottom: 3px;
-  left: 10px;
-  height: 1px;
-  overflow: hidden;
-  background: rgba(92, 75, 61, 0.12);
-  border-radius: 999px;
-}
-
-.about-film-control-progress span {
-  display: block;
-  width: calc(var(--about-film-progress, 0) * 100%);
-  height: 100%;
-  background: var(--accent, #b26845);
-  transition: width 180ms linear;
-}
-
 @media (max-width: 700px) {
   .about-film {
     border-radius: 18px;
@@ -152,14 +99,6 @@
   .about-film-video {
     object-position: center 52%;
     transform: scale(1.025);
-  }
-
-  .about-film-video {
-    visibility: hidden;
-  }
-
-  .about-film.is-user-activated .about-film-video {
-    visibility: visible;
   }
 
   .about-film-wash {
@@ -178,26 +117,11 @@
       );
   }
 
-  .about-film-control {
-    right: 14px;
-    bottom: 14px;
-    min-height: 36px;
-    padding: 7px 10px;
-    background: rgba(252, 249, 243, 0.88);
-  }
-
-  .about-film-control-copy {
-    max-width: 112px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .about-film-poster,
-  .about-film-video,
-  .about-film-control {
+  .about-film-video {
     transition: none;
   }
 }

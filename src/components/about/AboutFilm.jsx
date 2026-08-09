@@ -1,31 +1,21 @@
 import React, {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from 'react';
-import { Film, Pause, Play, RotateCcw } from 'lucide-react';
 import {
   ABOUT_FILMS,
-  getAboutFilmProgress,
   shouldAutoplayAboutFilm,
   shouldCrossfadeAboutFilm,
 } from '../../utils/aboutFilm';
 import './AboutFilm.css';
 
-const DESKTOP_QUERY = '(min-width: 701px)';
 const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 
 function readPlaybackPolicy() {
-  const connection = navigator.connection
-    || navigator.mozConnection
-    || navigator.webkitConnection;
   return {
-    desktop: window.matchMedia(DESKTOP_QUERY).matches,
     reducedMotion: window.matchMedia(REDUCED_MOTION_QUERY).matches,
-    saveData: Boolean(connection?.saveData),
-    effectiveType: connection?.effectiveType || '',
   };
 }
 
@@ -33,27 +23,13 @@ export default function AboutFilm({ onVisibilityChange }) {
   const sectionRef = useRef(null);
   const videoRefs = useRef([]);
   const transitionStartedRef = useRef(false);
-  const [policy, setPolicy] = useState(() => ({
-    desktop: false,
-    reducedMotion: false,
-    saveData: false,
-    effectiveType: '',
-  }));
+  const [policy, setPolicy] = useState(() => ({ reducedMotion: false }));
   const [activeIndex, setActiveIndex] = useState(0);
-  const [durations, setDurations] = useState([0, 0]);
   const [inView, setInView] = useState(true);
   const [ready, setReady] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const [manualPaused, setManualPaused] = useState(false);
-  const [userActivated, setUserActivated] = useState(false);
   const [ended, setEnded] = useState(false);
-  const [progress, setProgress] = useState(0);
 
-  const autoPlayEnabled = useMemo(
-    () => shouldAutoplayAboutFilm(policy),
-    [policy]
-  );
-  const motionEnabled = autoPlayEnabled || userActivated;
+  const motionEnabled = shouldAutoplayAboutFilm(policy);
 
   const pauseAll = useCallback(() => {
     videoRefs.current.forEach((video) => video?.pause());
@@ -71,32 +47,22 @@ export default function AboutFilm({ onVisibilityChange }) {
   }, []);
 
   useEffect(() => {
-    const desktopQuery = window.matchMedia(DESKTOP_QUERY);
     const motionQuery = window.matchMedia(REDUCED_MOTION_QUERY);
-    const connection = navigator.connection
-      || navigator.mozConnection
-      || navigator.webkitConnection;
     const updatePolicy = () => setPolicy(readPlaybackPolicy());
 
     updatePolicy();
-    desktopQuery.addEventListener?.('change', updatePolicy);
     motionQuery.addEventListener?.('change', updatePolicy);
-    connection?.addEventListener?.('change', updatePolicy);
-    return () => {
-      desktopQuery.removeEventListener?.('change', updatePolicy);
-      motionQuery.removeEventListener?.('change', updatePolicy);
-      connection?.removeEventListener?.('change', updatePolicy);
-    };
+    return () => motionQuery.removeEventListener?.('change', updatePolicy);
   }, []);
 
   useEffect(() => {
-    if (!autoPlayEnabled) return;
+    if (!motionEnabled) return;
     videoRefs.current.forEach((video) => {
       if (!video) return;
       video.preload = 'auto';
       video.load();
     });
-  }, [autoPlayEnabled]);
+  }, [motionEnabled]);
 
   useEffect(() => {
     const section = sectionRef.current;
@@ -122,27 +88,16 @@ export default function AboutFilm({ onVisibilityChange }) {
   useEffect(() => {
     const handleVisibility = () => {
       if (document.hidden) pauseAll();
-      else if (inView && motionEnabled && !manualPaused && !ended) {
-        playAt(activeIndex);
-      }
+      else if (inView && motionEnabled && !ended) playAt(activeIndex);
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [activeIndex, ended, inView, manualPaused, motionEnabled, pauseAll, playAt]);
+  }, [activeIndex, ended, inView, motionEnabled, pauseAll, playAt]);
 
   useEffect(() => {
-    if (inView && motionEnabled && !manualPaused && !ended) {
-      playAt(activeIndex);
-    } else {
-      pauseAll();
-    }
-  }, [activeIndex, ended, inView, manualPaused, motionEnabled, pauseAll, playAt]);
-
-  const updateDuration = (index, duration) => {
-    setDurations((current) => current.map((value, itemIndex) => (
-      itemIndex === index ? duration : value
-    )));
-  };
+    if (inView && motionEnabled && !ended) playAt(activeIndex);
+    else pauseAll();
+  }, [activeIndex, ended, inView, motionEnabled, pauseAll, playAt]);
 
   const beginSecondFilm = async () => {
     if (transitionStartedRef.current) return;
@@ -155,7 +110,6 @@ export default function AboutFilm({ onVisibilityChange }) {
 
   const handleTimeUpdate = (index, event) => {
     const { currentTime, duration } = event.currentTarget;
-    setProgress(getAboutFilmProgress(index, currentTime, durations));
     if (
       motionEnabled
       && shouldCrossfadeAboutFilm({ index, currentTime, duration })
@@ -170,47 +124,7 @@ export default function AboutFilm({ onVisibilityChange }) {
       return;
     }
     setEnded(true);
-    setPlaying(false);
-    setProgress(1);
   };
-
-  const restart = async () => {
-    pauseAll();
-    transitionStartedRef.current = false;
-    videoRefs.current.forEach((video) => {
-      if (video) video.currentTime = 0;
-    });
-    setActiveIndex(0);
-    setEnded(false);
-    setProgress(0);
-    setManualPaused(false);
-    setUserActivated(true);
-    await playAt(0);
-  };
-
-  const togglePlayback = async () => {
-    setUserActivated(true);
-    if (ended) {
-      await restart();
-      return;
-    }
-    if (playing) {
-      setManualPaused(true);
-      pauseAll();
-      return;
-    }
-    setManualPaused(false);
-    await playAt(activeIndex);
-  };
-
-  const controlLabel = ended
-    ? '重新播放背景短片'
-    : playing
-      ? '暂停背景短片'
-      : motionEnabled
-        ? '继续播放背景短片'
-        : '播放背景短片';
-  const ControlIcon = ended ? RotateCcw : playing ? Pause : Play;
 
   return (
     <div
@@ -219,10 +133,8 @@ export default function AboutFilm({ onVisibilityChange }) {
         'about-film',
         ready ? 'is-ready' : '',
         motionEnabled ? 'is-motion-enabled' : '',
-        userActivated ? 'is-user-activated' : '',
         ended ? 'is-ended' : '',
       ].filter(Boolean).join(' ')}
-      style={{ '--about-film-progress': progress }}
       data-active-film={ABOUT_FILMS[activeIndex].id}
     >
       <picture className="about-film-poster" aria-hidden="true">
@@ -247,18 +159,12 @@ export default function AboutFilm({ onVisibilityChange }) {
               activeIndex === index ? 'is-active' : '',
             ].filter(Boolean).join(' ')}
             src={film.src}
+            autoPlay={index === 0 && motionEnabled}
             muted
             playsInline
-            preload="metadata"
+            preload="auto"
             poster={index === 0 ? '/media/about/poster-desktop.webp' : undefined}
             onCanPlay={() => index === 0 && setReady(true)}
-            onPlay={() => setPlaying(true)}
-            onPause={(event) => {
-              if (event.currentTarget.classList.contains('is-active')) {
-                setPlaying(false);
-              }
-            }}
-            onLoadedMetadata={(event) => updateDuration(index, event.currentTarget.duration)}
             onTimeUpdate={(event) => handleTimeUpdate(index, event)}
             onEnded={() => handleEnded(index)}
           />
@@ -266,29 +172,6 @@ export default function AboutFilm({ onVisibilityChange }) {
       </div>
 
       <div className="about-film-wash" aria-hidden="true" />
-
-      <button
-        type="button"
-        className="about-film-control"
-        onClick={togglePlayback}
-        aria-label={controlLabel}
-        title={controlLabel}
-      >
-        <Film size={14} aria-hidden="true" className="about-film-control-film" />
-        <span className="about-film-control-copy">
-          {ABOUT_FILMS[activeIndex].label}
-        </span>
-        <ControlIcon size={14} aria-hidden="true" />
-        <span className="about-film-control-progress" aria-hidden="true">
-          <span />
-        </span>
-      </button>
-
-      <span className="sr-only" aria-live="polite">
-        {playing
-          ? `正在静音播放《${ABOUT_FILMS[activeIndex].label}》`
-          : `背景短片《${ABOUT_FILMS[activeIndex].label}》已暂停`}
-      </span>
     </div>
   );
 }
