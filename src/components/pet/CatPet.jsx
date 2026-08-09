@@ -80,7 +80,7 @@ function StaticFallback() {
   );
 }
 
-export default function CatPet() {
+export default function CatPet({ suspended = false }) {
   const containerRef = useRef(null);
   const stageRef = useRef(null);
   const canvasRef = useRef(null);
@@ -153,6 +153,7 @@ export default function CatPet() {
   useEffect(() => {
     if (
       hidden ||
+      suspended ||
       !configReady ||
       !canvasRef.current ||
       !baseImageRef.current ||
@@ -703,7 +704,7 @@ export default function CatPet() {
       reactionRef.current = () => {};
       player.destroy();
     };
-  }, [config, configReady, hidden]);
+  }, [config, configReady, hidden, suspended]);
 
   useEffect(
     () => () => {
@@ -832,7 +833,7 @@ export default function CatPet() {
     }
   };
 
-  if (!config.enabled) return null;
+  if (!config.enabled || suspended) return null;
 
   if (hidden) {
     return (

@@ -225,6 +225,29 @@ select {
   padding: 24px 0 var(--section-space);
 }
 
+.content > .about-section.about-film-section {
+  min-height: clamp(440px, 56vh, 610px);
+  isolation: isolate;
+  justify-content: center;
+  padding: clamp(42px, 7vw, 82px);
+  overflow: hidden;
+  border-top: 0;
+  border-radius: 24px;
+  box-sizing: border-box;
+}
+
+.about-film-content {
+  position: relative;
+  z-index: 3;
+  max-width: min(760px, 78%);
+  pointer-events: none;
+}
+
+.about-film-content h1 {
+  pointer-events: auto;
+  text-shadow: 0 1px 18px rgba(255, 252, 246, 0.34);
+}
+
 #about h1 {
   max-width: 880px;
   margin: 0;
@@ -911,6 +934,11 @@ select {
     padding-top: 32px;
   }
 
+  .content > .about-section.about-film-section {
+    min-height: 520px;
+    padding: 48px 46px;
+  }
+
   #about h1 {
     font-size: clamp(3.2rem, 8.5vw, 4.5rem);
   }
@@ -947,6 +975,16 @@ select {
   .content > .about-section {
     min-height: 420px;
     padding-top: 18px;
+  }
+
+  .content > .about-section.about-film-section {
+    min-height: 440px;
+    padding: 30px 24px 78px;
+    border-radius: 18px;
+  }
+
+  .about-film-content {
+    max-width: 100%;
   }
 
   #about h1 {

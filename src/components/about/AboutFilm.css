@@ -1,0 +1,203 @@
+.about-film {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  border: 1px solid rgba(99, 84, 68, 0.12);
+  border-radius: 24px;
+  background: #e8ddd0;
+  box-shadow:
+    0 30px 70px rgba(64, 52, 39, 0.1),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.32);
+}
+
+.about-film-poster,
+.about-film-videos,
+.about-film-video,
+.about-film-poster img,
+.about-film-wash {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.about-film-poster img,
+.about-film-video {
+  display: block;
+  object-fit: cover;
+  object-position: 50% 50%;
+  transform: scale(1.055);
+}
+
+.about-film-poster {
+  z-index: 0;
+  opacity: 1;
+  transition: opacity 700ms ease;
+}
+
+.about-film-videos {
+  z-index: 1;
+}
+
+.about-film-video {
+  opacity: 0;
+  filter: saturate(0.78) contrast(0.92) brightness(0.9);
+  transition: opacity 1.15s ease;
+  pointer-events: none;
+}
+
+.about-film.is-ready.is-motion-enabled .about-film-poster {
+  opacity: 0;
+}
+
+.about-film.is-motion-enabled .about-film-video.is-active {
+  opacity: 1;
+}
+
+.about-film-wash {
+  z-index: 2;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(248, 244, 236, 0.93) 0%,
+      rgba(248, 244, 236, 0.78) 32%,
+      rgba(248, 244, 236, 0.46) 54%,
+      rgba(248, 244, 236, 0.12) 80%,
+      rgba(248, 244, 236, 0.04) 100%
+    ),
+    linear-gradient(
+      0deg,
+      rgba(248, 244, 236, 0.82) 0%,
+      rgba(248, 244, 236, 0.26) 24%,
+      transparent 48%
+    );
+}
+
+.about-film-wash::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: min(220px, 24%);
+  height: 90px;
+  background: radial-gradient(
+    ellipse at right bottom,
+    rgba(248, 244, 236, 0.96),
+    rgba(248, 244, 236, 0.52) 38%,
+    rgba(248, 244, 236, 0) 76%
+  );
+  content: '';
+}
+
+.about-film-control {
+  position: absolute;
+  z-index: 4;
+  right: 20px;
+  bottom: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 12px;
+  overflow: hidden;
+  color: rgba(55, 45, 36, 0.84);
+  font-family: var(--font-sans);
+  font-size: 0.74rem;
+  background: rgba(252, 249, 243, 0.78);
+  border: 1px solid rgba(90, 73, 57, 0.18);
+  border-radius: 999px;
+  box-shadow: 0 8px 25px rgba(52, 42, 33, 0.1);
+  backdrop-filter: blur(12px);
+  cursor: pointer;
+  transition:
+    background 180ms ease,
+    transform 180ms ease;
+}
+
+.about-film-control:hover {
+  background: rgba(255, 252, 247, 0.94);
+  transform: translateY(-1px);
+}
+
+.about-film-control-film {
+  color: var(--accent-deep, #9b5c43);
+}
+
+.about-film-control-progress {
+  position: absolute;
+  right: 10px;
+  bottom: 3px;
+  left: 10px;
+  height: 1px;
+  overflow: hidden;
+  background: rgba(92, 75, 61, 0.12);
+  border-radius: 999px;
+}
+
+.about-film-control-progress span {
+  display: block;
+  width: calc(var(--about-film-progress, 0) * 100%);
+  height: 100%;
+  background: var(--accent, #b26845);
+  transition: width 180ms linear;
+}
+
+@media (max-width: 700px) {
+  .about-film {
+    border-radius: 18px;
+  }
+
+  .about-film-poster img,
+  .about-film-video {
+    object-position: center 52%;
+    transform: scale(1.025);
+  }
+
+  .about-film-video {
+    visibility: hidden;
+  }
+
+  .about-film.is-user-activated .about-film-video {
+    visibility: visible;
+  }
+
+  .about-film-wash {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(248, 244, 236, 0.72) 0%,
+        rgba(248, 244, 236, 0.26) 35%,
+        rgba(248, 244, 236, 0.58) 72%,
+        rgba(248, 244, 236, 0.9) 100%
+      ),
+      linear-gradient(
+        90deg,
+        rgba(248, 244, 236, 0.56),
+        rgba(248, 244, 236, 0.08) 76%
+      );
+  }
+
+  .about-film-control {
+    right: 14px;
+    bottom: 14px;
+    min-height: 36px;
+    padding: 7px 10px;
+    background: rgba(252, 249, 243, 0.88);
+  }
+
+  .about-film-control-copy {
+    max-width: 112px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .about-film-poster,
+  .about-film-video,
+  .about-film-control {
+    transition: none;
+  }
+}

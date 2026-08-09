@@ -45,7 +45,7 @@ test('主站挂载视频版阿丽莎并保留静态降级图', async () => {
     ]);
 
   assert.match(appSource, /import CatPet/);
-  assert.match(appSource, /<CatPet \/>/);
+  assert.match(appSource, /<CatPet suspended=\{aboutFilmVisible\} \/>/);
   assert.match(componentSource, /StableVideoPetPlayer/);
   assert.match(componentSource, /<canvas/);
   assert.equal((componentSource.match(/<video/g) ?? []).length, 2);

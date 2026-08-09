@@ -32,6 +32,7 @@ function AppInner() {
   const [networkAlertOpen, setNetworkAlertOpen] = useState(false);
   const [networkRetrying, setNetworkRetrying] = useState(false);
   const [viewCount, setViewCount] = useState(null);
+  const [aboutFilmVisible, setAboutFilmVisible] = useState(true);
   const hasShownNetworkAlertRef = useRef(false);
   const hasCheckedNetworkRef = useRef(false);
 
@@ -119,7 +120,7 @@ function AppInner() {
         onRetry={() => runBackendCheck({ showDialogOnFail: true })}
       />
       <AdminLogin open={showLogin} onClose={closeLogin} onLogin={handleLogin} />
-      <CatPet />
+      <CatPet suspended={aboutFilmVisible} />
 
       <Sidebar
         isAdmin={isAdmin}
@@ -130,7 +131,11 @@ function AppInner() {
       />
 
       <main className="content">
-        <About isAdmin={isAdmin} onRequestLogin={openLogin} />
+        <About
+          isAdmin={isAdmin}
+          onRequestLogin={openLogin}
+          onFilmVisibilityChange={setAboutFilmVisible}
+        />
 
         <Daily
           isAdmin={isAdmin}
