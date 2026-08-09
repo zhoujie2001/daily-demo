@@ -11,10 +11,6 @@ export const ABOUT_FILMS = Object.freeze([
   }),
 ]);
 
-export function shouldAutoplayAboutFilm({ reducedMotion = false } = {}) {
-  return !reducedMotion;
-}
-
 export function shouldCrossfadeAboutFilm({
   index,
   currentTime,

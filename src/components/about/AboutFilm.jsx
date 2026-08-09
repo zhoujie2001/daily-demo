@@ -6,30 +6,18 @@ import React, {
 } from 'react';
 import {
   ABOUT_FILMS,
-  shouldAutoplayAboutFilm,
   shouldCrossfadeAboutFilm,
 } from '../../utils/aboutFilm';
 import './AboutFilm.css';
-
-const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
-
-function readPlaybackPolicy() {
-  return {
-    reducedMotion: window.matchMedia(REDUCED_MOTION_QUERY).matches,
-  };
-}
 
 export default function AboutFilm({ onVisibilityChange }) {
   const sectionRef = useRef(null);
   const videoRefs = useRef([]);
   const transitionStartedRef = useRef(false);
-  const [policy, setPolicy] = useState(() => ({ reducedMotion: false }));
+  const playbackRetryRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [inView, setInView] = useState(true);
   const [ready, setReady] = useState(false);
-  const [ended, setEnded] = useState(false);
-
-  const motionEnabled = shouldAutoplayAboutFilm(policy);
 
   const pauseAll = useCallback(() => {
     videoRefs.current.forEach((video) => video?.pause());
@@ -38,6 +26,9 @@ export default function AboutFilm({ onVisibilityChange }) {
   const playAt = useCallback(async (index) => {
     const video = videoRefs.current[index];
     if (!video) return false;
+    video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
     try {
       await video.play();
       return true;
@@ -46,23 +37,14 @@ export default function AboutFilm({ onVisibilityChange }) {
     }
   }, []);
 
-  useEffect(() => {
-    const motionQuery = window.matchMedia(REDUCED_MOTION_QUERY);
-    const updatePolicy = () => setPolicy(readPlaybackPolicy());
-
-    updatePolicy();
-    motionQuery.addEventListener?.('change', updatePolicy);
-    return () => motionQuery.removeEventListener?.('change', updatePolicy);
-  }, []);
-
-  useEffect(() => {
-    if (!motionEnabled) return;
-    videoRefs.current.forEach((video) => {
-      if (!video) return;
-      video.preload = 'auto';
-      video.load();
-    });
-  }, [motionEnabled]);
+  const ensurePlayback = useCallback(async (index) => {
+    window.clearTimeout(playbackRetryRef.current);
+    const started = await playAt(index);
+    if (!started && !document.hidden) {
+      playbackRetryRef.current = window.setTimeout(() => playAt(index), 350);
+    }
+    return started;
+  }, [playAt]);
 
   useEffect(() => {
     const section = sectionRef.current;
@@ -88,31 +70,52 @@ export default function AboutFilm({ onVisibilityChange }) {
   useEffect(() => {
     const handleVisibility = () => {
       if (document.hidden) pauseAll();
-      else if (inView && motionEnabled && !ended) playAt(activeIndex);
+      else if (inView) ensurePlayback(activeIndex);
+    };
+    const handlePageShow = () => {
+      if (inView) ensurePlayback(activeIndex);
     };
     document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [activeIndex, ended, inView, motionEnabled, pauseAll, playAt]);
+    window.addEventListener('pageshow', handlePageShow);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('pageshow', handlePageShow);
+    };
+  }, [activeIndex, ensurePlayback, inView, pauseAll]);
 
   useEffect(() => {
-    if (inView && motionEnabled && !ended) playAt(activeIndex);
+    if (inView) ensurePlayback(activeIndex);
     else pauseAll();
-  }, [activeIndex, ended, inView, motionEnabled, pauseAll, playAt]);
+    return () => window.clearTimeout(playbackRetryRef.current);
+  }, [activeIndex, ensurePlayback, inView, pauseAll]);
 
   const beginSecondFilm = async () => {
     if (transitionStartedRef.current) return;
     transitionStartedRef.current = true;
     const second = videoRefs.current[1];
     if (second) second.currentTime = 0;
-    setActiveIndex(1);
-    await playAt(1);
+    const started = await ensurePlayback(1);
+    if (started) {
+      setActiveIndex(1);
+    } else {
+      transitionStartedRef.current = false;
+    }
+  };
+
+  const restartSequence = async () => {
+    pauseAll();
+    transitionStartedRef.current = false;
+    videoRefs.current.forEach((video) => {
+      if (video) video.currentTime = 0;
+    });
+    setActiveIndex(0);
+    await ensurePlayback(0);
   };
 
   const handleTimeUpdate = (index, event) => {
     const { currentTime, duration } = event.currentTarget;
     if (
-      motionEnabled
-      && shouldCrossfadeAboutFilm({ index, currentTime, duration })
+      shouldCrossfadeAboutFilm({ index, currentTime, duration })
     ) {
       beginSecondFilm();
     }
@@ -123,7 +126,12 @@ export default function AboutFilm({ onVisibilityChange }) {
       beginSecondFilm();
       return;
     }
-    setEnded(true);
+    restartSequence();
+  };
+
+  const handleMediaReady = (index) => {
+    if (index === 0) setReady(true);
+    if (index === activeIndex && inView) ensurePlayback(index);
   };
 
   return (
@@ -132,8 +140,7 @@ export default function AboutFilm({ onVisibilityChange }) {
       className={[
         'about-film',
         ready ? 'is-ready' : '',
-        motionEnabled ? 'is-motion-enabled' : '',
-        ended ? 'is-ended' : '',
+        'is-motion-enabled',
       ].filter(Boolean).join(' ')}
       data-active-film={ABOUT_FILMS[activeIndex].id}
     >
@@ -159,12 +166,14 @@ export default function AboutFilm({ onVisibilityChange }) {
               activeIndex === index ? 'is-active' : '',
             ].filter(Boolean).join(' ')}
             src={film.src}
-            autoPlay={index === 0 && motionEnabled}
+            autoPlay={index === 0}
             muted
+            defaultMuted
             playsInline
             preload="auto"
             poster={index === 0 ? '/media/about/poster-desktop.webp' : undefined}
-            onCanPlay={() => index === 0 && setReady(true)}
+            onCanPlay={() => handleMediaReady(index)}
+            onLoadedData={() => handleMediaReady(index)}
             onTimeUpdate={(event) => handleTimeUpdate(index, event)}
             onEnded={() => handleEnded(index)}
           />

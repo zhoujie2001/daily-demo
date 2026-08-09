@@ -4,20 +4,10 @@ import test from 'node:test';
 
 import {
   ABOUT_FILMS,
-  shouldAutoplayAboutFilm,
   shouldCrossfadeAboutFilm,
 } from '../src/utils/aboutFilm.js';
 
 const root = new URL('../', import.meta.url);
-
-test('桌面与移动端都自动播放，减少动态效果时使用静态封面', () => {
-  assert.equal(shouldAutoplayAboutFilm(), true);
-  assert.equal(shouldAutoplayAboutFilm({ desktop: true }), true);
-  assert.equal(shouldAutoplayAboutFilm({ desktop: false }), true);
-  assert.equal(shouldAutoplayAboutFilm({ saveData: true }), true);
-  assert.equal(shouldAutoplayAboutFilm({ effectiveType: '3g' }), true);
-  assert.equal(shouldAutoplayAboutFilm({ reducedMotion: true }), false);
-});
 
 test('第一支影片只在末尾进入交叉淡化区', () => {
   assert.equal(
@@ -57,15 +47,18 @@ test('网页背景资源存在且为可识别格式', async () => {
   }
 });
 
-test('首屏视频使用静音自动播放且不再渲染播放按钮', async () => {
+test('首屏视频使用静音自动播放、顺序循环且不再渲染播放按钮', async () => {
   const [component, styles] = await Promise.all([
     readFile(new URL('src/components/about/AboutFilm.jsx', root), 'utf8'),
     readFile(new URL('src/components/about/AboutFilm.css', root), 'utf8'),
   ]);
 
-  assert.match(component, /autoPlay=\{index === 0 && motionEnabled\}/);
+  assert.match(component, /autoPlay=\{index === 0\}/);
   assert.match(component, /muted/);
+  assert.match(component, /defaultMuted/);
   assert.match(component, /playsInline/);
+  assert.match(component, /restartSequence\(\)/);
+  assert.doesNotMatch(component, /setEnded\(true\)/);
   assert.doesNotMatch(component, /about-film-control/);
   assert.doesNotMatch(styles, /about-film-control/);
 });
