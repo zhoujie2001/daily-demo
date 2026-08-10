@@ -11,6 +11,10 @@ export const ABOUT_FILMS = Object.freeze([
   }),
 ]);
 
+export const ABOUT_FILM_RETRY_DELAYS = Object.freeze([0, 350, 900, 1800]);
+export const ABOUT_FILM_STALL_RECOVERY_MS = 1600;
+export const ABOUT_FILM_PLAY_ATTEMPT_TIMEOUT_MS = 3500;
+
 export function shouldCrossfadeAboutFilm({
   index,
   currentTime,

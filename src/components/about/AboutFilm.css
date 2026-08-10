@@ -51,7 +51,7 @@
   opacity: 0;
 }
 
-.about-film.is-motion-enabled .about-film-video.is-active {
+.about-film.is-ready.is-motion-enabled .about-film-video.is-active {
   opacity: 1;
 }
 

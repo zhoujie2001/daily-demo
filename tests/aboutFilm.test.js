@@ -4,6 +4,9 @@ import test from 'node:test';
 
 import {
   ABOUT_FILMS,
+  ABOUT_FILM_PLAY_ATTEMPT_TIMEOUT_MS,
+  ABOUT_FILM_RETRY_DELAYS,
+  ABOUT_FILM_STALL_RECOVERY_MS,
   shouldCrossfadeAboutFilm,
 } from '../src/utils/aboutFilm.js';
 
@@ -75,4 +78,47 @@ test('首屏为动态影像提供稳定海报和减少动态模式', async () =>
   assert.match(component, /poster-desktop\.webp/);
   assert.match(styles, /\.about-film\.is-motion-reduced \.about-film-poster/);
   assert.match(styles, /\.about-film\.is-motion-reduced \.about-film-videos/);
+});
+
+test('背景影片使用有界多级重试并在卡顿后自动恢复', async () => {
+  const component = await readFile(
+    new URL('src/components/about/AboutFilm.jsx', root),
+    'utf8'
+  );
+
+  assert.deepEqual(ABOUT_FILM_RETRY_DELAYS, [0, 350, 900, 1800]);
+  assert.equal(ABOUT_FILM_STALL_RECOVERY_MS, 1600);
+  assert.equal(ABOUT_FILM_PLAY_ATTEMPT_TIMEOUT_MS, 3500);
+  assert.match(component, /attemptIndex < ABOUT_FILM_RETRY_DELAYS\.length/);
+  assert.match(component, /Promise\.race\(\[/);
+  assert.match(component, /onWaiting=\{\(\) => handlePlaybackInterruption\(index\)\}/);
+  assert.match(component, /onStalled=\{\(\) => handlePlaybackInterruption\(index\)\}/);
+  assert.match(component, /onError=\{\(\) => handlePlaybackError\(index\)\}/);
+  assert.match(component, /window\.addEventListener\('online', recoverActiveFilm\)/);
+});
+
+test('只有真实播放后才隐藏海报，并可由用户交互唤醒', async () => {
+  const [component, styles] = await Promise.all([
+    readFile(new URL('src/components/about/AboutFilm.jsx', root), 'utf8'),
+    readFile(new URL('src/components/about/AboutFilm.css', root), 'utf8'),
+  ]);
+
+  assert.match(component, /onPlaying=\{\(\) => handlePlaying\(index\)\}/);
+  assert.doesNotMatch(component, /onCanPlay=/);
+  assert.doesNotMatch(component, /onLoadedData=/);
+  assert.match(component, /data-playback=\{playbackState\}/);
+  assert.match(component, /window\.addEventListener\('pointerdown', recoverOnInteraction/);
+  assert.match(component, /window\.addEventListener\('touchstart', recoverOnInteraction/);
+  assert.match(styles, /\.about-film\.is-ready\.is-motion-enabled \.about-film-video\.is-active/);
+});
+
+test('第二段影片重试成功后会切换可见影片，失败则立即重启第一段', async () => {
+  const component = await readFile(
+    new URL('src/components/about/AboutFilm.jsx', root),
+    'utf8'
+  );
+
+  assert.match(component, /if \(started\) \{[\s\S]*?commitActiveFilm\(index\)/);
+  assert.match(component, /requestPlayback\(1, \{[\s\S]*?onFailure:[\s\S]*?requestPlayback\(0, \{ reset: true \}\)/);
+  assert.match(component, /if \(index === 0\) beginSecondFilm\(\);[\s\S]*?else restartSequence\(\);/);
 });
