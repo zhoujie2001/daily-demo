@@ -10,16 +10,18 @@ export default function Links() {
         title="Links"
         description="在网络的其他角落，也可以找到我。"
       />
-      <ul className="links">
+      <ul className="links" data-pet-avoid>
         <li>
-          <Mail size={16} />
-          <a href={`mailto:${contactEmail}`}>{contactEmail}</a>
+          <a href={`mailto:${contactEmail}`}>
+            <Mail size={16} aria-hidden="true" />
+            <span>{contactEmail}</span>
+          </a>
         </li>
         {externalLinks.map((link) => (
           <li key={link.href}>
-            <ExternalLink size={16} />
             <a href={link.href} target="_blank" rel="noreferrer">
-              {link.label}
+              <ExternalLink size={16} aria-hidden="true" />
+              <span>{link.label}</span>
             </a>
           </li>
         ))}

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ImageOff } from 'lucide-react';
+import MediaPlaceholder from './MediaPlaceholder';
 
 export default function LazyImage({
   src,
@@ -7,7 +7,10 @@ export default function LazyImage({
   className = '',
   imgClassName = '',
   skeletonClassName = '',
-  errorText = '图片加载失败',
+  kind = 'image',
+  loadingText = '图片加载中',
+  errorText = '图片暂时无法显示',
+  emptyText = '暂无图片',
   threshold = 0.15,
   rootMargin = '160px',
   loading = 'lazy',
@@ -24,6 +27,7 @@ export default function LazyImage({
 
   const [loadedSrc, setLoadedSrc] = useState(null);
   const [erroredSrc, setErroredSrc] = useState(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   const shouldLoad = typeof IntersectionObserver === 'undefined' ? true : shouldLoadSrc === src;
   const loaded = loadedSrc === src;
@@ -59,17 +63,40 @@ export default function LazyImage({
     onError?.(event);
   };
 
+  const handleRetry = () => {
+    setErroredSrc(null);
+    setLoadedSrc(null);
+    setShouldLoadSrc(src);
+    setRetryKey((current) => current + 1);
+  };
+
   return (
     <div
       ref={wrapperRef}
       className={`lazy-image ${className} ${loaded ? 'is-loaded' : ''} ${errored ? 'is-error' : ''}`.trim()}
     >
-      {!loaded && !errored ? (
-        <div className={`lazy-image-skeleton ${skeletonClassName}`.trim()} aria-hidden="true" />
+      {!src ? (
+        <MediaPlaceholder
+          kind={kind}
+          state="empty"
+          compact
+          label={emptyText}
+        />
+      ) : null}
+
+      {src && !loaded && !errored ? (
+        <MediaPlaceholder
+          kind={kind}
+          state="loading"
+          compact
+          label={loadingText}
+          className={`lazy-image-skeleton ${skeletonClassName}`.trim()}
+        />
       ) : null}
 
       {shouldLoad && !errored && src ? (
         <img
+          key={`${src}-${retryKey}`}
           {...imgProps}
           src={src}
           alt={alt}
@@ -82,10 +109,14 @@ export default function LazyImage({
       ) : null}
 
       {errored ? (
-        <div className="lazy-image-error" role="img" aria-label={errorText}>
-          <ImageOff size={18} />
-          <span>{errorText}</span>
-        </div>
+        <MediaPlaceholder
+          kind={kind}
+          state="error"
+          compact
+          label={errorText}
+          className="lazy-image-error"
+          onRetry={handleRetry}
+        />
       ) : null}
     </div>
   );

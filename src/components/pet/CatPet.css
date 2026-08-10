@@ -16,7 +16,11 @@
   opacity: 0;
   transition:
     opacity 220ms ease,
-    right 420ms var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1));
+    right 420ms var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1)),
+    left 420ms var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1)),
+    bottom 420ms var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1)),
+    width 240ms var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1)),
+    height 240ms var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
 .cat-video-pet.is-ready {
@@ -308,13 +312,29 @@
 @media (max-width: 700px) {
   .cat-video-pet {
     right: max(4px, env(safe-area-inset-right));
-    bottom: max(8px, env(safe-area-inset-bottom));
+    bottom: max(var(--alisha-dock-bottom, 8px), env(safe-area-inset-bottom));
     width: var(--alisha-size-mobile);
     height: var(--alisha-size-mobile);
   }
 
   .cat-video-pet.is-avoiding-controls {
+    width: 56px;
+    height: 56px;
+  }
+
+  .cat-video-pet.is-scrolling {
+    width: 56px;
+    height: 56px;
+  }
+
+  .cat-video-pet[data-pet-dock='left'] {
+    right: auto;
+    left: max(8px, env(safe-area-inset-left));
+  }
+
+  .cat-video-pet[data-pet-dock='right'] {
     right: max(4px, env(safe-area-inset-right));
+    left: auto;
   }
 
   .cat-video-pet-stage {
@@ -322,10 +342,10 @@
   }
 
   .cat-video-pet-hide {
-    top: 15%;
-    right: 14%;
-    width: 25px;
-    height: 25px;
+    top: 8%;
+    right: 6%;
+    width: 44px;
+    height: 44px;
     opacity: 0.62;
   }
 
@@ -335,6 +355,12 @@
     max-width: 145px;
     padding: 7px 9px;
     font-size: 11px;
+  }
+
+  .cat-video-pet.is-scrolling .cat-video-pet-hide,
+  .cat-video-pet.is-avoiding-controls .cat-video-pet-hide {
+    opacity: 0;
+    pointer-events: none;
   }
 
   .cat-video-pet-restore {

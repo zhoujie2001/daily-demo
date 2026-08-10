@@ -18,6 +18,11 @@ export default function AboutFilm({ onVisibilityChange }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [inView, setInView] = useState(true);
   const [ready, setReady] = useState(false);
+  const [motionEnabled, setMotionEnabled] = useState(() =>
+    typeof window === 'undefined'
+      ? true
+      : !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
 
   const pauseAll = useCallback(() => {
     videoRefs.current.forEach((video) => video?.pause());
@@ -38,13 +43,30 @@ export default function AboutFilm({ onVisibilityChange }) {
   }, []);
 
   const ensurePlayback = useCallback(async (index) => {
+    if (!motionEnabled) return false;
     window.clearTimeout(playbackRetryRef.current);
     const started = await playAt(index);
     if (!started && !document.hidden) {
       playbackRetryRef.current = window.setTimeout(() => playAt(index), 350);
     }
     return started;
-  }, [playAt]);
+  }, [motionEnabled, playAt]);
+
+  useEffect(() => {
+    const motionQuery = window.matchMedia(
+      '(prefers-reduced-motion: reduce)'
+    );
+    const syncMotionPreference = () => {
+      const nextEnabled = !motionQuery.matches;
+      setMotionEnabled(nextEnabled);
+      if (!nextEnabled) pauseAll();
+    };
+    syncMotionPreference();
+    motionQuery.addEventListener?.('change', syncMotionPreference);
+    return () => {
+      motionQuery.removeEventListener?.('change', syncMotionPreference);
+    };
+  }, [pauseAll]);
 
   useEffect(() => {
     const section = sectionRef.current;
@@ -70,10 +92,10 @@ export default function AboutFilm({ onVisibilityChange }) {
   useEffect(() => {
     const handleVisibility = () => {
       if (document.hidden) pauseAll();
-      else if (inView) ensurePlayback(activeIndex);
+      else if (inView && motionEnabled) ensurePlayback(activeIndex);
     };
     const handlePageShow = () => {
-      if (inView) ensurePlayback(activeIndex);
+      if (inView && motionEnabled) ensurePlayback(activeIndex);
     };
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('pageshow', handlePageShow);
@@ -81,13 +103,13 @@ export default function AboutFilm({ onVisibilityChange }) {
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('pageshow', handlePageShow);
     };
-  }, [activeIndex, ensurePlayback, inView, pauseAll]);
+  }, [activeIndex, ensurePlayback, inView, motionEnabled, pauseAll]);
 
   useEffect(() => {
-    if (inView) ensurePlayback(activeIndex);
+    if (inView && motionEnabled) ensurePlayback(activeIndex);
     else pauseAll();
     return () => window.clearTimeout(playbackRetryRef.current);
-  }, [activeIndex, ensurePlayback, inView, pauseAll]);
+  }, [activeIndex, ensurePlayback, inView, motionEnabled, pauseAll]);
 
   const beginSecondFilm = async () => {
     if (transitionStartedRef.current) return;
@@ -140,9 +162,10 @@ export default function AboutFilm({ onVisibilityChange }) {
       className={[
         'about-film',
         ready ? 'is-ready' : '',
-        'is-motion-enabled',
+        motionEnabled ? 'is-motion-enabled' : 'is-motion-reduced',
       ].filter(Boolean).join(' ')}
       data-active-film={ABOUT_FILMS[activeIndex].id}
+      data-motion={motionEnabled ? 'video' : 'poster'}
     >
       <picture className="about-film-poster" aria-hidden="true">
         <source
@@ -166,11 +189,11 @@ export default function AboutFilm({ onVisibilityChange }) {
               activeIndex === index ? 'is-active' : '',
             ].filter(Boolean).join(' ')}
             src={film.src}
-            autoPlay={index === 0}
+            autoPlay={motionEnabled && index === 0}
             muted
             defaultMuted
             playsInline
-            preload="auto"
+            preload={motionEnabled ? 'auto' : 'metadata'}
             poster={index === 0 ? '/media/about/poster-desktop.webp' : undefined}
             onCanPlay={() => handleMediaReady(index)}
             onLoadedData={() => handleMediaReady(index)}

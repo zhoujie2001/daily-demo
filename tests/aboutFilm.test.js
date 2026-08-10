@@ -53,7 +53,7 @@ test('首屏视频使用静音自动播放、顺序循环且不再渲染播放�
     readFile(new URL('src/components/about/AboutFilm.css', root), 'utf8'),
   ]);
 
-  assert.match(component, /autoPlay=\{index === 0\}/);
+  assert.match(component, /autoPlay=\{motionEnabled && index === 0\}/);
   assert.match(component, /muted/);
   assert.match(component, /defaultMuted/);
   assert.match(component, /playsInline/);
@@ -61,4 +61,18 @@ test('首屏视频使用静音自动播放、顺序循环且不再渲染播放�
   assert.doesNotMatch(component, /setEnded\(true\)/);
   assert.doesNotMatch(component, /about-film-control/);
   assert.doesNotMatch(styles, /about-film-control/);
+});
+
+test('首屏为动态影像提供稳定海报和减少动态模式', async () => {
+  const [component, styles] = await Promise.all([
+    readFile(new URL('src/components/about/AboutFilm.jsx', root), 'utf8'),
+    readFile(new URL('src/components/about/AboutFilm.css', root), 'utf8'),
+  ]);
+
+  assert.match(component, /prefers-reduced-motion: reduce/);
+  assert.match(component, /data-motion=\{motionEnabled \? 'video' : 'poster'\}/);
+  assert.match(component, /poster-mobile\.webp/);
+  assert.match(component, /poster-desktop\.webp/);
+  assert.match(styles, /\.about-film\.is-motion-reduced \.about-film-poster/);
+  assert.match(styles, /\.about-film\.is-motion-reduced \.about-film-videos/);
 });

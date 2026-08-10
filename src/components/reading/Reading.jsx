@@ -5,7 +5,6 @@ import {
   Plus,
   Edit3,
   Trash2,
-  BookOpen,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
@@ -23,6 +22,8 @@ import { LoadingBlock } from '../ui/Loading';
 import EmptyState from '../ui/EmptyState';
 import SectionHeading from '../ui/SectionHeading';
 import { useDialog } from '../../context/DialogContext';
+import LazyImage from '../ui/LazyImage';
+import MediaPlaceholder from '../ui/MediaPlaceholder';
 
 function Stars({ value }) {
   if (!value) return null;
@@ -37,23 +38,28 @@ function Stars({ value }) {
 }
 
 function BookCard({ book, isAdmin, onEdit, onDelete }) {
-  const [failedCoverUrl, setFailedCoverUrl] = useState('');
-  const showCover = Boolean(book.cover_url) && failedCoverUrl !== book.cover_url;
-
   return (
     <li className={`book-card ${isAdmin ? 'is-admin' : ''}`.trim()}>
       <div className="book-cover">
-        {showCover ? (
-          <img
+        {book.cover_url ? (
+          <LazyImage
             src={book.cover_url}
             alt={`《${book.title}》封面`}
-            loading="lazy"
-            onError={() => setFailedCoverUrl(book.cover_url)}
+            kind="book"
+            loadingText="封面加载中"
+            errorText="暂无可用封面"
+            className="book-cover-media"
+            imgClassName="book-cover-img"
           />
         ) : (
-          <div className="book-cover-placeholder" role="img" aria-label={`《${book.title}》暂无封面`}>
-            <BookOpen size={22} />
-          </div>
+          <MediaPlaceholder
+            kind="book"
+            state="empty"
+            compact
+            label="暂无封面"
+            title={book.title}
+            className="book-cover-placeholder"
+          />
         )}
       </div>
       <div className="book-body">
@@ -293,7 +299,7 @@ export default function Reading({ isAdmin, books, loading, saving, backendReady,
         )}
       </div>
 
-      <nav className="reading-pagination" aria-label="书籍分页">
+      <nav className="reading-pagination" aria-label="书籍分页" data-pet-avoid>
         <button
           type="button"
           className="reading-page-button"

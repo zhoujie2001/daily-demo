@@ -104,7 +104,7 @@ export default function PhotoCardDeck({ items }) {
           })}
       </div>
 
-      <div className="deck-controls">
+      <div className="deck-controls" data-pet-avoid>
         <button type="button" className="deck-nav-btn" onClick={() => changeCard('right')} aria-label="上一张">
           <ChevronLeft size={16} />
         </button>

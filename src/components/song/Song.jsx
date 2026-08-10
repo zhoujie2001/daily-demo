@@ -269,7 +269,7 @@ export default function Song() {
                 ))}
             </div>
 
-            <div className="song-dots" aria-label="歌单切换进度">
+            <div className="song-dots" aria-label="歌单切换进度" data-pet-avoid>
               {playlists.map((p, idx) => (
                 <button
                   key={p.id}

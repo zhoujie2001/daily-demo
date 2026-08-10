@@ -62,8 +62,8 @@
     linear-gradient(
       90deg,
       rgba(248, 244, 236, 0.93) 0%,
-      rgba(248, 244, 236, 0.78) 32%,
-      rgba(248, 244, 236, 0.46) 54%,
+      rgba(248, 244, 236, 0.84) 34%,
+      rgba(248, 244, 236, 0.54) 56%,
       rgba(248, 244, 236, 0.12) 80%,
       rgba(248, 244, 236, 0.04) 100%
     ),
@@ -73,6 +73,14 @@
       rgba(248, 244, 236, 0.26) 24%,
       transparent 48%
     );
+}
+
+.about-film.is-motion-reduced .about-film-videos {
+  display: none;
+}
+
+.about-film.is-motion-reduced .about-film-poster {
+  opacity: 1;
 }
 
 .about-film-wash::after {
@@ -105,14 +113,14 @@
     background:
       linear-gradient(
         180deg,
-        rgba(248, 244, 236, 0.72) 0%,
-        rgba(248, 244, 236, 0.26) 35%,
-        rgba(248, 244, 236, 0.58) 72%,
-        rgba(248, 244, 236, 0.9) 100%
+        rgba(248, 244, 236, 0.8) 0%,
+        rgba(248, 244, 236, 0.38) 34%,
+        rgba(248, 244, 236, 0.68) 70%,
+        rgba(248, 244, 236, 0.94) 100%
       ),
       linear-gradient(
         90deg,
-        rgba(248, 244, 236, 0.56),
+        rgba(248, 244, 236, 0.68),
         rgba(248, 244, 236, 0.08) 76%
       );
   }
@@ -123,5 +131,9 @@
   .about-film-poster,
   .about-film-video {
     transition: none;
+  }
+
+  .about-film-videos {
+    display: none;
   }
 }

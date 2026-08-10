@@ -10,7 +10,7 @@ import Travel from './components/travel/Travel';
 import Photography from './components/photography/Photography';
 import Song from './components/song/Song';
 import { DialogProvider, useDialog } from './context/DialogContext';
-import NetworkAlertDialog from './components/ui/NetworkAlertDialog';
+import NetworkStatusNotice from './components/ui/NetworkStatusNotice';
 import { apiUrl } from './api/client';
 import { useAdminAuth } from './hooks/useAdminAuth';
 import { useDiary } from './hooks/useDiary';
@@ -29,11 +29,11 @@ function AppInner() {
 
   const [showLogin, setShowLogin] = useState(false);
   const [activePhoto, setActivePhoto] = useState(null);
-  const [networkAlertOpen, setNetworkAlertOpen] = useState(false);
+  const [networkNoticeOpen, setNetworkNoticeOpen] = useState(false);
   const [networkRetrying, setNetworkRetrying] = useState(false);
   const [viewCount, setViewCount] = useState(null);
   const [aboutFilmVisible, setAboutFilmVisible] = useState(true);
-  const hasShownNetworkAlertRef = useRef(false);
+  const hasShownNetworkNoticeRef = useRef(false);
   const hasCheckedNetworkRef = useRef(false);
 
   const openLogin = () => setShowLogin(true);
@@ -64,17 +64,17 @@ function AppInner() {
   }, []);
 
   const runBackendCheck = useCallback(
-    async ({ showDialogOnFail }) => {
+    async ({ showNoticeOnFail }) => {
       setNetworkRetrying(true);
       const ok = await checkBackendReachable();
       setNetworkRetrying(false);
       if (ok) {
-        setNetworkAlertOpen(false);
+        setNetworkNoticeOpen(false);
         return true;
       }
-      if (showDialogOnFail && !hasShownNetworkAlertRef.current) {
-        setNetworkAlertOpen(true);
-        hasShownNetworkAlertRef.current = true;
+      if (showNoticeOnFail && !hasShownNetworkNoticeRef.current) {
+        setNetworkNoticeOpen(true);
+        hasShownNetworkNoticeRef.current = true;
       }
       return false;
     },
@@ -108,16 +108,16 @@ function AppInner() {
   useEffect(() => {
     if (hasCheckedNetworkRef.current) return;
     hasCheckedNetworkRef.current = true;
-    runBackendCheck({ showDialogOnFail: true });
+    runBackendCheck({ showNoticeOnFail: true });
   }, [runBackendCheck]);
 
   return (
     <div className="layout">
-      <NetworkAlertDialog
-        open={networkAlertOpen}
+      <NetworkStatusNotice
+        open={networkNoticeOpen}
         retrying={networkRetrying}
-        onClose={() => setNetworkAlertOpen(false)}
-        onRetry={() => runBackendCheck({ showDialogOnFail: true })}
+        onClose={() => setNetworkNoticeOpen(false)}
+        onRetry={() => runBackendCheck({ showNoticeOnFail: true })}
       />
       <AdminLogin open={showLogin} onClose={closeLogin} onLogin={handleLogin} />
       <CatPet suspended={aboutFilmVisible} />

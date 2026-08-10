@@ -10,7 +10,7 @@ export default function MemoryActions({
   currentPostId,
 }) {
   return (
-    <div className="memory-actions" aria-label="记忆探索">
+    <div className="memory-actions" aria-label="记忆探索" data-pet-avoid>
       <TimeMachineControls
         disabled={disabled}
         isTraveling={isTraveling}

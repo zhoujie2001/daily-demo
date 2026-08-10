@@ -106,7 +106,8 @@ function renderMediaItem(item, index, title) {
         className="daily-lazy-wrapper"
         imgClassName="daily-lazy-img"
         skeletonClassName="daily-lazy-skeleton"
-        errorText="图片加载失败"
+        loadingText="照片加载中"
+        errorText="照片暂时无法显示"
       />
     );
     const metadata = normalizePhotoMetadata(item.metadata);

@@ -28,6 +28,7 @@ import {
   selectVideoPetRecovery,
   shouldVideoPetSleep,
 } from './videoPetRuntime';
+import { resolvePetDock } from '../../utils/petDocking';
 import './CatPet.css';
 
 const HIDDEN_KEY = 'daily-demo-alisha-hidden-v1';
@@ -112,6 +113,9 @@ export default function CatPet({ suspended = false }) {
   const [particle, setParticle] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [avoidingControls, setAvoidingControls] = useState(false);
+  const [scrolling, setScrolling] = useState(false);
+  const [dockSide, setDockSide] = useState('right');
+  const [dockBottom, setDockBottom] = useState(8);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,18 +141,84 @@ export default function CatPet({ suspended = false }) {
   }, []);
 
   useEffect(() => {
-    if (hidden || !config.behaviors.autoAvoid) return undefined;
-    const controls = document.querySelector('.memory-actions');
-    if (!controls || typeof IntersectionObserver === 'undefined') {
-      return undefined;
+    if (hidden || !config.behaviors.autoAvoid) {
+      const resetFrame = window.requestAnimationFrame(() => {
+        setAvoidingControls(false);
+        setScrolling(false);
+        setDockSide('right');
+        setDockBottom(8);
+      });
+      return () => window.cancelAnimationFrame(resetFrame);
     }
-    const observer = new IntersectionObserver(
-      ([entry]) => setAvoidingControls(entry.isIntersecting),
-      { threshold: 0.05 }
-    );
-    observer.observe(controls);
-    return () => observer.disconnect();
-  }, [config.behaviors.autoAvoid, hidden]);
+
+    const mobileQuery = window.matchMedia('(max-width: 700px)');
+    let frame = null;
+    let scrollStopTimer = null;
+
+    const measureDock = () => {
+      frame = null;
+      if (!mobileQuery.matches) {
+        setAvoidingControls(false);
+        setDockSide('right');
+        setDockBottom(8);
+        return;
+      }
+
+      const obstacles = Array.from(
+        document.querySelectorAll('[data-pet-avoid]')
+      )
+        .map((element) => element.getBoundingClientRect())
+        .filter(
+          (rect) =>
+            rect.width > 0 &&
+            rect.height > 0 &&
+            rect.bottom > 0 &&
+            rect.top < window.innerHeight
+        );
+      const decision = resolvePetDock({
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        fullSize: config.size.mobile * 1.45,
+        compactSize: 56,
+        sideInset: 8,
+        bottomInset: 8,
+        obstacles,
+      });
+      setDockSide(decision.dock);
+      setAvoidingControls(decision.compact);
+      setDockBottom(decision.bottomOffset);
+    };
+
+    const requestMeasure = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(measureDock);
+    };
+
+    const handleViewportScroll = () => {
+      setScrolling(true);
+      window.clearTimeout(scrollStopTimer);
+      scrollStopTimer = window.setTimeout(() => {
+        setScrolling(false);
+        requestMeasure();
+      }, 800);
+      requestMeasure();
+    };
+
+    requestMeasure();
+    window.addEventListener('scroll', handleViewportScroll, {
+      passive: true,
+    });
+    window.addEventListener('resize', requestMeasure);
+    mobileQuery.addEventListener?.('change', requestMeasure);
+
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      window.clearTimeout(scrollStopTimer);
+      window.removeEventListener('scroll', handleViewportScroll);
+      window.removeEventListener('resize', requestMeasure);
+      mobileQuery.removeEventListener?.('change', requestMeasure);
+    };
+  }, [config.behaviors.autoAvoid, config.size.mobile, hidden]);
 
   useEffect(() => {
     if (
@@ -720,9 +790,10 @@ export default function CatPet({ suspended = false }) {
       '--alisha-bottom': `${config.position.bottom}px`,
       '--alisha-size-desktop': `${config.size.desktop * 2.35}px`,
       '--alisha-size-tablet': `${config.size.tablet * 2.2}px`,
-      '--alisha-size-mobile': `${config.size.mobile * 1.85}px`,
+      '--alisha-size-mobile': `${config.size.mobile * 1.45}px`,
+      '--alisha-dock-bottom': `${dockBottom}px`,
     }),
-    [config]
+    [config, dockBottom]
   );
 
   const changeVisibility = (nextHidden) => {
@@ -856,6 +927,7 @@ export default function CatPet({ suspended = false }) {
       className={[
         'cat-video-pet',
         avoidingControls ? 'is-avoiding-controls' : '',
+        scrolling ? 'is-scrolling' : '',
         dragging ? 'is-dragging' : '',
         ready ? 'is-ready' : '',
       ]
@@ -866,6 +938,7 @@ export default function CatPet({ suspended = false }) {
       data-action={action || 'quiet'}
       data-chroma-tolerance={config.render.chromaTolerance}
       data-position-revision="3"
+      data-pet-dock={dockSide}
     >
       <button
         type="button"
@@ -920,7 +993,7 @@ export default function CatPet({ suspended = false }) {
           aria-hidden="true"
         />
         <span className="cat-video-pet-ground" aria-hidden="true" />
-        {speech ? (
+        {speech && !scrolling && !avoidingControls ? (
           <span
             key={speech.key}
             className={[

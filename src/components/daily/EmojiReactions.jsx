@@ -122,7 +122,7 @@ export default function EmojiReactions({ diaryId }) {
   };
 
   return (
-    <div className="emoji-reactions" aria-label="日记表情反馈">
+    <div className="emoji-reactions" aria-label="日记表情反馈" data-pet-avoid>
       {REACTION_EMOJIS.map((emoji) => {
         const isReacted = reacted.has(emoji);
 

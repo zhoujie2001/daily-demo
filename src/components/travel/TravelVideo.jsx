@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import MediaPlaceholder from '../ui/MediaPlaceholder';
 
 export default function TravelVideo({
   src,
@@ -22,6 +23,13 @@ export default function TravelVideo({
   const [isPlaybackVisible, setIsPlaybackVisible] = useState(
     () => typeof IntersectionObserver !== 'function'
   );
+  const [mediaStatus, setMediaStatus] = useState(() => ({
+    src,
+    state: 'loading',
+    retryKey: 0,
+  }));
+  const mediaState = mediaStatus.src === src ? mediaStatus.state : 'loading';
+  const retryKey = mediaStatus.src === src ? mediaStatus.retryKey : 0;
   const shouldMount = Boolean(autoPlay) || isNearViewport;
 
   useEffect(() => {
@@ -141,6 +149,8 @@ export default function TravelVideo({
     maxHeight: style?.maxHeight,
     objectFit: style?.objectFit,
     display: 'block',
+    opacity: mediaState === 'ready' ? 1 : 0,
+    transition: 'opacity 260ms ease',
   };
 
   const effectiveControls = playWhenVisible || canHover ? false : controls;
@@ -149,6 +159,7 @@ export default function TravelVideo({
   return (
     <div
       ref={wrapperRef}
+      className={`travel-video-shell is-${mediaState}`}
       style={wrapperStyle}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -161,9 +172,11 @@ export default function TravelVideo({
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
       aria-label={onClick ? `播放视频${title ? `：${title}` : ''}` : undefined}
+      aria-busy={mediaState === 'loading'}
     >
       {shouldMount ? (
         <video
+          key={`${src}-${retryKey}`}
           ref={videoRef}
           src={src}
           preload="metadata"
@@ -174,12 +187,38 @@ export default function TravelVideo({
           autoPlay={autoPlay}
           className={className}
           style={videoStyle}
+          onLoadedData={() => setMediaStatus((current) => ({
+            src,
+            state: 'ready',
+            retryKey: current.src === src ? current.retryKey : 0,
+          }))}
+          onCanPlay={() => setMediaStatus((current) => ({
+            src,
+            state: 'ready',
+            retryKey: current.src === src ? current.retryKey : 0,
+          }))}
+          onError={() => setMediaStatus((current) => ({
+            src,
+            state: 'error',
+            retryKey: current.src === src ? current.retryKey : 0,
+          }))}
         />
-      ) : (
-        <div className="travel-video-placeholder" style={videoStyle} aria-hidden="true">
-          <span>{title || 'Travel'}</span>
-        </div>
-      )}
+      ) : null}
+      {mediaState !== 'ready' ? (
+        <MediaPlaceholder
+          kind="video"
+          state={mediaState}
+          label={mediaState === 'error' ? '视频暂时无法播放' : '视频加载中'}
+          title={title || 'Travel'}
+          onRetry={mediaState === 'error' ? () => {
+            setMediaStatus((current) => ({
+              src,
+              state: 'loading',
+              retryKey: current.src === src ? current.retryKey + 1 : 1,
+            }));
+          } : undefined}
+        />
+      ) : null}
     </div>
   );
 }
