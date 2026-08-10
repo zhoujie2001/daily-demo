@@ -138,7 +138,7 @@ export default function TravelVideo({
 
   const wrapperStyle = {
     position: 'relative',
-    display: 'inline-block',
+    display: 'block',
     lineHeight: 0,
     ...style,
   };

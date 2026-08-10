@@ -74,6 +74,7 @@ export default function LazyImage({
     <div
       ref={wrapperRef}
       className={`lazy-image ${className} ${loaded ? 'is-loaded' : ''} ${errored ? 'is-error' : ''}`.trim()}
+      aria-busy={Boolean(src && !loaded && !errored)}
     >
       {!src ? (
         <MediaPlaceholder
