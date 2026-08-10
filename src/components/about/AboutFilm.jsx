@@ -4,6 +4,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { Pause, Play } from 'lucide-react';
 import {
   ABOUT_FILMS,
   ABOUT_FILM_PLAY_ATTEMPT_TIMEOUT_MS,
@@ -14,14 +15,19 @@ import {
 import './AboutFilm.css';
 
 const CROSSFADE_DURATION_MS = 1150;
+const MOTION_PREFERENCE_KEY = 'about-film-motion';
 
-function motionIsEnabled() {
-  return typeof window === 'undefined'
-    || !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function storedMotionIsEnabled() {
+  if (typeof window === 'undefined') return true;
+  try {
+    return window.localStorage.getItem(MOTION_PREFERENCE_KEY) !== 'paused';
+  } catch {
+    return true;
+  }
 }
 
 export default function AboutFilm({ onVisibilityChange }) {
-  const initialMotionEnabled = motionIsEnabled();
+  const initialMotionEnabled = storedMotionIsEnabled();
   const sectionRef = useRef(null);
   const videoRefs = useRef([]);
   const activeIndexRef = useRef(0);
@@ -236,24 +242,6 @@ export default function AboutFilm({ onVisibilityChange }) {
   }, [canPlayNow, clearStallTimer, requestPlayback, updatePlaybackState]);
 
   useEffect(() => {
-    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const syncMotionPreference = () => {
-      const nextEnabled = !motionQuery.matches;
-      motionEnabledRef.current = nextEnabled;
-      setMotionEnabled(nextEnabled);
-      if (nextEnabled && inViewRef.current && !document.hidden) {
-        requestPlayback(activeIndexRef.current, { reset: false });
-      } else {
-        suspendPlayback();
-      }
-    };
-
-    syncMotionPreference();
-    motionQuery.addEventListener?.('change', syncMotionPreference);
-    return () => motionQuery.removeEventListener?.('change', syncMotionPreference);
-  }, [requestPlayback, suspendPlayback]);
-
-  useEffect(() => {
     const section = sectionRef.current;
     if (!section || typeof IntersectionObserver === 'undefined') {
       inViewRef.current = true;
@@ -360,6 +348,23 @@ export default function AboutFilm({ onVisibilityChange }) {
     scheduleRecovery(index, 250);
   };
 
+  const toggleMotion = () => {
+    const nextEnabled = !motionEnabledRef.current;
+    motionEnabledRef.current = nextEnabled;
+    setMotionEnabled(nextEnabled);
+    try {
+      window.localStorage.setItem(
+        MOTION_PREFERENCE_KEY,
+        nextEnabled ? 'playing' : 'paused'
+      );
+    } catch {
+      // Private browsing can make localStorage unavailable; playback still works.
+    }
+
+    if (nextEnabled) requestPlayback(activeIndexRef.current, { reset: false });
+    else suspendPlayback();
+  };
+
   return (
     <div
       ref={sectionRef}
@@ -414,6 +419,18 @@ export default function AboutFilm({ onVisibilityChange }) {
       </div>
 
       <div className="about-film-wash" aria-hidden="true" />
+      <button
+        type="button"
+        className="about-film-motion-toggle"
+        aria-label={motionEnabled ? '暂停背景视频' : '播放背景视频'}
+        aria-pressed={!motionEnabled}
+        title={motionEnabled ? '暂停背景视频' : '播放背景视频'}
+        onClick={toggleMotion}
+      >
+        {motionEnabled
+          ? <Pause size={15} strokeWidth={1.8} aria-hidden="true" />
+          : <Play size={15} strokeWidth={1.8} aria-hidden="true" />}
+      </button>
     </div>
   );
 }

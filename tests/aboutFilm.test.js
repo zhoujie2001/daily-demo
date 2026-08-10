@@ -66,18 +66,25 @@ test('首屏视频使用静音自动播放、顺序循环且不再渲染播放�
   assert.doesNotMatch(styles, /about-film-control/);
 });
 
-test('首屏为动态影像提供稳定海报和减少动态模式', async () => {
+test('首屏为动态影像提供稳定海报和可持久化的手动暂停模式', async () => {
   const [component, styles] = await Promise.all([
     readFile(new URL('src/components/about/AboutFilm.jsx', root), 'utf8'),
     readFile(new URL('src/components/about/AboutFilm.css', root), 'utf8'),
   ]);
 
-  assert.match(component, /prefers-reduced-motion: reduce/);
   assert.match(component, /data-motion=\{motionEnabled \? 'video' : 'poster'\}/);
+  assert.match(component, /about-film-motion/);
+  assert.match(component, /window\.localStorage\.setItem/);
+  assert.match(component, /aria-label=\{motionEnabled \? '暂停背景视频' : '播放背景视频'\}/);
   assert.match(component, /poster-mobile\.webp/);
   assert.match(component, /poster-desktop\.webp/);
   assert.match(styles, /\.about-film\.is-motion-reduced \.about-film-poster/);
   assert.match(styles, /\.about-film\.is-motion-reduced \.about-film-videos/);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.doesNotMatch(
+    styles,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.about-film-videos\s*\{\s*display:\s*none/
+  );
 });
 
 test('背景影片使用有界多级重试并在卡顿后自动恢复', async () => {
