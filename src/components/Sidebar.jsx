@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { navItems } from '../data/nav';
+import { siteBrand } from '../data/site';
 import NowStatus from './NowStatus';
 
 export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin, onLogout }) {
@@ -90,6 +91,17 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
     };
   }, []);
 
+  useEffect(() => {
+    const currentSection = navItems.find((item) => item.id === activeSection);
+    document.title = activeSection === 'about' || !currentSection
+      ? siteBrand.name
+      : `${currentSection.label} · ${siteBrand.name}`;
+
+    return () => {
+      document.title = siteBrand.name;
+    };
+  }, [activeSection]);
+
   return (
     <>
       <header className="mobile-header">
@@ -99,7 +111,7 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
           onDoubleClick={() => !isAdmin && onRequestLogin()}
           title={!isAdmin ? '双击进入管理登录' : ''}
         >
-          Dylan
+          {siteBrand.ownerAlias}
         </button>
         <button
           type="button"
@@ -120,18 +132,19 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
 
       <aside className={`mobile-nav-drawer ${menuOpen ? 'open' : ''}`}>
         <div className="mobile-nav-header">
-          <div className="mobile-nav-brand">Dylan</div>
+          <div className="mobile-nav-brand">{siteBrand.ownerAlias}</div>
           <button type="button" className="mobile-menu-toggle" onClick={closeMenu} aria-label="关闭导航">
             ✕
           </button>
         </div>
         <NowStatus isAdmin={isAdmin} adminToken={adminToken} />
-        <nav className="mobile-nav-links">
+        <nav className="mobile-nav-links" aria-label="移动端主导航">
           {navItems.map((item) => (
             <a
               key={item.id}
               href={`#${item.id}`}
               className={activeSection === item.id ? 'active' : ''}
+              aria-current={activeSection === item.id ? 'page' : undefined}
               onClick={(e) => {
                 e.preventDefault();
                 closeMenu();
@@ -167,7 +180,7 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
           style={{ cursor: isAdmin ? 'default' : 'pointer' }}
           title={!isAdmin ? '双击进入管理登录' : ''}
         >
-          Dylan
+          {siteBrand.ownerAlias}
           {isAdmin ? (
             <span className="view-count-badge">
               <Eye size={14} />
@@ -176,12 +189,13 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
           ) : null}
         </h2>
         <NowStatus isAdmin={isAdmin} adminToken={adminToken} />
-        <nav>
+        <nav aria-label="主导航">
           {navItems.map((item) => (
             <a
               key={item.id}
               href={`#${item.id}`}
               className={activeSection === item.id ? 'active' : ''}
+              aria-current={activeSection === item.id ? 'page' : undefined}
               onClick={(e) => {
                 e.preventDefault();
                 const target = document.getElementById(item.id);

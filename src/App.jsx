@@ -18,6 +18,7 @@ import { usePhotos } from './hooks/usePhotos';
 import { useVideos } from './hooks/useVideos';
 import { useReading } from './hooks/useReading';
 import CatPet from './components/pet/CatPet';
+import BrandFooter from './components/BrandFooter';
 
 function AppInner() {
   const { token, isAdmin, login, logout } = useAdminAuth();
@@ -183,6 +184,8 @@ function AppInner() {
         <Song />
 
         <Links />
+
+        <BrandFooter />
       </main>
     </div>
   );

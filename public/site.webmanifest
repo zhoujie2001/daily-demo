@@ -1,0 +1,19 @@
+{
+  "name": "四十四次日落",
+  "short_name": "日落",
+  "description": "把普通日子收进时间里。记录日常、阅读、旅行、摄影与音乐。",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f1e8",
+  "theme_color": "#f6f1e8",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -90,6 +90,22 @@
   content: '';
 }
 
+.about-film-content {
+  animation: about-brand-arrival 720ms var(--ease-out) 120ms both;
+}
+
+@keyframes about-brand-arrival {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 700px) {
   .about-film {
     border-radius: 18px;
@@ -123,5 +139,9 @@
   .about-film-poster,
   .about-film-video {
     transition: none;
+  }
+
+  .about-film-content {
+    animation: none;
   }
 }

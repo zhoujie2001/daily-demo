@@ -179,6 +179,76 @@ small,
   border-top: 0;
 }
 
+/* A quiet editorial ending keeps the final section from falling into empty space. */
+.brand-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-5) var(--space-8);
+  margin-top: clamp(8px, 2vw, 24px);
+  padding: clamp(40px, 5vw, 64px) 0 var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.brand-footer-copy {
+  min-width: 0;
+}
+
+.brand-footer-name {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: clamp(1.85rem, 3vw, 2.6rem);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.brand-footer-line,
+.brand-footer-meta {
+  color: var(--ink-muted);
+  font-size: var(--type-meta);
+}
+
+.brand-footer-line {
+  margin: var(--space-3) 0 0;
+}
+
+.brand-footer-meta {
+  grid-column: 1 / -1;
+  margin: var(--space-4) 0 0;
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+.brand-footer-return {
+  min-height: var(--control-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 8px 2px;
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--line-strong);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color var(--duration-fast) ease, border-color var(--duration-fast) ease;
+}
+
+.brand-footer-return:hover {
+  color: var(--accent-deep);
+  border-color: var(--accent);
+}
+
+.brand-footer-return svg {
+  transition: transform var(--duration-base) var(--ease-out);
+}
+
+.brand-footer-return:hover svg {
+  transform: translateY(-2px);
+}
+
 .sidebar {
   position: fixed;
   z-index: 20;
@@ -286,6 +356,12 @@ small,
   font-weight: 400;
   line-height: 0.92;
   letter-spacing: -0.058em;
+  text-wrap: wrap;
+}
+
+.about-lockup-name,
+.about-lockup-owner {
+  display: inline-block;
 }
 
 #about .subtitle {
@@ -303,6 +379,16 @@ small,
   color: var(--ink-muted);
   font-size: 0.9rem;
   line-height: 1.7;
+}
+
+@media (min-width: 1180px) {
+  .about-film-content {
+    max-width: min(860px, 90%);
+  }
+
+  #about h1 {
+    font-size: clamp(3.45rem, 4.65vw, 4.75rem);
+  }
 }
 
 /* Shared controls */
@@ -995,6 +1081,21 @@ small,
     padding: 76px var(--page-gutter) calc(48px + env(safe-area-inset-bottom));
   }
 
+  .brand-footer {
+    grid-template-columns: 1fr;
+    align-items: start;
+    padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom));
+  }
+
+  .brand-footer-return {
+    width: fit-content;
+  }
+
+  .brand-footer-meta {
+    grid-column: 1;
+    margin-top: var(--space-2);
+  }
+
   .section-heading {
     flex-direction: column;
     align-items: flex-start;
@@ -1214,5 +1315,9 @@ small,
 
   :where(.entry, .book-card, .song-card, .links li, .photo-img-wrapper, .video-card) {
     transform: none !important;
+  }
+
+  .brand-footer-return:hover svg {
+    transform: none;
   }
 }

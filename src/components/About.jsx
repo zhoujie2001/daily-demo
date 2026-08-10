@@ -1,4 +1,5 @@
 import React from 'react';
+import { siteBrand } from '../data/site';
 import AboutFilm from './about/AboutFilm';
 
 export default function About({ isAdmin, onRequestLogin, onFilmVisibilityChange }) {
@@ -11,12 +12,11 @@ export default function About({ isAdmin, onRequestLogin, onFilmVisibilityChange 
           style={{ cursor: isAdmin ? 'default' : 'pointer' }}
           title={!isAdmin ? '双击进入管理登录' : ''}
         >
-          四十四次日落 / Dylan
+          <span className="about-lockup-name">{siteBrand.name}</span>
+          <span className="about-lockup-owner"> / {siteBrand.ownerAlias}</span>
         </h1>
-        <p className="subtitle">
-          A pessimist in the third quadrant, yet passionate about movement.
-        </p>
-        <p className="about-intro">因为天气好，因为天气不好，因为天气感刚好。现居成都。</p>
+        <p className="subtitle">{siteBrand.tagline}</p>
+        <p className="about-intro">{siteBrand.intro}</p>
       </div>
     </section>
   );
