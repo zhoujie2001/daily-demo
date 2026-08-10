@@ -90,7 +90,7 @@ export default function Photography({
         action={isAdmin ? (
             <label className={`upload-btn ${uploading ? 'disabled' : ''}`}>
               {uploading ? <LoadingSpinner size={12} /> : <Plus size={14} />}
-              <span>{uploading ? 'Uploading...' : 'Upload Photo'}</span>
+              <span>{uploading ? '上传中...' : '上传照片'}</span>
               <input
                 type="file"
                 accept="image/*"
@@ -127,6 +127,14 @@ export default function Photography({
                   className="photo-card"
                   key={item.id ?? `static-${index}`}
                   onClick={() => handleCardClick(item)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    handleCardClick(item);
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`查看照片：${item.title || '未命名照片'}`}
                   style={{ position: 'relative' }}
                 >
                   {isAdmin && isRealData ? (

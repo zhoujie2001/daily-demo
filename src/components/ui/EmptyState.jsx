@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function EmptyState({ title = 'Nothing here yet', description, action }) {
+export default function EmptyState({ title = '这里暂时没有内容', description, action }) {
   return (
     <div className="ui-empty">
       <div className="ui-empty-title">{title}</div>

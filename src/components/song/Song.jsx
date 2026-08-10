@@ -242,7 +242,7 @@ export default function Song() {
 
       {!loading ? (
         <>
-          <div className="song-grid" aria-hidden="true">
+          <div className="song-grid">
             {playlists.map((p, idx) => (
               <SongCard key={p.id} playlist={p} variant={idx} />
             ))}

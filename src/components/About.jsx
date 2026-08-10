@@ -9,7 +9,7 @@ export default function About({ isAdmin, onRequestLogin, onFilmVisibilityChange 
         <h1
           onDoubleClick={() => !isAdmin && onRequestLogin()}
           style={{ cursor: isAdmin ? 'default' : 'pointer' }}
-          title={!isAdmin ? 'Double click to login as admin' : ''}
+          title={!isAdmin ? '双击进入管理登录' : ''}
         >
           四十四次日落 / Dylan
         </h1>

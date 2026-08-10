@@ -97,7 +97,7 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
           type="button"
           className="mobile-header-title"
           onDoubleClick={() => !isAdmin && onRequestLogin()}
-          title={!isAdmin ? 'Double click to login as admin' : ''}
+          title={!isAdmin ? '双击进入管理登录' : ''}
         >
           Dylan
         </button>
@@ -156,7 +156,7 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
             }}
             className="sidebar-logout mobile-logout"
           >
-            Logout
+            退出登录
           </button>
         ) : null}
       </aside>
@@ -165,7 +165,7 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
         <h2
           onDoubleClick={() => !isAdmin && onRequestLogin()}
           style={{ cursor: isAdmin ? 'default' : 'pointer' }}
-          title={!isAdmin ? 'Double click to login as admin' : ''}
+          title={!isAdmin ? '双击进入管理登录' : ''}
         >
           Dylan
           {isAdmin ? (
@@ -198,7 +198,7 @@ export default function Sidebar({ isAdmin, adminToken, viewCount, onRequestLogin
         </nav>
         {isAdmin ? (
           <button type="button" onClick={onLogout} className="sidebar-logout">
-            Logout
+            退出登录
           </button>
         ) : null}
       </aside>

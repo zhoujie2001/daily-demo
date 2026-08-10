@@ -80,7 +80,7 @@ export default function Travel({
         action={isAdmin ? (
           <label className={`upload-btn ${uploading ? 'disabled' : ''}`}>
             {uploading ? <LoadingSpinner size={12} /> : <Plus size={14} />}
-            <span>{uploading ? 'Uploading...' : 'Upload Video'}</span>
+            <span>{uploading ? '上传中...' : '上传视频'}</span>
             <input
               type="file"
               accept="video/*"
@@ -93,7 +93,7 @@ export default function Travel({
       />
 
       {loading && !isRealData ? (
-        <LoadingBlock label="Loading videos..." />
+        <LoadingBlock label="正在加载视频..." />
       ) : (
         <div className="slider-wrapper">
           <div className="video-track video-track-infinite">
@@ -107,7 +107,6 @@ export default function Travel({
                   controls={false}
                   onClick={() => setExpandedVideo(video)}
                   title={video.title}
-                  style={{ width: '200px', height: '280px', objectFit: 'cover', cursor: 'pointer' }}
                   className="travel-video"
                 />
                 {isAdmin && isRealData && !video._dup ? (
@@ -115,14 +114,14 @@ export default function Travel({
                     <button
                       className="action-btn"
                       onClick={() => handleEditTitle(video)}
-                      title={video.title || 'Edit Video'}
+                      title={video.title || '编辑视频'}
                     >
                       <Edit2 size={14} />
                     </button>
                     <button
                       className="action-btn delete"
                       onClick={() => handleDelete(video.id)}
-                      title="Delete Video"
+                      title="删除视频"
                     >
                       <Trash2 size={14} />
                     </button>

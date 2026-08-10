@@ -235,7 +235,7 @@ export default function Reading({ isAdmin, books, loading, saving, backendReady,
                 setQuery('');
                 resetPage();
               }}
-              aria-label="clear"
+              aria-label="清空搜索"
             >
               <X size={12} />
             </button>
