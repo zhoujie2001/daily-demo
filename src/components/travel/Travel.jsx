@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Edit2, Play, Plus, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Edit2, Plus, Trash2 } from 'lucide-react';
 import { fallbackVideos } from '../../data/fallbackPhotos';
 import { resolveMediaUrl } from '../../utils/media';
 import {
@@ -10,7 +10,6 @@ import {
 } from '../../utils/travelCarousel';
 import { useDialog } from '../../context/DialogContext';
 import { LoadingSpinner, LoadingBlock } from '../ui/Loading';
-import PreviewRail from '../ui/PreviewRail';
 import SectionHeading from '../ui/SectionHeading';
 import VideoLightbox from '../ui/VideoLightbox';
 import TravelVideo from './TravelVideo';
@@ -22,49 +21,6 @@ function reduceMotionEnabled() {
   return typeof window !== 'undefined'
     && typeof window.matchMedia === 'function'
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
-
-function TravelPreviewFrame({ video, index }) {
-  const poster = getTravelPosterUrl(video);
-  const [mediaState, setMediaState] = useState('loading');
-
-  return (
-    <span className={`travel-preview-frame is-${mediaState}`}>
-      {poster ? (
-        <img
-          src={resolveMediaUrl(poster)}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          onLoad={() => setMediaState('ready')}
-          onError={() => setMediaState('error')}
-        />
-      ) : (
-        <video
-          src={resolveMediaUrl(video.url)}
-          muted
-          playsInline
-          preload="metadata"
-          aria-hidden="true"
-          onLoadedMetadata={(event) => {
-            const element = event.currentTarget;
-            try {
-              element.currentTime = Math.min(0.35, Math.max(0, element.duration / 8));
-            } catch {
-              setMediaState('ready');
-            }
-          }}
-          onLoadedData={() => setMediaState('ready')}
-          onSeeked={() => setMediaState('ready')}
-          onError={() => setMediaState('error')}
-        />
-      )}
-      <span className="travel-preview-fallback" aria-hidden="true">
-        <span>{String(index + 1).padStart(2, '0')}</span>
-      </span>
-      <span className="travel-preview-play" aria-hidden="true"><Play size={10} fill="currentColor" /></span>
-    </span>
-  );
 }
 
 export default function Travel({
@@ -313,30 +269,24 @@ export default function Travel({
             </div>
           </div>
 
-          <div className="travel-preview-controls" data-pet-avoid>
+          <div className="travel-carousel-controls" data-pet-avoid>
             <button
               type="button"
-              className="travel-preview-arrow"
+              className="travel-carousel-arrow"
               onClick={() => selectIndex(nextTravelIndex(currentIndex, list.length, -1))}
               aria-label="上一个旅行片段"
               disabled={list.length <= 1}
             >
               <ChevronLeft size={16} />
             </button>
-            <PreviewRail
-              items={list.map((video, index) => ({ ...video, id: video._previewId, _index: index }))}
-              activeId={list[currentIndex]?._previewId}
-              onSelect={(video) => selectIndex(video._index)}
-              renderPreview={(video) => (
-                <TravelPreviewFrame video={video} index={video._index} />
-              )}
-              getLabel={(video) => `查看旅行片段 ${video._index + 1}${video.title ? `：${video.title}` : ''}`}
-              ariaLabel="旅行视频预览"
-              className="travel-preview-rail"
-            />
+            <span className="travel-carousel-count" aria-hidden="true">
+              {String(currentIndex + 1).padStart(2, '0')}
+              <span>/</span>
+              {String(list.length).padStart(2, '0')}
+            </span>
             <button
               type="button"
-              className="travel-preview-arrow"
+              className="travel-carousel-arrow"
               onClick={() => selectIndex(nextTravelIndex(currentIndex, list.length))}
               aria-label="下一个旅行片段"
               disabled={list.length <= 1}
