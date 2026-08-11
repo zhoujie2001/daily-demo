@@ -241,7 +241,7 @@ test('点击、长按、拖动、鼠标靠近、滚动停止和页面板块均�
   }
 });
 
-test('运行时配置、隐藏恢复、响应式和无障碍交互保持可用', async () => {
+test('运行时配置、常驻显示、响应式和无障碍交互保持可用', async () => {
   const [componentSource, cssSource, config] = await Promise.all([
     readFile(
       new URL('src/components/pet/CatPet.jsx', root),
@@ -268,7 +268,7 @@ test('运行时配置、隐藏恢复、响应式和无障碍交互保持可用',
   assert.equal(config.timings.ambientSpeechChance, 0.05);
   assert.equal(config.timings.contextSpeechChance, 0.18);
   assert.match(componentSource, /fetch\('\/alisha\.config\.json'/);
-  assert.match(componentSource, /daily-demo-alisha-hidden-v1/);
+  assert.doesNotMatch(componentSource, /daily-demo-alisha-hidden-v1/);
   assert.match(
     componentSource,
     /daily-demo-alisha-video-position-v3/
@@ -281,8 +281,8 @@ test('运行时配置、隐藏恢复、响应式和无障碍交互保持可用',
     componentSource,
     /data-chroma-tolerance=\{config\.render\.chromaTolerance\}/
   );
-  assert.match(componentSource, /aria-label="隐藏页面宠物阿丽莎"/);
-  assert.match(componentSource, /aria-label="显示页面宠物阿丽莎"/);
+  assert.doesNotMatch(componentSource, /cat-video-pet-hide/);
+  assert.doesNotMatch(componentSource, /cat-video-pet-restore/);
   assert.match(componentSource, /tabIndex=\{0\}/);
   assert.match(componentSource, /StaticFallback/);
   assert.match(componentSource, /is-avoiding-controls/);
@@ -295,6 +295,10 @@ test('运行时配置、隐藏恢复、响应式和无障碍交互保持可用',
   assert.match(cssSource, /\.cat-video-pet-speech\.is-whisper/);
   assert.match(cssSource, /@keyframes alisha-video-speech-out/);
   assert.match(cssSource, /translate3d\(27%, 20%, 0\)/);
+  assert.doesNotMatch(
+    cssSource,
+    /\.cat-video-pet\.is-avoiding-controls\s*\{[^}]*(?:width|height):\s*56px/s
+  );
   assert.doesNotMatch(
     cssSource,
     /\.cat-video-pet\.is-avoiding-controls\s*\{[^}]*calc\(/s

@@ -4,7 +4,6 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { EyeOff, PawPrint } from 'lucide-react';
 import {
   DEFAULT_ALISHA_CONFIG,
   mergeAlishaConfig,
@@ -31,7 +30,6 @@ import {
 import { resolvePetDock } from '../../utils/petDocking';
 import './CatPet.css';
 
-const HIDDEN_KEY = 'daily-demo-alisha-hidden-v1';
 const POSITION_KEY = 'daily-demo-alisha-video-position-v3';
 const WELCOMED_KEY = 'daily-demo-alisha-video-welcomed-v1';
 const AFFINITY_KEY = 'daily-demo-alisha-video-affinity-v1';
@@ -103,9 +101,6 @@ export default function CatPet({ suspended = false }) {
   const particleTimerRef = useRef(null);
   const [config, setConfig] = useState(DEFAULT_ALISHA_CONFIG);
   const [configReady, setConfigReady] = useState(false);
-  const [hidden, setHidden] = useState(
-    () => readStorage(HIDDEN_KEY, 'false') === 'true'
-  );
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
   const [action, setAction] = useState(null);
@@ -141,7 +136,7 @@ export default function CatPet({ suspended = false }) {
   }, []);
 
   useEffect(() => {
-    if (hidden || !config.behaviors.autoAvoid) {
+    if (!config.behaviors.autoAvoid) {
       const resetFrame = window.requestAnimationFrame(() => {
         setAvoidingControls(false);
         setScrolling(false);
@@ -218,11 +213,10 @@ export default function CatPet({ suspended = false }) {
       window.removeEventListener('resize', requestMeasure);
       mobileQuery.removeEventListener?.('change', requestMeasure);
     };
-  }, [config.behaviors.autoAvoid, config.size.mobile, hidden]);
+  }, [config.behaviors.autoAvoid, config.size.mobile]);
 
   useEffect(() => {
     if (
-      hidden ||
       suspended ||
       !configReady ||
       !canvasRef.current ||
@@ -774,7 +768,7 @@ export default function CatPet({ suspended = false }) {
       reactionRef.current = () => {};
       player.destroy();
     };
-  }, [config, configReady, hidden, suspended]);
+  }, [config, configReady, suspended]);
 
   useEffect(
     () => () => {
@@ -795,11 +789,6 @@ export default function CatPet({ suspended = false }) {
     }),
     [config, dockBottom]
   );
-
-  const changeVisibility = (nextHidden) => {
-    writeStorage(HIDDEN_KEY, String(nextHidden));
-    setHidden(nextHidden);
-  };
 
   const resolveTapBurst = () => {
     const count = tapCountRef.current;
@@ -906,21 +895,6 @@ export default function CatPet({ suspended = false }) {
 
   if (!config.enabled || suspended) return null;
 
-  if (hidden) {
-    return (
-      <button
-        type="button"
-        className="cat-video-pet-restore"
-        onClick={() => changeVisibility(false)}
-        aria-label="显示页面宠物阿丽莎"
-        title="叫阿丽莎回来"
-        style={cssVariables}
-      >
-        <PawPrint size={17} aria-hidden="true" />
-      </button>
-    );
-  }
-
   return (
     <aside
       ref={containerRef}
@@ -940,16 +914,6 @@ export default function CatPet({ suspended = false }) {
       data-position-revision="3"
       data-pet-dock={dockSide}
     >
-      <button
-        type="button"
-        className="cat-video-pet-hide"
-        onClick={() => changeVisibility(true)}
-        aria-label="隐藏页面宠物阿丽莎"
-        title="让阿丽莎休息"
-      >
-        <EyeOff size={13} aria-hidden="true" />
-      </button>
-
       <div
         ref={stageRef}
         className="cat-video-pet-stage"

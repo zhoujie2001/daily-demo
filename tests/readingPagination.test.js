@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  createReadingPagePreviews,
   filterReadingBooks,
   getReadingPageCount,
   getReadingPageSize,
@@ -82,4 +83,15 @@ test('only treats a deliberate horizontal gesture as a page swipe', () => {
     getReadingSwipeDirection({ x: 200, y: 100 }, { x: 165, y: 102 }),
     null
   );
+});
+
+test('builds compact cover previews for every reading page', () => {
+  const previews = createReadingPagePreviews(sampleBooks, 3, 2);
+
+  assert.equal(previews.length, 3);
+  assert.deepEqual(previews[0].books.map((book) => book.id), [1, 2]);
+  assert.deepEqual(previews[1].books.map((book) => book.id), [4, 5]);
+  assert.deepEqual(previews[2].books.map((book) => book.id), [7]);
+  assert.deepEqual(previews.map((preview) => preview.count), [3, 3, 1]);
+  assert.deepEqual(createReadingPagePreviews([], 3), []);
 });

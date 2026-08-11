@@ -3,6 +3,7 @@ import MediaPlaceholder from '../ui/MediaPlaceholder';
 
 export default function TravelVideo({
   src,
+  poster,
   className,
   style,
   muted = false,
@@ -179,6 +180,7 @@ export default function TravelVideo({
           key={`${src}-${retryKey}`}
           ref={videoRef}
           src={src}
+          poster={poster}
           preload="metadata"
           muted={effectiveMuted}
           loop={loop}

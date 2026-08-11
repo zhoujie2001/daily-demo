@@ -20,5 +20,8 @@ test('移动端主要控件提供至少 44px 的触控目标', async () => {
   assert.match(css, /\.links a\s*\{[\s\S]*?min-height:\s*52px/);
   assert.match(css, /\.time-machine-button-group\s*\{[\s\S]*?min-height:\s*44px/);
   assert.match(css, /\.ui-modal-close\s*\{[\s\S]*?min-width:\s*44px/);
-  assert.match(petCss, /\.cat-video-pet-hide\s*\{[\s\S]*?width:\s*44px;[\s\S]*?height:\s*44px/s);
+  assert.match(
+    petCss,
+    /\.cat-video-pet\.is-scrolling\s*\{[\s\S]*?width:\s*56px;[\s\S]*?height:\s*56px/s
+  );
 });

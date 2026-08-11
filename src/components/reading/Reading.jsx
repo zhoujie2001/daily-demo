@@ -11,6 +11,7 @@ import {
 import { statusLabel } from '../../data/books';
 import {
   READING_FILTERS,
+  createReadingPagePreviews,
   filterReadingBooks,
   getReadingPageSize,
   getReadingSwipeDirection,
@@ -24,6 +25,7 @@ import SectionHeading from '../ui/SectionHeading';
 import { useDialog } from '../../context/DialogContext';
 import LazyImage from '../ui/LazyImage';
 import MediaPlaceholder from '../ui/MediaPlaceholder';
+import PreviewRail from '../ui/PreviewRail';
 
 function Stars({ value }) {
   if (!value) return null;
@@ -90,6 +92,35 @@ function BookCard({ book, isAdmin, onEdit, onDelete }) {
   );
 }
 
+function ReadingPagePreview({ preview }) {
+  return (
+    <span className="reading-page-preview">
+      <span className="reading-page-covers" aria-hidden="true">
+        {preview.books.map((book, index) => (
+          <span
+            key={book.id ?? `${preview.page}-${index}`}
+            className="reading-page-cover"
+            style={{ '--cover-index': index }}
+          >
+            {book.cover_url ? (
+              <img
+                src={book.cover_url}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                onError={(event) => {
+                  event.currentTarget.hidden = true;
+                }}
+              />
+            ) : null}
+          </span>
+        ))}
+      </span>
+      <span className="reading-page-preview-number">{String(preview.page).padStart(2, '0')}</span>
+    </span>
+  );
+}
+
 function readPageSize() {
   if (typeof window === 'undefined') return getReadingPageSize();
   return getReadingPageSize(window.innerWidth);
@@ -131,6 +162,10 @@ export default function Reading({ isAdmin, books, loading, saving, backendReady,
   const paginated = useMemo(
     () => paginateReadingBooks(filtered, page, pageSize),
     [filtered, page, pageSize]
+  );
+  const pagePreviews = useMemo(
+    () => createReadingPagePreviews(filtered, pageSize),
+    [filtered, pageSize]
   );
 
   const resetPage = () => {
@@ -309,6 +344,15 @@ export default function Reading({ isAdmin, books, loading, saving, backendReady,
         >
           <ChevronLeft size={17} />
         </button>
+        <PreviewRail
+          items={pagePreviews}
+          activeId={paginated.page}
+          onSelect={(preview) => changePage(preview.page)}
+          renderPreview={(preview) => <ReadingPagePreview preview={preview} />}
+          getLabel={(preview) => `第 ${preview.page} 页，${preview.count} 本书`}
+          ariaLabel="书页封面预览"
+          className="reading-preview-rail"
+        />
         <span className="reading-page-count" aria-live="polite">
           {filtered.length === 0 ? '0 / 0' : `${paginated.page} / ${paginated.pageCount}`}
         </span>

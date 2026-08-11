@@ -104,42 +104,6 @@
   pointer-events: none;
 }
 
-.cat-video-pet-hide {
-  position: absolute;
-  z-index: 5;
-  top: 17%;
-  right: 16%;
-  display: grid;
-  width: 27px;
-  height: 27px;
-  place-items: center;
-  padding: 0;
-  color: var(--text-secondary, #756f66);
-  background: rgba(252, 249, 242, 0.88);
-  border: 1px solid rgba(111, 101, 87, 0.2);
-  border-radius: 999px;
-  box-shadow: 0 5px 15px rgba(54, 48, 40, 0.1);
-  cursor: pointer;
-  opacity: 0;
-  pointer-events: auto;
-  transition:
-    opacity 160ms ease,
-    color 160ms ease,
-    transform 160ms ease;
-}
-
-.cat-video-pet:hover .cat-video-pet-hide,
-.cat-video-pet:focus-within .cat-video-pet-hide {
-  opacity: 0.78;
-}
-
-.cat-video-pet-hide:hover,
-.cat-video-pet-hide:focus-visible {
-  color: var(--text-primary, #27231d);
-  opacity: 1;
-  transform: scale(1.06);
-}
-
 .cat-video-pet-speech {
   position: absolute;
   z-index: 4;
@@ -206,33 +170,6 @@
   top: 38%;
   font-size: 10px;
   animation-delay: 210ms;
-}
-
-.cat-video-pet-restore {
-  position: fixed;
-  z-index: 72;
-  right: max(var(--alisha-right), env(safe-area-inset-right));
-  bottom: max(var(--alisha-bottom), env(safe-area-inset-bottom));
-  display: grid;
-  width: 37px;
-  height: 37px;
-  place-items: center;
-  padding: 0;
-  color: var(--text-secondary, #756f66);
-  background: rgba(251, 248, 241, 0.92);
-  border: 1px solid rgba(111, 101, 87, 0.22);
-  border-radius: 999px;
-  box-shadow: 0 8px 24px rgba(54, 48, 40, 0.12);
-  cursor: pointer;
-  transition:
-    color 160ms ease,
-    transform 160ms ease;
-}
-
-.cat-video-pet-restore:hover,
-.cat-video-pet-restore:focus-visible {
-  color: var(--text-primary, #27231d);
-  transform: translateY(-2px);
 }
 
 .cat-video-pet.is-avoiding-controls {
@@ -317,11 +254,6 @@
     height: var(--alisha-size-mobile);
   }
 
-  .cat-video-pet.is-avoiding-controls {
-    width: 56px;
-    height: 56px;
-  }
-
   .cat-video-pet.is-scrolling {
     width: 56px;
     height: 56px;
@@ -341,14 +273,6 @@
     transform: none;
   }
 
-  .cat-video-pet-hide {
-    top: 8%;
-    right: 6%;
-    width: 44px;
-    height: 44px;
-    opacity: 0.62;
-  }
-
   .cat-video-pet-speech {
     right: 54%;
     bottom: 66%;
@@ -357,24 +281,12 @@
     font-size: 11px;
   }
 
-  .cat-video-pet.is-scrolling .cat-video-pet-hide,
-  .cat-video-pet.is-avoiding-controls .cat-video-pet-hide {
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  .cat-video-pet-restore {
-    right: max(13px, env(safe-area-inset-right));
-    bottom: max(15px, env(safe-area-inset-bottom));
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .cat-video-pet,
   .cat-video-pet-canvas,
   .cat-video-pet-fallback,
-  .cat-video-pet-hide,
-  .cat-video-pet-restore,
   .cat-video-pet-speech,
   .cat-video-pet-particles i {
     animation-duration: 1ms !important;
