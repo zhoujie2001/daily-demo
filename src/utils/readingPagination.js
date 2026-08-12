@@ -51,24 +51,16 @@ export function paginateReadingBooks(books, page, pageSize) {
   };
 }
 
-export function createReadingPagePreviews(books, pageSize, previewSize = 2) {
+export function createReadingBookPreviews(books, pageSize) {
   const source = Array.isArray(books) ? books : [];
   const size = Math.max(1, Number(pageSize) || 1);
-  const coverCount = Math.max(1, Number(previewSize) || 1);
-  const pageCount = getReadingPageCount(source.length, size);
 
-  if (!source.length) return [];
-
-  return Array.from({ length: pageCount }, (_, index) => {
-    const start = index * size;
-    const pageBooks = source.slice(start, start + size);
-    return {
-      id: index + 1,
-      page: index + 1,
-      books: pageBooks.slice(0, coverCount),
-      count: pageBooks.length,
-    };
-  });
+  return source.map((book, index) => ({
+    id: book?.id != null ? `book-${book.id}` : `book-index-${index}`,
+    book,
+    index,
+    page: Math.floor(index / size) + 1,
+  }));
 }
 
 export function getReadingSwipeDirection(start, end) {

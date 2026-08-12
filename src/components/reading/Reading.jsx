@@ -11,7 +11,7 @@ import {
 import { statusLabel } from '../../data/books';
 import {
   READING_FILTERS,
-  createReadingPagePreviews,
+  createReadingBookPreviews,
   filterReadingBooks,
   getReadingPageSize,
   getReadingSwipeDirection,
@@ -39,9 +39,14 @@ function Stars({ value }) {
   );
 }
 
-function BookCard({ book, isAdmin, onEdit, onDelete }) {
+function BookCard({ book, isAdmin, onEdit, onDelete, cardRef, previewId, isPreviewTarget }) {
   return (
-    <li className={`book-card ${isAdmin ? 'is-admin' : ''}`.trim()}>
+    <li
+      ref={cardRef}
+      className={`book-card ${isAdmin ? 'is-admin' : ''} ${isPreviewTarget ? 'is-preview-target' : ''}`.trim()}
+      data-book-preview-id={previewId}
+      tabIndex={-1}
+    >
       <div className="book-cover">
         {book.cover_url ? (
           <LazyImage
@@ -92,31 +97,25 @@ function BookCard({ book, isAdmin, onEdit, onDelete }) {
   );
 }
 
-function ReadingPagePreview({ preview }) {
+function ReadingBookPreview({ preview }) {
+  const title = String(preview.book?.title || '').trim();
+
   return (
-    <span className="reading-page-preview">
-      <span className="reading-page-covers" aria-hidden="true">
-        {preview.books.map((book, index) => (
-          <span
-            key={book.id ?? `${preview.page}-${index}`}
-            className="reading-page-cover"
-            style={{ '--cover-index': index }}
-          >
-            {book.cover_url ? (
-              <img
-                src={book.cover_url}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                onError={(event) => {
-                  event.currentTarget.hidden = true;
-                }}
-              />
-            ) : null}
-          </span>
-        ))}
+    <span className="reading-book-preview">
+      <span className="reading-book-preview-cover" aria-hidden="true">
+        <span className="reading-book-preview-fallback">{title.slice(0, 1) || '书'}</span>
+        {preview.book?.cover_url ? (
+          <img
+            src={preview.book.cover_url}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            onError={(event) => {
+              event.currentTarget.hidden = true;
+            }}
+          />
+        ) : null}
       </span>
-      <span className="reading-page-preview-number">{String(preview.page).padStart(2, '0')}</span>
     </span>
   );
 }
@@ -151,7 +150,10 @@ export default function Reading({ isAdmin, books, loading, saving, backendReady,
   const [pageDirection, setPageDirection] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [previewTarget, setPreviewTarget] = useState(null);
   const touchStartRef = useRef(null);
+  const previewRequestRef = useRef(0);
+  const cardRefs = useRef(new Map());
   const pageSize = useReadingPageSize();
   const { confirm, toast } = useDialog();
 
@@ -163,18 +165,61 @@ export default function Reading({ isAdmin, books, loading, saving, backendReady,
     () => paginateReadingBooks(filtered, page, pageSize),
     [filtered, page, pageSize]
   );
-  const pagePreviews = useMemo(
-    () => createReadingPagePreviews(filtered, pageSize),
+  const bookPreviews = useMemo(
+    () => createReadingBookPreviews(filtered, pageSize),
     [filtered, pageSize]
   );
+  const previewIdByBook = useMemo(
+    () => new Map(bookPreviews.map((preview) => [preview.book, preview.id])),
+    [bookPreviews]
+  );
+  const activePreviewId = previewTarget?.id
+    || bookPreviews.find((preview) => preview.page === paginated.page)?.id
+    || null;
+
+  useEffect(() => {
+    if (!previewTarget) return undefined;
+
+    let highlightTimer;
+    const frame = window.requestAnimationFrame(() => {
+      const card = cardRefs.current.get(previewTarget.id);
+      if (!card) return;
+
+      const reduceMotion = typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      card.scrollIntoView({
+        behavior: reduceMotion ? 'auto' : 'smooth',
+        block: 'nearest',
+        inline: 'nearest',
+      });
+      card.focus({ preventScroll: true });
+      highlightTimer = window.setTimeout(() => {
+        setPreviewTarget((current) => (
+          current?.requestId === previewTarget.requestId ? null : current
+        ));
+      }, 1500);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (highlightTimer) window.clearTimeout(highlightTimer);
+    };
+  }, [paginated.page, previewTarget]);
 
   const resetPage = () => {
     setPageDirection('');
+    setPreviewTarget(null);
     setPage(1);
   };
 
-  const changePage = (nextPage) => {
+  const changePage = (nextPage, targetPreviewId = null) => {
     const next = Math.min(Math.max(1, nextPage), paginated.pageCount);
+    if (targetPreviewId) {
+      previewRequestRef.current += 1;
+      setPreviewTarget({ id: targetPreviewId, requestId: previewRequestRef.current });
+    } else {
+      setPreviewTarget(null);
+    }
     if (next === paginated.page) return;
     setPageDirection(next > paginated.page ? 'next' : 'previous');
     setPage(next);
@@ -321,15 +366,24 @@ export default function Reading({ isAdmin, books, loading, saving, backendReady,
             key={`${activeStatus}-${query}-${paginated.page}-${pageSize}`}
             className={`book-list ${pageDirection ? `page-enter-${pageDirection}` : ''}`.trim()}
           >
-            {paginated.items.map((book) => (
+            {paginated.items.map((book) => {
+              const previewId = previewIdByBook.get(book);
+              return (
               <BookCard
-                key={book.id}
+                key={book.id ?? previewId}
                 book={book}
                 isAdmin={isAdmin}
                 onEdit={openEdit}
                 onDelete={handleDelete}
+                previewId={previewId}
+                isPreviewTarget={previewTarget?.id === previewId}
+                cardRef={(node) => {
+                  if (node) cardRefs.current.set(previewId, node);
+                  else cardRefs.current.delete(previewId);
+                }}
               />
-            ))}
+              );
+            })}
           </ul>
         )}
       </div>
@@ -345,13 +399,13 @@ export default function Reading({ isAdmin, books, loading, saving, backendReady,
           <ChevronLeft size={17} />
         </button>
         <PreviewRail
-          items={pagePreviews}
-          activeId={paginated.page}
-          onSelect={(preview) => changePage(preview.page)}
-          renderPreview={(preview) => <ReadingPagePreview preview={preview} />}
-          getLabel={(preview) => `第 ${preview.page} 页，${preview.count} 本书`}
-          ariaLabel="书页封面预览"
-          className="reading-preview-rail"
+          items={bookPreviews}
+          activeId={activePreviewId}
+          onSelect={(preview) => changePage(preview.page, preview.id)}
+          renderPreview={(preview) => <ReadingBookPreview preview={preview} />}
+          getLabel={(preview) => `查看《${preview.book?.title || '未命名书籍'}》`}
+          ariaLabel="书籍封面预览"
+          className="reading-book-preview-rail"
         />
         <span className="reading-page-count" aria-live="polite">
           {filtered.length === 0 ? '0 / 0' : `${paginated.page} / ${paginated.pageCount}`}

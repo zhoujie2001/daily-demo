@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  createReadingPagePreviews,
+  createReadingBookPreviews,
   filterReadingBooks,
   getReadingPageCount,
   getReadingPageSize,
@@ -85,13 +85,20 @@ test('only treats a deliberate horizontal gesture as a page swipe', () => {
   );
 });
 
-test('builds compact cover previews for every reading page', () => {
-  const previews = createReadingPagePreviews(sampleBooks, 3, 2);
+test('builds one real cover preview per book and maps it to its page', () => {
+  const previews = createReadingBookPreviews(sampleBooks, 3);
 
-  assert.equal(previews.length, 3);
-  assert.deepEqual(previews[0].books.map((book) => book.id), [1, 2]);
-  assert.deepEqual(previews[1].books.map((book) => book.id), [4, 5]);
-  assert.deepEqual(previews[2].books.map((book) => book.id), [7]);
-  assert.deepEqual(previews.map((preview) => preview.count), [3, 3, 1]);
-  assert.deepEqual(createReadingPagePreviews([], 3), []);
+  assert.equal(previews.length, sampleBooks.length);
+  assert.deepEqual(previews.map((preview) => preview.book.id), [1, 2, 3, 4, 5, 6, 7]);
+  assert.deepEqual(previews.map((preview) => preview.page), [1, 1, 1, 2, 2, 2, 3]);
+  assert.deepEqual(previews.map((preview) => preview.id), [
+    'book-1',
+    'book-2',
+    'book-3',
+    'book-4',
+    'book-5',
+    'book-6',
+    'book-7',
+  ]);
+  assert.deepEqual(createReadingBookPreviews([], 3), []);
 });
