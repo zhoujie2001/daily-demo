@@ -15,17 +15,20 @@ test('brand identity has one reusable application source', () => {
 });
 
 test('hero and navigation consume the shared brand source', async () => {
-  const [about, sidebar] = await Promise.all([
+  const [about, sidebar, profile] = await Promise.all([
     readFile(new URL('src/components/About.jsx', root), 'utf8'),
     readFile(new URL('src/components/Sidebar.jsx', root), 'utf8'),
+    readFile(new URL('src/utils/siteProfile.js', root), 'utf8'),
   ]);
 
   assert.match(about, /about-lockup-name/);
   assert.match(about, /siteBrand\.name/);
   assert.match(about, /about-lockup-owner/);
   assert.match(about, /siteBrand\.ownerAlias/);
-  assert.match(about, /siteBrand\.tagline/);
-  assert.match(about, /siteBrand\.intro/);
+  assert.match(about, /profile\.tagline/);
+  assert.match(about, /profile\.intro/);
+  assert.match(profile, /tagline: siteBrand\.tagline/);
+  assert.match(profile, /intro: siteBrand\.intro/);
   assert.match(sidebar, /siteBrand\.ownerAlias/);
   assert.match(sidebar, /document\.title = activeSection === 'about'/);
   assert.match(sidebar, /`\$\{currentSection\.label\} · \$\{siteBrand\.name\}`/);

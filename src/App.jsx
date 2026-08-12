@@ -134,6 +134,7 @@ function AppInner() {
       <main className="content">
         <About
           isAdmin={isAdmin}
+          adminToken={token}
           onRequestLogin={openLogin}
           onFilmVisibilityChange={setAboutFilmVisible}
         />
