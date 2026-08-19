@@ -194,6 +194,41 @@ export function createSupabaseAlishaStore(options = {}) {
   }
 
   return {
+    async consumeRateLimit(bucketKey, limit, windowSeconds) {
+      const rows = await request('rpc/consume_alisha_rate_limit', {
+        method: 'POST',
+        body: {
+          p_bucket_key: cleanText(bucketKey, 160),
+          p_limit: limit,
+          p_window_seconds: windowSeconds,
+        },
+      });
+      return rows?.[0] || rows;
+    },
+
+    async cleanupExpired(now = new Date()) {
+      const eventCutoff = new Date(now.getTime() - 90 * 86_400_000).toISOString();
+      const profileCutoff = new Date(now.getTime() - 180 * 86_400_000).toISOString();
+      const rateLimitCutoff = new Date(now.getTime() - 2 * 86_400_000).toISOString();
+      await request(`alisha_events?created_at=lt.${encodeURIComponent(eventCutoff)}`, {
+        method: 'DELETE',
+        prefer: 'return=minimal',
+      });
+      await request(`alisha_memory_deliveries?delivered_at=lt.${encodeURIComponent(profileCutoff)}`, {
+        method: 'DELETE',
+        prefer: 'return=minimal',
+      });
+      await request(`alisha_profiles?last_seen_at=lt.${encodeURIComponent(profileCutoff)}`, {
+        method: 'DELETE',
+        prefer: 'return=minimal',
+      });
+      await request(`alisha_rate_limits?window_start=lt.${encodeURIComponent(rateLimitCutoff)}`, {
+        method: 'DELETE',
+        prefer: 'return=minimal',
+      });
+      return { eventCutoff, profileCutoff, rateLimitCutoff };
+    },
+
     async getProfile(visitorId, dayKey) {
       const [profile, deliveries] = await Promise.all([
         ensureProfile(visitorId, dayKey),
@@ -326,6 +361,18 @@ export function createAlishaMemoryService(options = {}) {
   const store = options.store || createSupabaseAlishaStore(options);
 
   return {
+    async consumeRateLimit(bucketKey, limit, windowSeconds) {
+      const result = await store.consumeRateLimit(bucketKey, limit, windowSeconds);
+      if (!result || typeof result.allowed !== 'boolean') {
+        throw new AlishaMemoryError('阿丽莎限流服务暂不可用', 503);
+      }
+      return result;
+    },
+
+    async cleanupExpired(now) {
+      return store.cleanupExpired(now);
+    },
+
     async getProfile(visitorId, dayKey) {
       return store.getProfile(validateVisitorId(visitorId), dayKey);
     },

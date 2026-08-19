@@ -97,7 +97,7 @@ npm run preview     # 本地预览生产产物
 - `POST /api/alisha/memory/feedback`
 - `DELETE /api/alisha/memory`
 
-部署配置和数据库初始化见 `docs/alisha-memory-backend-contract.md`。
+部署配置、签名访客会话、分布式限流和自动清理见 `docs/alisha-memory-backend-contract.md`。
 
 ## 兜底策略
 

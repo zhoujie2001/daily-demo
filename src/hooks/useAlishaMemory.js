@@ -3,6 +3,7 @@ import {
   fetchAlishaMemoryProfile,
   fetchAlishaRecommendation,
   deleteAlishaMemory,
+  establishAlishaMemorySession,
   recordAlishaEvents,
   recordAlishaFeedback,
 } from '../api/alishaMemory';
@@ -43,6 +44,14 @@ function getVisitorId() {
   }
 }
 
+function setVisitorId(visitorId) {
+  try {
+    window.localStorage.setItem(ALISHA_VISITOR_STORAGE_KEY, visitorId);
+  } catch {
+    // HttpOnly 会话仍能工作，本机档案只在当前页面继续使用。
+  }
+}
+
 function readLocalProfile(visitorId) {
   try {
     const raw = window.localStorage.getItem(ALISHA_MEMORY_STORAGE_KEY);
@@ -68,31 +77,48 @@ export function useAlishaMemory({ posts, enabled = true }) {
   const visitorIdRef = useRef('');
   const profileRef = useRef(null);
   const forgottenRef = useRef(false);
+  const cloudReadyRef = useRef(false);
   const [memoryCue, setMemoryCue] = useState(null);
 
   useEffect(() => {
     if (!enabled) return undefined;
     const sessionStartedAt = Date.now();
-    try {
-      const pendingVisitorId = window.localStorage.getItem(FORGET_PENDING_KEY);
-      if (pendingVisitorId) {
-        quietly(
-          deleteAlishaMemory(pendingVisitorId).then(() => {
-            window.localStorage.removeItem(FORGET_PENDING_KEY);
-          })
-        );
-      }
-    } catch {
-      // 无法读取本机存储时继续当前会话。
-    }
-    const visitorId = getVisitorId();
-    visitorIdRef.current = visitorId;
-    const localProfile = registerAlishaVisit(readLocalProfile(visitorId));
+    let cloudReady = false;
+    let cancelled = false;
+    const legacyVisitorId = getVisitorId();
+    visitorIdRef.current = legacyVisitorId;
+    const localProfile = registerAlishaVisit(readLocalProfile(legacyVisitorId));
     profileRef.current = localProfile;
     writeLocalProfile(localProfile);
 
-    quietly(
-      fetchAlishaMemoryProfile(visitorId).then((remote) => {
+    quietly((async () => {
+      try {
+        if (window.localStorage.getItem(FORGET_PENDING_KEY)) {
+          await deleteAlishaMemory();
+          window.localStorage.removeItem(FORGET_PENDING_KEY);
+        }
+      } catch {
+        // 删除会在下一次访问时继续重试。
+      }
+      const identity = await establishAlishaMemorySession(legacyVisitorId);
+      if (cancelled || !identity?.visitorId) return;
+      const visitorId = identity.visitorId;
+      visitorIdRef.current = visitorId;
+      setVisitorId(visitorId);
+      const migratedLocal = normalizeAlishaMemoryProfile(profileRef.current, visitorId);
+      profileRef.current = migratedLocal;
+      writeLocalProfile(migratedLocal);
+      cloudReady = true;
+      cloudReadyRef.current = true;
+      const [remote] = await Promise.all([
+        fetchAlishaMemoryProfile(),
+        recordAlishaEvents({
+          type: 'session_started',
+          occurredAt: new Date().toISOString(),
+          context: { path: window.location.pathname },
+        }),
+      ]);
+      if (!cancelled) {
         const remoteProfile = remote?.profile || remote;
         if (!remoteProfile) return;
         const merged = registerAlishaVisit(
@@ -100,25 +126,18 @@ export function useAlishaMemory({ posts, enabled = true }) {
         );
         profileRef.current = merged;
         writeLocalProfile(merged);
-      })
-    );
-    quietly(
-      recordAlishaEvents(visitorId, {
-        type: 'session_started',
-        occurredAt: new Date().toISOString(),
-        context: { path: window.location.pathname },
-      })
-    );
+      }
+    })());
 
     return () => {
-      if (forgottenRef.current) return;
+      cancelled = true;
+      if (forgottenRef.current || !cloudReady) return;
       const activeSeconds = Math.max(
         1,
         Math.round((Date.now() - sessionStartedAt) / 1000)
       );
       quietly(
         recordAlishaEvents(
-          visitorId,
           {
             type: 'session_ended',
             occurredAt: new Date().toISOString(),
@@ -148,13 +167,15 @@ export function useAlishaMemory({ posts, enabled = true }) {
         profileRef.current = { ...profile, sectionVisits };
         writeLocalProfile(profileRef.current);
       }
-      quietly(
-        recordAlishaEvents(visitorIdRef.current, {
-          type: 'section_viewed',
-          occurredAt: new Date().toISOString(),
-          context: { section, dwellThresholdSeconds: 4 },
-        })
-      );
+      if (cloudReadyRef.current) {
+        quietly(
+          recordAlishaEvents({
+            type: 'section_viewed',
+            occurredAt: new Date().toISOString(),
+            context: { section, dwellThresholdSeconds: 4 },
+          })
+        );
+      }
     };
 
     const observer = new IntersectionObserver(
@@ -204,7 +225,8 @@ export function useAlishaMemory({ posts, enabled = true }) {
 
       let recommendation = null;
       try {
-        const remote = await fetchAlishaRecommendation(visitorId, {
+        if (!cloudReadyRef.current) throw new Error('Cloud memory session unavailable');
+        const remote = await fetchAlishaRecommendation({
           section: 'daily',
           dayKey: toLocalDayKey(),
         });
@@ -225,7 +247,7 @@ export function useAlishaMemory({ posts, enabled = true }) {
       writeLocalProfile(nextProfile);
       setMemoryCue(recommendation);
       quietly(
-        recordAlishaEvents(visitorId, {
+        recordAlishaEvents({
           type: 'memory_delivered',
           occurredAt: new Date().toISOString(),
           contentType: recommendation.contentType,
@@ -256,7 +278,7 @@ export function useAlishaMemory({ posts, enabled = true }) {
     profileRef.current = nextProfile;
     writeLocalProfile(nextProfile);
     setMemoryCue(null);
-    quietly(recordAlishaFeedback(visitorIdRef.current, cue.id, action));
+    if (cloudReadyRef.current) quietly(recordAlishaFeedback(cue.id, action));
     return cue;
   }, [memoryCue]);
 
@@ -273,11 +295,11 @@ export function useAlishaMemory({ posts, enabled = true }) {
     let cloudDeleted = false;
     if (visitorId) {
       try {
-        await deleteAlishaMemory(visitorId);
+        await deleteAlishaMemory();
         cloudDeleted = true;
       } catch {
         try {
-          window.localStorage.setItem(FORGET_PENDING_KEY, visitorId);
+          window.localStorage.setItem(FORGET_PENDING_KEY, '1');
         } catch {
           // 无法排队时仍清除当前设备上的档案。
         }
@@ -292,6 +314,7 @@ export function useAlishaMemory({ posts, enabled = true }) {
     }
     visitorIdRef.current = '';
     profileRef.current = null;
+    cloudReadyRef.current = false;
     return { cloudDeleted };
   }, []);
 

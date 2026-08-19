@@ -7,6 +7,12 @@
     "api/book-cover.js": { "maxDuration": 10 },
     "api/alisha/memory/*.js": { "maxDuration": 10 }
   },
+  "crons": [
+    {
+      "path": "/api/alisha/memory/cleanup",
+      "schedule": "15 3 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/",

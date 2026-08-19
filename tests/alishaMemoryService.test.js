@@ -6,10 +6,15 @@ import {
   normalizeMemoryEvents,
   validateVisitorId,
 } from '../server/alishaMemoryService.js';
-import { handleAlishaMemoryRequest } from '../server/alishaMemoryApi.js';
+import {
+  handleAlishaMemoryCleanup,
+  handleAlishaMemoryRequest,
+} from '../server/alishaMemoryApi.js';
 
 const VISITOR_ID = '78f0b9e9-25ab-4bd7-9c6b-499e54ca32c6';
 const EVENT_ID = '0fe53c0b-975a-4fae-a6d6-0c43d9ce9457';
+const SIGNING_SECRET = 'test-signing-secret-with-at-least-32-characters';
+const RATE_LIMIT_SALT = 'test-rate-limit-salt-with-at-least-32-characters';
 
 function diaryResponse(items) {
   return Promise.resolve({
@@ -175,6 +180,9 @@ function createMockResponse() {
     setHeader(name, value) {
       this.headers[name] = value;
     },
+    getHeader(name) {
+      return this.headers[name];
+    },
     status(code) {
       this.statusCode = code;
       return this;
@@ -203,7 +211,61 @@ test('记忆 API 只向允许的主站来源开放', async () => {
   );
   assert.equal(deniedResponse.statusCode, 403);
 
+  const identityResponse = createMockResponse();
+  await handleAlishaMemoryRequest(
+    {
+      method: 'POST',
+      headers: {
+        origin: 'https://www.littlearisa88.com',
+        host: 'www.littlearisa88.com',
+        'x-forwarded-proto': 'https',
+        'x-alisha-visitor-id': VISITOR_ID,
+      },
+      query: {},
+    },
+    identityResponse,
+    'identity',
+    {
+      service: {},
+      skipRateLimit: true,
+      signingSecret: SIGNING_SECRET,
+      legacyCutoff: '2026-09-02T00:00:00.000Z',
+      nowMs: Date.parse('2026-08-18T00:00:00.000Z'),
+    }
+  );
+  assert.equal(identityResponse.statusCode, 200);
+  assert.equal(identityResponse.body.visitorId, VISITOR_ID);
+  const cookie = identityResponse.headers['Set-Cookie'][0].split(';')[0];
+
   const allowedResponse = createMockResponse();
+  await handleAlishaMemoryRequest(
+    {
+      method: 'GET',
+      headers: {
+        origin: 'https://www.littlearisa88.com',
+        host: 'www.littlearisa88.com',
+        cookie,
+      },
+      query: { day: '2026-08-18' },
+    },
+    allowedResponse,
+    'recommendation',
+    {
+      service: { recommend: async () => null },
+      skipRateLimit: true,
+      signingSecret: SIGNING_SECRET,
+      nowMs: Date.parse('2026-08-18T00:00:01.000Z'),
+    }
+  );
+  assert.equal(allowedResponse.statusCode, 204);
+  assert.equal(
+    allowedResponse.headers['Access-Control-Allow-Origin'],
+    'https://www.littlearisa88.com'
+  );
+});
+
+test('签名 Cookie 生效后不再信任伪造的访客请求头', async () => {
+  const response = createMockResponse();
   await handleAlishaMemoryRequest(
     {
       method: 'GET',
@@ -213,13 +275,65 @@ test('记忆 API 只向允许的主站来源开放', async () => {
       },
       query: { day: '2026-08-18' },
     },
-    allowedResponse,
+    response,
     'recommendation',
-    { service: { recommend: async () => null } }
+    {
+      service: { recommend: async () => null },
+      skipRateLimit: true,
+      signingSecret: SIGNING_SECRET,
+    }
   );
-  assert.equal(allowedResponse.statusCode, 204);
-  assert.equal(
-    allowedResponse.headers['Access-Control-Allow-Origin'],
-    'https://www.littlearisa88.com'
+  assert.equal(response.statusCode, 401);
+});
+
+test('IP 或访客超过分布式限额时返回 429 与 Retry-After', async () => {
+  const response = createMockResponse();
+  await handleAlishaMemoryRequest(
+    {
+      method: 'POST',
+      headers: {
+        origin: 'https://www.littlearisa88.com',
+        'x-forwarded-for': '203.0.113.8',
+      },
+      query: {},
+    },
+    response,
+    'identity',
+    {
+      service: {
+        consumeRateLimit: async () => ({ allowed: false, retry_after: 37 }),
+      },
+      rateLimitSalt: RATE_LIMIT_SALT,
+    }
   );
+  assert.equal(response.statusCode, 429);
+  assert.equal(response.headers['Retry-After'], '37');
+});
+
+test('每日清理接口只接受 Vercel Cron 密钥', async () => {
+  const denied = createMockResponse();
+  await handleAlishaMemoryCleanup(
+    { method: 'GET', headers: {} },
+    denied,
+    { cronSecret: 'cron-test-secret' }
+  );
+  assert.equal(denied.statusCode, 401);
+
+  const allowed = createMockResponse();
+  let cleaned = false;
+  await handleAlishaMemoryCleanup(
+    { method: 'GET', headers: { authorization: 'Bearer cron-test-secret' } },
+    allowed,
+    {
+      cronSecret: 'cron-test-secret',
+      service: {
+        cleanupExpired: async () => {
+          cleaned = true;
+          return { eventCutoff: '2026-05-01T00:00:00.000Z' };
+        },
+      },
+    }
+  );
+  assert.equal(allowed.statusCode, 200);
+  assert.equal(cleaned, true);
 });
