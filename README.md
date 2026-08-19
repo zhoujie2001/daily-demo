@@ -49,7 +49,7 @@ cp .env.example .env.local
 | 变量 | 说明 | 默认 |
 | --- | --- | --- |
 | `VITE_API_URL` | 后端 API 根地址（不含末尾斜杠） | `https://daily-demo-backend.vercel.app` |
-| `VITE_BOOK_COVER_API_URL` | 本仓库 Vercel 书籍搜索与封面代理地址 | `https://daily-demo-roan.vercel.app` |
+| `VITE_BOOK_COVER_API_URL` | 本仓库 Vercel 书籍搜索与封面代理地址 | `https://www.littlearisa88.com` |
 
 ## 本地开发
 
@@ -88,6 +88,16 @@ npm run preview     # 本地预览生产产物
 - `GET/POST/PUT/DELETE /api/photos[/:id]`
 - `GET/POST/PUT/DELETE /api/videos[/:id]`
 - `POST /api/upload`
+
+阿丽莎云端记忆由本仓库的 Vercel Functions 提供：
+
+- `GET /api/alisha/memory/profile`
+- `POST /api/alisha/memory/events`
+- `GET /api/alisha/memory/recommendation`
+- `POST /api/alisha/memory/feedback`
+- `DELETE /api/alisha/memory`
+
+部署配置和数据库初始化见 `docs/alisha-memory-backend-contract.md`。
 
 ## 兜底策略
 

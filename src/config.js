@@ -17,5 +17,11 @@ export const API_BASE = normalizeBaseUrl(
 // 单独配置可避免把内容后端与封面代理错误地指向同一个项目。
 export const BOOK_COVER_API_BASE = normalizeBaseUrl(
   env.VITE_BOOK_COVER_API_URL,
-  'https://daily-demo-roan.vercel.app'
+  'https://www.littlearisa88.com'
+);
+
+// 阿丽莎记忆由本仓库的 Vercel Functions 提供，与内容后端解耦。
+export const ALISHA_MEMORY_API_BASE = normalizeBaseUrl(
+  env.VITE_ALISHA_MEMORY_API_URL,
+  BOOK_COVER_API_BASE
 );
