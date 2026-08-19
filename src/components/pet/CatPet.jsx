@@ -9,6 +9,7 @@ import {
   mergeAlishaConfig,
 } from '../../utils/alishaBehavior';
 import StableVideoPetPlayer from './StableVideoPetPlayer';
+import AlishaMemoryCard from './AlishaMemoryCard';
 import {
   VIDEO_PET_ACTIONS,
   chooseVideoPetReaction,
@@ -79,7 +80,13 @@ function StaticFallback() {
   );
 }
 
-export default function CatPet({ suspended = false }) {
+export default function CatPet({
+  suspended = false,
+  memory = null,
+  onOpenMemory,
+  onDismissMemory,
+  onForgetMemory,
+}) {
   const containerRef = useRef(null);
   const stageRef = useRef(null);
   const canvasRef = useRef(null);
@@ -914,6 +921,12 @@ export default function CatPet({ suspended = false }) {
       data-position-revision="3"
       data-pet-dock={dockSide}
     >
+      <AlishaMemoryCard
+        memory={memory}
+        onOpen={onOpenMemory}
+        onDismiss={onDismissMemory}
+        onForget={onForgetMemory}
+      />
       <div
         ref={stageRef}
         className="cat-video-pet-stage"

@@ -1,0 +1,11 @@
+.pnpm-store/
+.tmp*
+.venv/
+dist/
+db/
+demos/
+docs/
+tests/
+tools/
+*.docx
+*.zip

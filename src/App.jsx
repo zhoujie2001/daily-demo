@@ -17,6 +17,7 @@ import { useDiary } from './hooks/useDiary';
 import { usePhotos } from './hooks/usePhotos';
 import { useVideos } from './hooks/useVideos';
 import { useReading } from './hooks/useReading';
+import { useAlishaMemory } from './hooks/useAlishaMemory';
 import CatPet from './components/pet/CatPet';
 import BrandFooter from './components/BrandFooter';
 
@@ -26,7 +27,13 @@ function AppInner() {
   const photosState = usePhotos(token);
   const videosState = useVideos(token);
   const readingState = useReading(token);
-  const { toast } = useDialog();
+  const {
+    memoryCue,
+    openMemory: openAlishaMemory,
+    dismissMemory: dismissAlishaMemory,
+    forgetMemory: forgetAlishaMemory,
+  } = useAlishaMemory({ posts });
+  const { confirm, toast } = useDialog();
 
   const [showLogin, setShowLogin] = useState(false);
   const [activePhoto, setActivePhoto] = useState(null);
@@ -49,6 +56,33 @@ function AppInner() {
     logout();
     toast.info('已退出登录');
   };
+
+  const handleOpenAlishaMemory = useCallback(() => {
+    const memory = openAlishaMemory();
+    if (!memory?.contentId) return;
+    setActiveDate(memory.contentId);
+    window.requestAnimationFrame(() => {
+      document.getElementById('daily')?.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+          ? 'auto'
+          : 'smooth',
+        block: 'start',
+      });
+    });
+  }, [openAlishaMemory, setActiveDate]);
+
+  const handleForgetAlishaMemory = useCallback(async () => {
+    const ok = await confirm({
+      title: '让阿丽莎忘记你？',
+      message: '这会清除访问记录、栏目偏好和已经展示过的记忆，无法撤销。',
+      confirmText: '清除记忆',
+      danger: true,
+    });
+    if (!ok) return;
+    const result = await forgetAlishaMemory();
+    if (result.cloudDeleted) toast.success('阿丽莎已经忘记这些记录');
+    else toast.info('本机记忆已清除，云端删除会在下次访问时重试');
+  }, [confirm, forgetAlishaMemory, toast]);
 
   const checkBackendReachable = useCallback(async () => {
     const controller = new AbortController();
@@ -121,7 +155,13 @@ function AppInner() {
         onRetry={() => runBackendCheck({ showNoticeOnFail: true })}
       />
       <AdminLogin open={showLogin} onClose={closeLogin} onLogin={handleLogin} />
-      <CatPet suspended={aboutFilmVisible} />
+      <CatPet
+        suspended={aboutFilmVisible}
+        memory={memoryCue}
+        onOpenMemory={handleOpenAlishaMemory}
+        onDismissMemory={dismissAlishaMemory}
+        onForgetMemory={handleForgetAlishaMemory}
+      />
 
       <Sidebar
         isAdmin={isAdmin}

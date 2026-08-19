@@ -4,7 +4,8 @@
   "framework": "vite",
   "functions": {
     "api/book-search.js": { "maxDuration": 10 },
-    "api/book-cover.js": { "maxDuration": 10 }
+    "api/book-cover.js": { "maxDuration": 10 },
+    "api/alisha/memory/*.js": { "maxDuration": 10 }
   },
   "headers": [
     {
