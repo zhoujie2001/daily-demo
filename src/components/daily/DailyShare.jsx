@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Check, Copy, QrCode, Share2, X } from 'lucide-react';
+import { Check, Copy, ImageDown, QrCode, Share2, X } from 'lucide-react';
 import { useDialog } from '../../context/DialogContext';
 import {
   copyText,
@@ -7,6 +7,7 @@ import {
   isCanceledShare,
 } from '../../utils/dailyShare';
 import DailyQrCode from './DailyQrCode';
+import DailySharePoster from './DailySharePoster';
 
 const COPY_RESET_DELAY = 1800;
 
@@ -14,16 +15,12 @@ function supportsSystemShare() {
   return typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 }
 
-function prefersImmediateSystemShare() {
-  if (!supportsSystemShare() || typeof window === 'undefined') return false;
-  return window.matchMedia('(pointer: coarse)').matches && window.matchMedia('(max-width: 900px)').matches;
-}
-
 export default function DailyShare({ post }) {
   const { toast } = useDialog();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [posterOpen, setPosterOpen] = useState(false);
   const shareRootRef = useRef(null);
   const triggerRef = useRef(null);
   const closeButtonRef = useRef(null);
@@ -84,12 +81,18 @@ export default function DailyShare({ post }) {
   };
 
   const handleTrigger = () => {
-    if (prefersImmediateSystemShare()) {
-      handleSystemShare();
-      return;
-    }
     setOpen((current) => !current);
   };
+
+  const handlePosterOpen = () => {
+    setOpen(false);
+    setPosterOpen(true);
+  };
+
+  const handlePosterClose = useCallback(() => {
+    setPosterOpen(false);
+    window.requestAnimationFrame(() => triggerRef.current?.focus({ preventScroll: true }));
+  }, []);
 
   const handleCopy = async () => {
     try {
@@ -158,8 +161,15 @@ export default function DailyShare({ post }) {
               {copied ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
               {copied ? '已复制' : '复制链接'}
             </button>
+            <button type="button" className="daily-share-poster-action" onClick={handlePosterOpen}>
+              <ImageDown size={15} aria-hidden="true" />
+              生成分享卡片
+            </button>
           </div>
         </section>
+      ) : null}
+      {posterOpen ? (
+        <DailySharePoster post={post} payload={payload} onClose={handlePosterClose} />
       ) : null}
     </div>
   );
