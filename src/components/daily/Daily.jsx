@@ -21,6 +21,11 @@ import {
 } from '../../utils/livePhotoImport';
 import { inspectSoundPostcard } from '../../utils/soundPostcard';
 import {
+  copyText,
+  createDailyLink,
+  getDailyLinkArrivalSource,
+} from '../../utils/dailyShare';
+import {
   chooseTimeMachinePost,
   createTravelSequence,
   findPostByTimeKey,
@@ -123,14 +128,6 @@ function createArrival(post, source = 'random', strategy = 'surprise') {
   };
 }
 
-function createShareUrl(post) {
-  const url = new URL(window.location.href);
-  url.searchParams.set('time', toDateKey(post.date) || post.id);
-  url.searchParams.set('from', 'time-machine');
-  url.hash = 'daily';
-  return url;
-}
-
 function clearTimeMachineUrl({ replace = true } = {}) {
   const url = new URL(window.location.href);
   const hadTimeParams = url.searchParams.has('time') || url.searchParams.has('from');
@@ -151,24 +148,6 @@ function scrollToPost(postId, reducedMotion) {
       });
     });
   });
-}
-
-function copyToClipboard(value) {
-  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
-
-  const textarea = document.createElement('textarea');
-  textarea.value = value;
-  textarea.setAttribute('readonly', '');
-  textarea.style.position = 'fixed';
-  textarea.style.opacity = '0';
-  document.body.appendChild(textarea);
-  textarea.select();
-  try {
-    const copied = document.execCommand('copy');
-    return copied ? Promise.resolve() : Promise.reject(new Error('浏览器不支持复制链接'));
-  } finally {
-    textarea.remove();
-  }
 }
 
 export default function Daily({ isAdmin, posts, loading = false, activeDate, onActiveDateChange, onPublish, onDelete }) {
@@ -242,7 +221,8 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
     if (loading || handledInitialTimeLinkRef.current || !posts?.length) return;
     handledInitialTimeLinkRef.current = true;
 
-    const key = new URL(window.location.href).searchParams.get('time');
+    const currentUrl = new URL(window.location.href);
+    const key = currentUrl.searchParams.get('time');
     const linkedPost = findPostByTimeKey(posts, key);
     if (!linkedPost) {
       if (key) clearTimeMachineUrl();
@@ -252,13 +232,14 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
     setActiveTag(null);
     setKeyword('');
     onActiveDateChange(linkedPost.id);
-    setArrival(createArrival(linkedPost, 'link'));
+    setArrival(createArrival(linkedPost, getDailyLinkArrivalSource(currentUrl.toString())));
     scrollToPost(linkedPost.id, reducedMotionRef.current);
   }, [loading, onActiveDateChange, posts]);
 
   useEffect(() => {
     const handlePopState = () => {
-      const key = new URL(window.location.href).searchParams.get('time');
+      const currentUrl = new URL(window.location.href);
+      const key = currentUrl.searchParams.get('time');
       const linkedPost = findPostByTimeKey(posts, key);
       if (!linkedPost) {
         setArrival(null);
@@ -269,7 +250,7 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
       setActiveTag(null);
       setKeyword('');
       onActiveDateChange(linkedPost.id);
-      setArrival(createArrival(linkedPost, 'link'));
+      setArrival(createArrival(linkedPost, getDailyLinkArrivalSource(currentUrl.toString())));
       scrollToPost(linkedPost.id, reducedMotionRef.current);
     };
 
@@ -371,7 +352,11 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
       setTravelDate(destination.date);
       setArrival(createArrival(destination, 'random', strategy));
       setIsTraveling(false);
-      window.history.pushState({ timeMachine: true }, '', createShareUrl(destination));
+      window.history.pushState(
+        { timeMachine: true },
+        '',
+        createDailyLink(destination, { source: 'time-machine' })
+      );
       scrollToPost(destination.id, reducedMotionRef.current);
       travelTimersRef.current = [];
     };
@@ -412,10 +397,10 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
 
   const handleShareTime = async () => {
     if (!arrival?.post) return;
-    const shareUrl = createShareUrl(arrival.post).toString();
+    const shareUrl = createDailyLink(arrival.post, { source: 'share' }).toString();
     try {
-      await copyToClipboard(shareUrl);
-      toast.success('时光链接已复制');
+      await copyText(shareUrl);
+      toast.success('分享链接已复制');
     } catch (error) {
       toast.error(error.message || '复制失败，请重试');
     }

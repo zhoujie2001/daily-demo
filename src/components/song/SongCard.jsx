@@ -10,10 +10,10 @@ export default function SongCard({ playlist, variant = 0, style, className = '' 
       </div>
 
       <ol className="song-track-list">
-        {tracks.map((t) => {
+        {tracks.map((t, index) => {
           const href = t.mid ? `https://y.qq.com/n/ryqq/songDetail/${t.mid}` : null;
           return (
-            <li key={`${playlist.id}-${t.title}-${t.artist}`} className="song-track">
+            <li key={`${playlist.id}-${t.mid || `${t.title}-${t.artist}`}-${index}`} className="song-track">
               <a
                 className="song-track-link"
                 href={href || undefined}

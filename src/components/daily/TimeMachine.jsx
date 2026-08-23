@@ -149,6 +149,11 @@ export function TimeArrival({ arrival, onTravelAgain, onReturnToday, onShare }) 
     );
   }
 
+  const arrivedByLink = arrival.source === 'link' || arrival.source === 'share';
+  const arrivalHeading = arrival.source === 'share'
+    ? '你通过一条分享链接来到了这里'
+    : '你通过一条时光链接来到了这里';
+
   return (
     <aside
       ref={arrivalRef}
@@ -161,9 +166,9 @@ export function TimeArrival({ arrival, onTravelAgain, onReturnToday, onShare }) 
         <span className="time-arrival-icon" aria-hidden="true"><Clock3 size={18} /></span>
         <div>
           <strong>
-            {arrival.source === 'link' ? '你通过一条时光链接来到了这里' : `你回到了 ${arrival.formattedDate}`}
+            {arrivedByLink ? arrivalHeading : `你回到了 ${arrival.formattedDate}`}
           </strong>
-          <span>{arrival.source === 'link' ? `${arrival.formattedDate} · ${getDistanceLabel(arrival.daysAgo)}` : getDistanceLabel(arrival.daysAgo)}</span>
+          <span>{arrivedByLink ? `${arrival.formattedDate} · ${getDistanceLabel(arrival.daysAgo)}` : getDistanceLabel(arrival.daysAgo)}</span>
         </div>
       </div>
       <div className="time-arrival-actions">
@@ -177,7 +182,7 @@ export function TimeArrival({ arrival, onTravelAgain, onReturnToday, onShare }) 
         </button>
         <button type="button" onClick={onShare}>
           <Link2 size={14} aria-hidden="true" />
-          复制时光链接
+          复制分享链接
         </button>
       </div>
     </aside>

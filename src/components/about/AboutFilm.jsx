@@ -374,7 +374,6 @@ export default function AboutFilm({ onVisibilityChange }) {
             src={film.src}
             autoPlay={motionEnabled && index === 0}
             muted
-            defaultMuted
             playsInline
             disablePictureInPicture
             preload={motionEnabled ? 'auto' : 'metadata'}

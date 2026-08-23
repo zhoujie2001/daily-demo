@@ -2,6 +2,7 @@ import React from 'react';
 import { Edit2, Trash2 } from 'lucide-react';
 import EmojiReactions from './EmojiReactions';
 import DailyMedia from './DailyMedia';
+import DailyShare from './DailyShare';
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -68,7 +69,10 @@ export default function DailyEntry({ post, isAdmin, onEdit, onDelete, keyword = 
         mediaGrid={post.mediaGrid}
         title={post.title || post.date || 'Daily'}
       />
-      <EmojiReactions diaryId={post.id} />
+      <footer className="daily-entry-footer">
+        <EmojiReactions diaryId={post.id} />
+        <DailyShare post={post} />
+      </footer>
     </article>
   );
 }
