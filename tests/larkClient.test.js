@@ -174,7 +174,7 @@ test('updateMessageCard 使用 PATCH interactive 消息格式更新原卡片', a
     assert.equal(call.url.pathname, '/open-apis/im/v1/messages/om_card%2F1');
     assert.equal(call.options.headers.Authorization, 'Bearer t-1');
     const body = JSON.parse(call.options.body);
-    assert.equal(body.msg_type, 'interactive');
+    assert.ok(!('msg_type' in body));
     assert.equal(body.content, JSON.stringify(card));
     return jsonResponse(200, { code: 0, data: { message_id: 'om_card/1' } });
   });
