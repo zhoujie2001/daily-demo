@@ -40,6 +40,16 @@ test('正确 Token 的 URL verification 返回 challenge', () => {
   assert.deepEqual(result.body, { challenge: 'challenge-value' });
 });
 
+test('正确 Token 且省略 type 的 URL verification 返回 challenge', () => {
+  const result = invoke({
+    token: VERIFICATION_TOKEN,
+    challenge: 'challenge-without-type',
+  });
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body, { challenge: 'challenge-without-type' });
+});
+
 test('URL verification 无 Token 返回 403', () => {
   const result = invoke({
     type: 'url_verification',
