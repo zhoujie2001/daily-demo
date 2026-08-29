@@ -31,6 +31,12 @@ export default function handler(req, res) {
   }
 
   const body = req.body || {};
+  console.log('Lark callback payload shape', {
+    topLevelKeys: Object.keys(body),
+    type: body.type,
+    headerEventType: body.header?.event_type,
+    eventKeys: body.event && typeof body.event === 'object' ? Object.keys(body.event) : [],
+  });
   const verificationToken = process.env.LARK_VERIFICATION_TOKEN;
 
   const hasChallenge = Object.prototype.hasOwnProperty.call(body, 'challenge');
