@@ -31,6 +31,13 @@ class FakeLarkClient {
     return this.message;
   }
 
+  async delayUpdateMessageCard(cardUpdateToken, card) {
+    this.calls.push({ kind: 'delayUpdateMessageCard', cardUpdateToken, card });
+    if (this.updateError) {
+      throw this.updateError;
+    }
+  }
+
   async updateMessageCard(messageId, card) {
     this.calls.push({ kind: 'updateMessageCard', messageId, card });
     if (this.updateError) {
@@ -99,6 +106,7 @@ function triggerBody({
   return {
     header: { event_id: eventId, event_type: 'card.action.trigger' },
     event: {
+      token: `c-update-${requestId}`,
       operator: { open_id: operatorOpenId },
       action: {
         tag: 'button',
@@ -133,8 +141,8 @@ test('成功：回复原消息建话题并回写已派单卡片', async () => {
 
   assert.equal(result.httpStatus, 200);
   assert.equal(result.body.toast.type, 'success');
-  assert.equal(result.body.card.type, 'raw');
-  assert.equal(result.body.card.data.schema, '2.0');
+  assert.ok(!result.body.card, '延时更新模式只在回调响应中返回 Toast');
+  assert.equal(result.updatedCard.schema, '2.0');
 
   const reply = client.calls.find((call) => call.kind === 'reply');
   assert.ok(reply, '必须调用回复消息接口');
@@ -148,17 +156,24 @@ test('成功：回复原消息建话题并回写已派单卡片', async () => {
 
   assert.ok(client.calls.some((call) => call.kind === 'getMessage'));
   assert.ok(!client.calls.some((call) => call.kind === 'updateMessageCard'), '回调链路不得等待主动 PATCH');
+  assert.ok(!client.calls.some((call) => call.kind === 'delayUpdateMessageCard'), 'HTTP 响应前不得开始延时更新');
 
-  const button = result.body.card.data.body.elements[0].columns[1].elements[0];
+  const button = result.updatedCard.body.elements[0].columns[1].elements[0];
   assert.equal(button.disabled, true);
   assert.equal(button.type, 'default');
   assert.equal(button.text.content, '✅ 已派单');
+  assert.equal(button.disabled_tips.content, '该需求已创建派单话题');
   assert.deepEqual(button.behaviors, []);
-  const details = result.body.card.data.body.elements[0].columns[0].elements[0].content;
+  const details = result.updatedCard.body.elements[0].columns[0].elements[0].content;
   assert.match(details, /已分配给：✅ 派单话题已创建/);
-  const note = result.body.card.data.body.elements[1];
+  const note = result.updatedCard.body.elements[1];
   assert.equal(note.tag, 'markdown');
   assert.match(note.content, /✅ \*\*已派单\*\*｜需求 806001/);
+
+  await result.afterResponse();
+  const update = client.calls.find((call) => call.kind === 'delayUpdateMessageCard');
+  assert.equal(update.cardUpdateToken, 'c-update-806001');
+  assert.equal(update.card.body.elements[0].columns[1].elements[0].disabled, true);
 });
 
 test('无 action.value 的卡片动作：空响应且无任何 OpenAPI 调用', async () => {
@@ -288,9 +303,9 @@ test('读取原卡片失败：话题已创建并用回调字段生成已派单�
   const result = await runDispatch(triggerBody({ requestId: '806400' }), { client });
 
   assert.equal(result.body.toast.type, 'success');
-  assert.equal(result.body.card.type, 'raw');
-  assert.equal(result.body.card.data.body.elements[2].disabled, true);
-  assert.equal(result.body.card.data.body.elements[2].text.content, '✅ 已派单');
+  assert.ok(!result.body.card);
+  assert.equal(result.updatedCard.body.elements[2].disabled, true);
+  assert.equal(result.updatedCard.body.elements[2].text.content, '✅ 已派单');
   assert.ok(client.calls.some((call) => call.kind === 'reply'));
 });
 
@@ -303,9 +318,9 @@ test('消息读取接口返回 compact card：回退生成可更新的 Card JSON
   const result = await runDispatch(triggerBody({ requestId: '806450' }), { client });
 
   assert.equal(result.body.toast.type, 'success');
-  assert.equal(result.body.card.data.schema, '2.0');
-  assert.equal(result.body.card.data.body.elements[2].disabled, true);
-  assert.equal(result.body.card.data.body.elements[2].text.content, '✅ 已派单');
+  assert.equal(result.updatedCard.schema, '2.0');
+  assert.equal(result.updatedCard.body.elements[2].disabled, true);
+  assert.equal(result.updatedCard.body.elements[2].text.content, '✅ 已派单');
 });
 
 test('原消息非交互卡片：回退生成已派单卡片', async () => {
@@ -313,7 +328,7 @@ test('原消息非交互卡片：回退生成已派单卡片', async () => {
   const result = await runDispatch(triggerBody({ requestId: '806500' }), { client });
 
   assert.equal(result.body.toast.type, 'success');
-  assert.equal(result.body.card.data.schema, '2.0');
+  assert.equal(result.updatedCard.schema, '2.0');
 });
 
 test('卡片中找不到对应按钮：回退生成已派单卡片', async () => {
@@ -321,11 +336,11 @@ test('卡片中找不到对应按钮：回退生成已派单卡片', async () =>
   const result = await runDispatch(triggerBody({ requestId: '806600' }), { client });
 
   assert.equal(result.body.toast.type, 'success');
-  assert.equal(result.body.card.data.body.elements[2].text.content, '✅ 已派单');
+  assert.equal(result.updatedCard.body.elements[2].text.content, '✅ 已派单');
 });
 
 
-test('卡片更新只走 callback response，避免主动 PATCH 阻塞三秒回调期限', async () => {
+test('卡片延时更新在回调响应之后执行，失败不影响 200 响应', async () => {
   const client = new FakeLarkClient({
     updateError: new LarkApiError('LARK_API_230001', 'update rejected'),
     message: interactiveMessage('806700'),
@@ -339,11 +354,14 @@ test('卡片更新只走 callback response，避免主动 PATCH 阻塞三秒回�
 
   assert.equal(result.httpStatus, 200);
   assert.equal(result.body.toast.type, 'success');
-  assert.equal(result.body.card.type, 'raw');
-  assert.equal(result.body.card.data.body.elements[0].columns[1].elements[0].disabled, true);
-  assert.ok(!client.calls.some((call) => call.kind === 'updateMessageCard'));
-  assert.ok(!entries.some((entry) => entry.stage === 'card_update_api_failed'));
+  assert.ok(!result.body.card);
+  assert.equal(result.updatedCard.body.elements[0].columns[1].elements[0].disabled, true);
+  assert.ok(!client.calls.some((call) => call.kind === 'delayUpdateMessageCard'));
   const succeeded = entries.find((entry) => entry.stage === 'succeeded');
-  assert.equal(succeeded.card_response_included, true);
-  assert.equal(succeeded.card_update_mode, 'callback_response');
+  assert.equal(succeeded.card_response_included, false);
+  assert.equal(succeeded.card_update_mode, 'delayed_card_update');
+
+  await result.afterResponse();
+  assert.ok(client.calls.some((call) => call.kind === 'delayUpdateMessageCard'));
+  assert.ok(entries.some((entry) => entry.stage === 'card_update_failed'));
 });
