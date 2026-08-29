@@ -13,6 +13,9 @@
       "maxDuration": 10
     },
     "api/lark/callback.js": {
+      "maxDuration": 30
+    },
+    "api/cron/bess-dispatch-cleanup.js": {
       "maxDuration": 10
     }
   },
@@ -20,6 +23,10 @@
     {
       "path": "/api/alisha/memory/cleanup",
       "schedule": "15 3 * * *"
+    },
+    {
+      "path": "/api/cron/bess-dispatch-cleanup",
+      "schedule": "10 16 * * *"
     }
   ],
   "headers": [

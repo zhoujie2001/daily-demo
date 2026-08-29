@@ -93,16 +93,24 @@ function deadline(timeoutMs) {
 }
 
 async function handleCardAction(body) {
-  return Promise.race([
-    handleDispatchEvent(body, {
-      client: larkClient,
-      config: {
-        featureEnabled: process.env.LARK_DISPATCH_FEATURE_ENABLED,
-        allowedChatIds: process.env.LARK_DISPATCH_ALLOWED_CHAT_IDS,
-      },
-    }),
-    deadline(DISPATCH_DEADLINE_MS),
-  ]);
+  const dispatchTask = handleDispatchEvent(body, {
+    client: larkClient,
+    config: {
+      featureEnabled: process.env.LARK_DISPATCH_FEATURE_ENABLED,
+      allowedChatIds: process.env.LARK_DISPATCH_ALLOWED_CHAT_IDS,
+    },
+  });
+  const result = await Promise.race([dispatchTask, deadline(DISPATCH_DEADLINE_MS)]);
+  if (result.errorCode === 'CALLBACK_DEADLINE') {
+    // Keep the complete reliable workflow alive after the <3s acknowledgement.
+    // If it eventually produces a delayed card update, run that as part of the
+    // same Vercel background lifetime instead of losing it with the race.
+    scheduleAfterResponse(async () => {
+      const finalResult = await dispatchTask;
+      if (typeof finalResult.afterResponse === 'function') await finalResult.afterResponse();
+    });
+  }
+  return result;
 }
 
 function scheduleAfterResponse(task) {
