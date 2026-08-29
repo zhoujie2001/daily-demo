@@ -7,10 +7,11 @@ const ALLOWED_CHAT = 'oc_allowed';
 const silentLogger = { info() {}, error() {}, warn() {} };
 
 class FakeLarkClient {
-  constructor({ replyError = null, getMessageError = null, message = undefined } = {}) {
+  constructor({ replyError = null, getMessageError = null, updateError = null, message = undefined } = {}) {
     this.calls = [];
     this.replyError = replyError;
     this.getMessageError = getMessageError;
+    this.updateError = updateError;
     this.message = message === undefined ? interactiveMessage('806001') : message;
   }
 
@@ -28,6 +29,14 @@ class FakeLarkClient {
       throw this.getMessageError;
     }
     return this.message;
+  }
+
+  async updateMessageCard(messageId, card) {
+    this.calls.push({ kind: 'updateMessageCard', messageId, card });
+    if (this.updateError) {
+      throw this.updateError;
+    }
+    return { message_id: messageId };
   }
 }
 
@@ -138,6 +147,10 @@ test('成功：回复原消息建话题并回写已派单卡片', async () => {
   assert.match(reply.content.text, /台账行号：第 12 行/);
 
   assert.ok(client.calls.some((call) => call.kind === 'getMessage'));
+  const update = client.calls.find((call) => call.kind === 'updateMessageCard');
+  assert.ok(update, '必须主动更新原消息卡片');
+  assert.equal(update.messageId, 'om_card_1');
+  assert.strictEqual(update.card, result.body.card.data);
 
   const button = result.body.card.data.body.elements[0].columns[1].elements[0];
   assert.equal(button.disabled, true);
@@ -312,4 +325,31 @@ test('卡片中找不到对应按钮：回退生成已派单卡片', async () =>
 
   assert.equal(result.body.toast.type, 'success');
   assert.equal(result.body.card.data.body.elements[2].text.content, '✅ 已派单');
+});
+
+
+test('主动更新原卡片失败：话题创建仍成功并返回 response.card 兜底', async () => {
+  const client = new FakeLarkClient({
+    updateError: new LarkApiError('LARK_API_230001', 'update rejected'),
+    message: interactiveMessage('806700'),
+  });
+  const entries = [];
+  const result = await handleDispatchEvent(triggerBody({ requestId: '806700' }), {
+    client,
+    config: { allowedChatIds: ALLOWED_CHAT },
+    logger: { info(line) { entries.push(JSON.parse(line)); } },
+  });
+
+  assert.equal(result.httpStatus, 200);
+  assert.equal(result.body.toast.type, 'success');
+  assert.equal(result.body.card.type, 'raw');
+  assert.equal(result.body.card.data.body.elements[0].columns[1].elements[0].disabled, true);
+  assert.ok(client.calls.some((call) => call.kind === 'updateMessageCard'));
+  const failed = entries.find((entry) => entry.stage === 'card_update_api_failed');
+  assert.equal(failed.error_code, 'LARK_API_230001');
+  const succeeded = entries.find((entry) => entry.stage === 'succeeded');
+  assert.equal(succeeded.card_update_api_succeeded, false);
+  assert.equal(succeeded.card_response_included, true);
+  assert.equal(succeeded.card_update_mode, 'response_fallback');
+  assert.ok(!('card_updated' in succeeded));
 });
