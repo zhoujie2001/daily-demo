@@ -1,12 +1,27 @@
 import assert from 'node:assert/strict';
+import { createCipheriv, createHash, randomBytes } from 'node:crypto';
 import test from 'node:test';
 import handler from '../api/lark/callback.js';
 
 const VERIFICATION_TOKEN = 'verification-token';
 const APP_ID = 'cli_test_app';
+const ENCRYPT_KEY = 'test-encrypt-key';
 
 process.env.LARK_VERIFICATION_TOKEN = VERIFICATION_TOKEN;
 process.env.LARK_APP_ID = APP_ID;
+process.env.LARK_ENCRYPT_KEY = ENCRYPT_KEY;
+
+function encryptPayload(payload) {
+  const key = createHash('sha256').update(ENCRYPT_KEY).digest();
+  const initializationVector = randomBytes(16);
+  const cipher = createCipheriv('aes-256-cbc', key, initializationVector);
+  const ciphertext = Buffer.concat([
+    cipher.update(JSON.stringify(payload), 'utf8'),
+    cipher.final(),
+  ]);
+
+  return Buffer.concat([initializationVector, ciphertext]).toString('base64');
+}
 
 function invoke(body, { method = 'POST', headers = {} } = {}) {
   const result = { headers: {} };
@@ -38,6 +53,19 @@ test('正确 Token 的 URL verification 返回 challenge', () => {
   assert.equal(result.status, 200);
   assert.equal(result.headers['Content-Type'], 'application/json');
   assert.deepEqual(result.body, { challenge: 'challenge-value' });
+});
+
+test('真实 encrypt 外层载荷可解密并返回 challenge', () => {
+  const result = invoke({
+    encrypt: encryptPayload({
+      type: 'url_verification',
+      token: VERIFICATION_TOKEN,
+      challenge: 'encrypted-challenge',
+    }),
+  });
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body, { challenge: 'encrypted-challenge' });
 });
 
 test('正确 Token 且省略 type 的 URL verification 返回 challenge', () => {
@@ -108,6 +136,20 @@ test('card.action.trigger 错误 App ID 返回 403', () => {
       token: VERIFICATION_TOKEN,
       app_id: 'cli_wrong_app',
     },
+  });
+
+  assert.equal(result.status, 403);
+});
+
+test('加密 card.action.trigger 仍严格校验 App ID', () => {
+  const result = invoke({
+    encrypt: encryptPayload({
+      header: {
+        event_type: 'card.action.trigger',
+        token: VERIFICATION_TOKEN,
+        app_id: 'cli_wrong_app',
+      },
+    }),
   });
 
   assert.equal(result.status, 403);

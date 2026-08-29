@@ -1,4 +1,4 @@
-import { timingSafeEqual } from 'node:crypto';
+import { createDecipheriv, createHash, timingSafeEqual } from 'node:crypto';
 
 function valuesMatch(actual, expected) {
   if (typeof actual !== 'string' || typeof expected !== 'string') {
@@ -24,21 +24,60 @@ function getVerificationToken(req, body) {
     || body?.token;
 }
 
+function parseJson(value) {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  return JSON.parse(value);
+}
+
+function decryptPayload(encryptedPayload, encryptKey) {
+  const encryptedBuffer = Buffer.from(encryptedPayload, 'base64');
+  if (encryptedBuffer.length <= 16) {
+    throw new Error('Invalid encrypted payload');
+  }
+
+  const key = createHash('sha256').update(encryptKey).digest();
+  const initializationVector = encryptedBuffer.subarray(0, 16);
+  const ciphertext = encryptedBuffer.subarray(16);
+  const decipher = createDecipheriv('aes-256-cbc', key, initializationVector);
+  const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+
+  return JSON.parse(plaintext);
+}
+
+function parseRequestBody(rawBody, encryptKey) {
+  const body = parseJson(rawBody) || {};
+
+  if (typeof body.encrypt !== 'string') {
+    return body;
+  }
+
+  if (!encryptKey) {
+    const error = new Error('Missing LARK_ENCRYPT_KEY');
+    error.code = 'MISSING_ENCRYPT_KEY';
+    throw error;
+  }
+
+  return decryptPayload(body.encrypt, encryptKey);
+}
+
 export default function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const body = req.body || {};
-  console.log('Lark callback payload shape', {
-    topLevelKeys: Object.keys(body),
-    type: body.type,
-    headerEventType: body.header?.event_type,
-    eventKeys: body.event && typeof body.event === 'object' ? Object.keys(body.event) : [],
-  });
-  const verificationToken = process.env.LARK_VERIFICATION_TOKEN;
+  let body;
+  try {
+    body = parseRequestBody(req.body, process.env.LARK_ENCRYPT_KEY);
+  } catch (error) {
+    const status = error.code === 'MISSING_ENCRYPT_KEY' ? 500 : 400;
+    return res.status(status).json({ error: 'Invalid request body' });
+  }
 
+  const verificationToken = process.env.LARK_VERIFICATION_TOKEN;
   const hasChallenge = Object.prototype.hasOwnProperty.call(body, 'challenge');
   const hasTopLevelType = Object.prototype.hasOwnProperty.call(body, 'type');
   const hasHeaderEventType = typeof body.header?.event_type === 'string';
