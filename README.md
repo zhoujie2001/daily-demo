@@ -99,6 +99,10 @@ npm run preview     # 本地预览生产产物
 
 部署配置、签名访客会话、分布式限流和自动清理见 `docs/alisha-memory-backend-contract.md`。
 
+飞书卡片回调由 `POST /api/lark/callback` 接收。当前版本仅完成 URL 验证、`card.action.trigger` Token/App ID 校验和即时确认响应；派单、写飞书表格及更新卡片仍为 TODO，尚未实现完整业务流程。
+
+部署时需要配置服务端环境变量 `LARK_VERIFICATION_TOKEN` 和 `LARK_APP_ID`。当前版本**未启用且不支持飞书 Encrypt Key**，请勿在飞书开放平台启用请求加密，也不要配置 Encrypt Key；如后续启用，必须先增加 `LARK_ENCRYPT_KEY` 和加密请求解密流程。
+
 ## 兜底策略
 
 - Daily：后端不可用时回退到 `src/data/dailyData.json`
