@@ -147,10 +147,7 @@ test('成功：回复原消息建话题并回写已派单卡片', async () => {
   assert.match(reply.content.text, /台账行号：第 12 行/);
 
   assert.ok(client.calls.some((call) => call.kind === 'getMessage'));
-  const update = client.calls.find((call) => call.kind === 'updateMessageCard');
-  assert.ok(update, '必须主动更新原消息卡片');
-  assert.equal(update.messageId, 'om_card_1');
-  assert.strictEqual(update.card, result.body.card.data);
+  assert.ok(!client.calls.some((call) => call.kind === 'updateMessageCard'), '回调链路不得等待主动 PATCH');
 
   const button = result.body.card.data.body.elements[0].columns[1].elements[0];
   assert.equal(button.disabled, true);
@@ -328,7 +325,7 @@ test('卡片中找不到对应按钮：回退生成已派单卡片', async () =>
 });
 
 
-test('主动更新原卡片失败：话题创建仍成功并返回 response.card 兜底', async () => {
+test('卡片更新只走 callback response，避免主动 PATCH 阻塞三秒回调期限', async () => {
   const client = new FakeLarkClient({
     updateError: new LarkApiError('LARK_API_230001', 'update rejected'),
     message: interactiveMessage('806700'),
@@ -344,12 +341,9 @@ test('主动更新原卡片失败：话题创建仍成功并返回 response.card
   assert.equal(result.body.toast.type, 'success');
   assert.equal(result.body.card.type, 'raw');
   assert.equal(result.body.card.data.body.elements[0].columns[1].elements[0].disabled, true);
-  assert.ok(client.calls.some((call) => call.kind === 'updateMessageCard'));
-  const failed = entries.find((entry) => entry.stage === 'card_update_api_failed');
-  assert.equal(failed.error_code, 'LARK_API_230001');
+  assert.ok(!client.calls.some((call) => call.kind === 'updateMessageCard'));
+  assert.ok(!entries.some((entry) => entry.stage === 'card_update_api_failed'));
   const succeeded = entries.find((entry) => entry.stage === 'succeeded');
-  assert.equal(succeeded.card_update_api_succeeded, false);
   assert.equal(succeeded.card_response_included, true);
-  assert.equal(succeeded.card_update_mode, 'response_fallback');
-  assert.ok(!('card_updated' in succeeded));
+  assert.equal(succeeded.card_update_mode, 'callback_response');
 });
