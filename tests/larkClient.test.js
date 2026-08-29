@@ -162,3 +162,27 @@ test('HTTP 5xx 与超时分别映射错误码', async () => {
     stubSlow.restore();
   }
 });
+
+
+test('updateMessageCard 使用 PATCH interactive 消息格式更新原卡片', async () => {
+  const card = { schema: '2.0', body: { elements: [] } };
+  const stub = stubFetch((call) => {
+    if (call.url.pathname.endsWith('/tenant_access_token/internal')) {
+      return jsonResponse(200, { code: 0, tenant_access_token: 't-1', expire: 7200 });
+    }
+    assert.equal(call.options.method, 'PATCH');
+    assert.equal(call.url.pathname, '/open-apis/im/v1/messages/om_card%2F1');
+    assert.equal(call.options.headers.Authorization, 'Bearer t-1');
+    const body = JSON.parse(call.options.body);
+    assert.equal(body.msg_type, 'interactive');
+    assert.equal(body.content, JSON.stringify(card));
+    return jsonResponse(200, { code: 0, data: { message_id: 'om_card/1' } });
+  });
+  try {
+    const client = new LarkClient({ appId: 'cli_x', appSecret: 'sec', baseUrl: 'https://open.feishu.test' });
+    const data = await client.updateMessageCard('om_card/1', card);
+    assert.equal(data.message_id, 'om_card/1');
+  } finally {
+    stub.restore();
+  }
+});
