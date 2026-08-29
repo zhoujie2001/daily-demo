@@ -55,17 +55,19 @@ test('缺少凭证时 fail-closed 抛出 MISSING_APP_CREDENTIALS', async () => {
   });
 });
 
-test('replyMessage 调用回复接口并携带 Bearer Token 与 uuid', async () => {
+test('replyMessage 显式创建话题并在请求体携带 uuid', async () => {
   const stub = stubFetch((call) => {
     if (call.url.pathname.endsWith('/tenant_access_token/internal')) {
       return jsonResponse(200, { code: 0, tenant_access_token: 't-1', expire: 7200 });
     }
     assert.match(call.url.pathname, /\/im\/v1\/messages\/om_card_1\/reply$/);
-    assert.equal(call.url.searchParams.get('uuid'), 'bess-dispatch-706001');
+    assert.equal(call.url.searchParams.get('uuid'), null);
     assert.equal(call.options.headers.Authorization, 'Bearer t-1');
     const body = JSON.parse(call.options.body);
     assert.equal(body.msg_type, 'text');
     assert.match(body.content, /需求 ID/);
+    assert.equal(body.reply_in_thread, true);
+    assert.equal(body.uuid, 'bess-dispatch-706001');
     return jsonResponse(200, { code: 0, data: { message_id: 'om_reply_1' } });
   });
   try {

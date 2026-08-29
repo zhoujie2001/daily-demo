@@ -351,10 +351,11 @@ test('派单回调成功：回复建话题并回写卡片', async () => {
 
     const replyCall = fetchStub.calls.find((call) => call.url.includes('/reply'));
     assert.ok(replyCall, '必须调用回复消息接口');
-    assert.match(replyCall.url, /uuid=bess-dispatch-706001/);
     assert.match(replyCall.options.headers.Authorization, /^Bearer t-test-token$/);
     const replyBody = JSON.parse(replyCall.options.body);
     assert.equal(replyBody.msg_type, 'text');
+    assert.equal(replyBody.reply_in_thread, true);
+    assert.equal(replyBody.uuid, 'bess-dispatch-706001');
     const replyText = JSON.parse(replyBody.content).text;
     assert.match(replyText, /需求 ID：706001/);
     assert.match(replyText, /业务类型：千川/);

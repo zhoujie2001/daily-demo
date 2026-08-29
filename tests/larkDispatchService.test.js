@@ -147,6 +147,7 @@ test('成功：回复原消息建话题并回写已派单卡片', async () => {
   const reply = client.calls.find((call) => call.kind === 'reply');
   assert.ok(reply, '必须调用回复消息接口');
   assert.equal(reply.messageId, 'om_card_1');
+  assert.equal(reply.replyInThread, true);
   assert.equal(reply.uuid, 'bess-dispatch-806001');
   assert.equal(reply.msgType, 'text');
   assert.match(reply.content.text, /自动派单话题已创建/);
