@@ -3,9 +3,18 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "functions": {
-    "api/book-search.js": { "maxDuration": 10 },
-    "api/book-cover.js": { "maxDuration": 10 },
-    "api/alisha/memory/*.js": { "maxDuration": 10 }
+    "api/book-search.js": {
+      "maxDuration": 10
+    },
+    "api/book-cover.js": {
+      "maxDuration": 10
+    },
+    "api/alisha/memory/*.js": {
+      "maxDuration": 10
+    },
+    "api/lark/callback.js": {
+      "maxDuration": 10
+    }
   },
   "crons": [
     {

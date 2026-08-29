@@ -1,4 +1,20 @@
 import { createDecipheriv, createHash, timingSafeEqual } from 'node:crypto';
+import { LarkClient } from '../../lib/lark/client.js';
+import { handleDispatchEvent } from '../../lib/dispatch/dispatch-service.js';
+
+// Feishu requires card.action.trigger callbacks to answer within ~3s; leave
+// a small safety margin. If the business flow cannot finish in time the user
+// gets an "accepted" toast, while the OpenAPI calls (guarded by a server-side
+// reply uuid) may still complete in the background.
+const DISPATCH_DEADLINE_MS = 2800;
+
+// Module-level so the tenant_access_token cache survives warm invocations.
+// Env values are read lazily through accessors.
+const larkClient = new LarkClient({
+  appId: () => process.env.LARK_APP_ID,
+  appSecret: () => process.env.LARK_APP_SECRET,
+  baseUrl: () => process.env.LARK_API_BASE_URL || 'https://open.feishu.cn',
+});
 
 function valuesMatch(actual, expected) {
   if (typeof actual !== 'string' || typeof expected !== 'string') {
@@ -63,7 +79,32 @@ function parseRequestBody(rawBody, encryptKey) {
   return decryptPayload(body.encrypt, encryptKey);
 }
 
-export default function handler(req, res) {
+function deadline(timeoutMs) {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        httpStatus: 200,
+        body: { toast: { type: 'info', content: '派单请求已受理，请稍后刷新卡片查看结果' } },
+        errorCode: 'CALLBACK_DEADLINE',
+      });
+    }, timeoutMs);
+  });
+}
+
+async function handleCardAction(body) {
+  return Promise.race([
+    handleDispatchEvent(body, {
+      client: larkClient,
+      config: {
+        featureEnabled: process.env.LARK_DISPATCH_FEATURE_ENABLED,
+        allowedChatIds: process.env.LARK_DISPATCH_ALLOWED_CHAT_IDS,
+      },
+    }),
+    deadline(DISPATCH_DEADLINE_MS),
+  ]);
+}
+
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'Method not allowed' });
@@ -113,6 +154,14 @@ export default function handler(req, res) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
-  // TODO: 后续接入派单、写飞书表格和更新卡片逻辑；耗时任务不得阻塞本次响应。
-  return res.status(200).json({});
+  // Business layer: dispatch thread + card update. Business outcomes are
+  // returned as HTTP 200 with a toast body; only protocol/auth failures above
+  // use non-2xx so the Feishu client never shows a generic interaction error.
+  try {
+    const result = await handleCardAction(body);
+    return res.status(result.httpStatus || 200).json(result.body);
+  } catch {
+    console.error(JSON.stringify({ module: 'bess-dispatch', stage: 'callback_failed', error_code: 'UNEXPECTED' }));
+    return res.status(200).json({ toast: { type: 'error', content: '派单服务暂时不可用，请稍后重试' } });
+  }
 }
