@@ -106,6 +106,7 @@ function dispatchTrigger({ requestId, chatId = ALLOWED_CHAT_ID, messageId = 'om_
       app_id: APP_ID,
     },
     event: {
+      token: `c-update-${requestId}`,
       operator: { open_id: 'ou_operator_1' },
       action: {
         tag: 'button',
@@ -146,6 +147,15 @@ function stubFetch(card) {
         status: 200,
         async text() {
           return JSON.stringify({ code: 0, data: { message_id: 'om_thread_reply_1' } });
+        },
+      };
+    }
+    if (parsed.pathname === '/open-apis/interactive/v1/card/update') {
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({ code: 0, msg: 'ok' });
         },
       };
     }
@@ -337,18 +347,7 @@ test('派单回调成功：回复建话题并回写卡片', async () => {
 
     assert.equal(result.status, 200);
     assert.equal(result.body.toast.type, 'success');
-    assert.equal(result.body.card.type, 'raw');
-    assert.equal(result.body.card.data.schema, '2.0');
-
-    const patchedButton = result.body.card.data.body.elements[0].columns[1].elements[0];
-    assert.equal(patchedButton.disabled, true);
-    assert.equal(patchedButton.text.content, '✅ 已派单');
-    assert.deepEqual(patchedButton.behaviors, []);
-    assert.match(
-      result.body.card.data.body.elements[0].columns[0].elements[0].content,
-      /已分配给：✅ 派单话题已创建/,
-    );
-    assert.match(result.body.card.data.body.elements[1].content, /✅ \*\*已派单\*\*｜需求 706001/);
+    assert.ok(!result.body.card, '回调先返回 Toast，卡片通过延时接口更新');
 
     const replyCall = fetchStub.calls.find((call) => call.url.includes('/reply'));
     assert.ok(replyCall, '必须调用回复消息接口');
@@ -359,6 +358,17 @@ test('派单回调成功：回复建话题并回写卡片', async () => {
     const replyText = JSON.parse(replyBody.content).text;
     assert.match(replyText, /需求 ID：706001/);
     assert.match(replyText, /业务类型：千川/);
+
+    await new Promise((resolve) => setImmediate(resolve));
+    const updateCall = fetchStub.calls.find((call) => call.url.includes('/interactive/v1/card/update'));
+    assert.ok(updateCall, 'HTTP 响应后必须调用延时更新卡片接口');
+    const updateBody = JSON.parse(updateCall.options.body);
+    assert.equal(updateBody.token, 'c-update-706001');
+    assert.equal(updateBody.card.schema, '2.0');
+    const patchedButton = updateBody.card.body.elements[0].columns[1].elements[0];
+    assert.equal(patchedButton.disabled, true);
+    assert.equal(patchedButton.text.content, '✅ 已派单');
+    assert.deepEqual(patchedButton.behaviors, []);
 
     // 回调响应中不得泄露密钥
     assert.ok(!JSON.stringify(result.body).includes(APP_SECRET));

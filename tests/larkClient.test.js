@@ -164,6 +164,27 @@ test('HTTP 5xx 与超时分别映射错误码', async () => {
 });
 
 
+test('delayUpdateMessageCard 使用回调 token 调用延时更新接口', async () => {
+  const card = { schema: '2.0', config: { update_multi: true }, body: { elements: [] } };
+  const stub = stubFetch((call) => {
+    if (call.url.pathname.endsWith('/tenant_access_token/internal')) {
+      return jsonResponse(200, { code: 0, tenant_access_token: 't-1', expire: 7200 });
+    }
+    assert.equal(call.options.method, 'POST');
+    assert.equal(call.url.pathname, '/open-apis/interactive/v1/card/update');
+    assert.equal(call.options.headers.Authorization, 'Bearer t-1');
+    assert.deepEqual(JSON.parse(call.options.body), { token: 'c-update-1', card });
+    return jsonResponse(200, { code: 0, msg: 'ok' });
+  });
+  try {
+    const client = new LarkClient({ appId: 'cli_x', appSecret: 'sec', baseUrl: 'https://open.feishu.test' });
+    await client.delayUpdateMessageCard('c-update-1', card);
+  } finally {
+    stub.restore();
+  }
+});
+
+
 test('updateMessageCard 使用 PATCH interactive 消息格式更新原卡片', async () => {
   const card = { schema: '2.0', body: { elements: [] } };
   const stub = stubFetch((call) => {

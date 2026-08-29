@@ -1,4 +1,5 @@
 import { createDecipheriv, createHash, timingSafeEqual } from 'node:crypto';
+import { waitUntil } from '@vercel/functions';
 import { LarkClient } from '../../lib/lark/client.js';
 import { handleDispatchEvent } from '../../lib/dispatch/dispatch-service.js';
 
@@ -104,6 +105,20 @@ async function handleCardAction(body) {
   ]);
 }
 
+function scheduleAfterResponse(task) {
+  const pending = Promise.resolve().then(task);
+  pending.catch(() => {
+    // The task logs a sanitized failure itself. This catch prevents an
+    // unhandled rejection if a future task implementation throws unexpectedly.
+  });
+  try {
+    waitUntil(pending);
+  } catch {
+    // Outside Vercel (notably local tests), the promise still runs. In Vercel,
+    // waitUntil keeps the invocation alive after the HTTP response is flushed.
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -159,7 +174,11 @@ export default async function handler(req, res) {
   // use non-2xx so the Feishu client never shows a generic interaction error.
   try {
     const result = await handleCardAction(body);
-    return res.status(result.httpStatus || 200).json(result.body);
+    const response = res.status(result.httpStatus || 200).json(result.body);
+    if (typeof result.afterResponse === 'function') {
+      scheduleAfterResponse(result.afterResponse);
+    }
+    return response;
   } catch {
     console.error(JSON.stringify({ module: 'bess-dispatch', stage: 'callback_failed', error_code: 'UNEXPECTED' }));
     return res.status(200).json({ toast: { type: 'error', content: '派单服务暂时不可用，请稍后重试' } });
