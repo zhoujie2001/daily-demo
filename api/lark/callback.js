@@ -105,10 +105,17 @@ export default function handler(req, res) {
   const appId = process.env.LARK_APP_ID;
   const requestToken = getVerificationToken(req, body);
   const requestAppId = body.header?.app_id || req.headers?.['x-lark-app-id'];
+  const tokenValid = Boolean(verificationToken)
+    && valuesMatch(requestToken, verificationToken);
+  const appIdValid = Boolean(appId) && valuesMatch(requestAppId, appId);
 
-  if (!verificationToken || !appId
-    || !valuesMatch(requestToken, verificationToken)
-    || !valuesMatch(requestAppId, appId)) {
+  console.info('Lark callback authentication', {
+    eventType,
+    appIdValid,
+    tokenValid,
+  });
+
+  if (!tokenValid || !appIdValid) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
