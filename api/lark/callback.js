@@ -33,8 +33,11 @@ export default function handler(req, res) {
   const body = req.body || {};
   const verificationToken = process.env.LARK_VERIFICATION_TOKEN;
 
+  const hasChallenge = Object.prototype.hasOwnProperty.call(body, 'challenge');
+  const hasTopLevelType = Object.prototype.hasOwnProperty.call(body, 'type');
+  const hasHeaderEventType = typeof body.header?.event_type === 'string';
   const isUrlVerification = body.type === 'url_verification'
-    || Object.prototype.hasOwnProperty.call(body, 'challenge');
+    || (!hasTopLevelType && !hasHeaderEventType && hasChallenge);
 
   if (isUrlVerification) {
     if (!verificationToken || !valuesMatch(body.token, verificationToken)) {

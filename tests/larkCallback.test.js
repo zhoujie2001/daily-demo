@@ -50,6 +50,15 @@ test('正确 Token 且省略 type 的 URL verification 返回 challenge', () => 
   assert.deepEqual(result.body, { challenge: 'challenge-without-type' });
 });
 
+test('省略 type 且 Token 错误的 URL verification 返回 403', () => {
+  const result = invoke({
+    token: 'wrong-token',
+    challenge: 'challenge-without-type',
+  });
+
+  assert.equal(result.status, 403);
+});
+
 test('URL verification 无 Token 返回 403', () => {
   const result = invoke({
     type: 'url_verification',
@@ -94,6 +103,19 @@ test('合法 card.action.trigger 返回 200', () => {
 
 test('card.action.trigger 错误 App ID 返回 403', () => {
   const result = invoke({
+    header: {
+      event_type: 'card.action.trigger',
+      token: VERIFICATION_TOKEN,
+      app_id: 'cli_wrong_app',
+    },
+  });
+
+  assert.equal(result.status, 403);
+});
+
+test('带 challenge 的 card.action.trigger 仍校验 App ID', () => {
+  const result = invoke({
+    challenge: 'not-url-verification',
     header: {
       event_type: 'card.action.trigger',
       token: VERIFICATION_TOKEN,
