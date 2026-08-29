@@ -273,28 +273,43 @@ test('回复消息失败：错误 Toast 且不回写卡片', async () => {
   assert.ok(!result.body.card);
 });
 
-test('读取原卡片失败：话题已创建但降级为警告 Toast', async () => {
+test('读取原卡片失败：话题已创建并用回调字段生成已派单卡片', async () => {
   const client = new FakeLarkClient({ getMessageError: new LarkApiError('LARK_API_TIMEOUT', 'slow') });
   const result = await runDispatch(triggerBody({ requestId: '806400' }), { client });
 
-  assert.equal(result.body.toast.type, 'warning');
-  assert.match(result.body.toast.content, /派单话题已创建/);
-  assert.ok(!result.body.card);
+  assert.equal(result.body.toast.type, 'success');
+  assert.equal(result.body.card.type, 'raw');
+  assert.equal(result.body.card.data.body.elements[2].disabled, true);
+  assert.equal(result.body.card.data.body.elements[2].text.content, '✅ 已派单');
   assert.ok(client.calls.some((call) => call.kind === 'reply'));
 });
 
-test('原消息非交互卡片：降级为警告 Toast', async () => {
+test('消息读取接口返回 compact card：回退生成可更新的 Card JSON 2.0', async () => {
+  const compact = {
+    msg_type: 'interactive',
+    body: { content: JSON.stringify({ title: 'compact', elements: [[{ tag: 'text', text: 'display only' }]] }) },
+  };
+  const client = new FakeLarkClient({ message: compact });
+  const result = await runDispatch(triggerBody({ requestId: '806450' }), { client });
+
+  assert.equal(result.body.toast.type, 'success');
+  assert.equal(result.body.card.data.schema, '2.0');
+  assert.equal(result.body.card.data.body.elements[2].disabled, true);
+  assert.equal(result.body.card.data.body.elements[2].text.content, '✅ 已派单');
+});
+
+test('原消息非交互卡片：回退生成已派单卡片', async () => {
   const client = new FakeLarkClient({ message: { msg_type: 'text', body: { content: '{}' } } });
   const result = await runDispatch(triggerBody({ requestId: '806500' }), { client });
 
-  assert.equal(result.body.toast.type, 'warning');
-  assert.ok(!result.body.card);
+  assert.equal(result.body.toast.type, 'success');
+  assert.equal(result.body.card.data.schema, '2.0');
 });
 
-test('卡片中找不到对应按钮：降级为警告 Toast', async () => {
+test('卡片中找不到对应按钮：回退生成已派单卡片', async () => {
   const client = new FakeLarkClient({ message: interactiveMessage('999999') });
   const result = await runDispatch(triggerBody({ requestId: '806600' }), { client });
 
-  assert.equal(result.body.toast.type, 'warning');
-  assert.ok(!result.body.card);
+  assert.equal(result.body.toast.type, 'success');
+  assert.equal(result.body.card.data.body.elements[2].text.content, '✅ 已派单');
 });

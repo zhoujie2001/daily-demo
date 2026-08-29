@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   patchCardForDispatched,
+  buildDispatchedCard,
   buildDispatchThreadText,
   formatDispatchTime,
   DISPATCH_DONE_PREFIX,
@@ -95,6 +96,27 @@ test('重复回写幂等：结果备注只追加一次', () => {
     (element) => element.tag === 'markdown' && element.content.includes(`${DISPATCH_DONE_PREFIX} 706001`),
   );
   assert.equal(notes.length, 1);
+});
+
+test('compact 原卡不可用时可生成包含置灰按钮的替代卡片', () => {
+  const card = buildDispatchedCard({
+    requestId: '706001',
+    requestName: '千川测试需求',
+    businessType: '千川',
+    rowIndex: 32,
+    cardTitle: '【千川/本地推】新增回扫需求',
+  }, { dispatchedAt: '2026-08-29 20:29:04' });
+
+  assert.equal(card.schema, '2.0');
+  assert.equal(card.config.update_multi, true);
+  assert.equal(card.header.title.content, '【千川/本地推】新增回扫需求');
+  assert.match(card.body.elements[0].content, /千川测试需求/);
+  assert.match(card.body.elements[0].content, /第 32 行/);
+  const button = card.body.elements[2];
+  assert.equal(button.disabled, true);
+  assert.equal(button.type, 'default');
+  assert.equal(button.text.content, '✅ 已派单');
+  assert.deepEqual(button.behaviors, []);
 });
 
 test('话题消息包含需求基本信息', () => {
