@@ -99,9 +99,17 @@ npm run preview     # 本地预览生产产物
 
 部署配置、签名访客会话、分布式限流和自动清理见 `docs/alisha-memory-backend-contract.md`。
 
-飞书卡片回调由 `POST /api/lark/callback` 接收。当前版本仅完成 URL 验证、`card.action.trigger` Token/App ID 校验和即时确认响应；派单、写飞书表格及更新卡片仍为 TODO，尚未实现完整业务流程。
+飞书卡片回调由 `POST /api/lark/callback` 接收。当前版本（P0）已打通 BESS 自动派单最小闭环：
 
-部署时需要配置服务端环境变量 `LARK_VERIFICATION_TOKEN`、`LARK_APP_ID` 和 `LARK_ENCRYPT_KEY`。回调接口使用 `LARK_ENCRYPT_KEY` 解密飞书发送的 `encrypt` 载荷；三个变量均不得使用 `VITE_` 前缀或暴露给前端。
+- 完成 URL 验证、`card.action.trigger` 的 Verification Token / App ID 校验与加密载荷解密；
+- 解析按钮 `action.value`（需求 ID、需求名、业态等）并做 schema 校验、动作白名单和群白名单校验；
+- 用 `tenant_access_token` 调用 IM OpenAPI，回复原卡片消息形成派单话题（线程），话题消息包含需求基本信息；
+- 拉取原消息卡片并就地回写：按钮置灰为「✅ 已派单」，回调响应携带更新后的 Card 2.0；
+- 业务错误均以 HTTP 200 + Toast 返回（飞书要求 3 秒内响应），非鉴权类失败不产生 4xx/5xx；重复点击由服务端 `uuid` 幂等与进程内去重拦截。
+
+负责人路由、Sheet/Base 写回与持久化幂等为 P1，尚未实现。代码按模块拆分：`lib/lark/client.js`（OpenAPI 封装）、`lib/lark/card-actions.js`（参数解析与校验）、`lib/lark/card-renderer.js`（话题消息与卡片回写）、`lib/dispatch/dispatch-service.js`（业务编排）。
+
+部署时需要配置服务端环境变量 `LARK_VERIFICATION_TOKEN`、`LARK_APP_ID`、`LARK_ENCRYPT_KEY`，以及派单所需的 `LARK_APP_SECRET`（换取 `tenant_access_token`）和 `LARK_DISPATCH_ALLOWED_CHAT_IDS`（允许触发派单的群 chat_id，逗号分隔，留空时派单 fail-closed）；`LARK_DISPATCH_FEATURE_ENABLED=false` 可作为功能紧急开关。回调接口使用 `LARK_ENCRYPT_KEY` 解密飞书发送的 `encrypt` 载荷；以上变量均不得使用 `VITE_` 前缀或暴露给前端，日志中也不会输出任何 Token 或 Secret。
 
 ## 兜底策略
 
