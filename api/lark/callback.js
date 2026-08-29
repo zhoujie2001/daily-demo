@@ -109,12 +109,6 @@ export default function handler(req, res) {
     && valuesMatch(requestToken, verificationToken);
   const appIdValid = Boolean(appId) && valuesMatch(requestAppId, appId);
 
-  console.info('Lark callback authentication', {
-    eventType,
-    appIdValid,
-    tokenValid,
-  });
-
   if (!tokenValid || !appIdValid) {
     return res.status(403).json({ error: 'Forbidden' });
   }
