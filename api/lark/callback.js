@@ -9,9 +9,9 @@ import { handleDispatchEvent } from '../../lib/dispatch/dispatch-service.js';
 // gets an "accepted" toast, while the OpenAPI calls (guarded by a server-side
 // reply uuid) may still complete in the background.
 // Keep enough room for Vercel cold-start overhead plus the response trip back to
-// Feishu. Waiting until 2.8s locally can still cross Feishu's 3s end-to-end
-// deadline even though the handler itself finishes "in time".
-const DISPATCH_DEADLINE_MS = 1800;
+// Feishu. The 500ms application deadline acknowledges slow paths early; the
+// full workflow continues through waitUntil with idempotent external writes.
+const DISPATCH_DEADLINE_MS = 500;
 
 // Module-level so the tenant_access_token cache survives warm invocations.
 // Env values are read lazily through accessors.

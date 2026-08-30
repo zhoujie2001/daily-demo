@@ -196,8 +196,9 @@ test('表单卡与结果卡包含黄色正序、蓝色倒序和完整名单', ()
   assert.match(JSON.stringify(form), /roster_names/);
   const card = buildDispatchResultCard(fields, { assignee: '李四', direction: 'reverse', roster: ['张三', '李四'], dispatchedAt: 't' });
   const text = JSON.stringify(card);
-  assert.match(text, /yellow/);
-  assert.match(text, /blue/);
+  assert.match(text, /🟡/);
+  assert.match(text, /🔵/);
+  assert.doesNotMatch(text, /text_color/, 'Card 2.0 markdown 不应携带不受支持的 text_color 字段');
   assert.match(text, /张三/);
   assert.match(text, /李四/);
 });
