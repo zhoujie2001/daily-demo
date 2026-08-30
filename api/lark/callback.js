@@ -1,6 +1,7 @@
 import { createDecipheriv, createHash, timingSafeEqual } from 'node:crypto';
 import { waitUntil } from '@vercel/functions';
 import { LarkClient } from '../../lib/lark/client.js';
+import { buildRosterProcessingCard, buildRosterRetryCard } from '../../lib/lark/card-renderer.js';
 import { handleDispatchEvent } from '../../lib/dispatch/dispatch-service.js';
 
 // Feishu requires card.action.trigger callbacks to answer within ~3s; leave
@@ -83,12 +84,14 @@ function parseRequestBody(rawBody, encryptKey) {
   return decryptPayload(body.encrypt, encryptKey);
 }
 
-function deadline(timeoutMs) {
+function deadline(timeoutMs, { isRosterForm = false } = {}) {
   return new Promise((resolve) => {
     setTimeout(() => {
+      const body = { toast: { type: 'info', content: isRosterForm ? '名单已提交，正在派单，无需重复点击' : '派单请求已受理，正在后台处理' } };
+      if (isRosterForm) body.card = { type: 'raw', data: buildRosterProcessingCard() };
       resolve({
         httpStatus: 200,
-        body: { toast: { type: 'info', content: '派单请求已受理，请稍后刷新卡片查看结果' } },
+        body,
         errorCode: 'CALLBACK_DEADLINE',
       });
     }, timeoutMs);
@@ -96,6 +99,8 @@ function deadline(timeoutMs) {
 }
 
 async function handleCardAction(body) {
+  const isRosterForm = Boolean(body?.event?.action?.form_value);
+  const formMessageId = String(body?.event?.context?.open_message_id || body?.event?.context?.message_id || '').trim();
   const dispatchTask = handleDispatchEvent(body, {
     client: larkClient,
     config: {
@@ -103,7 +108,7 @@ async function handleCardAction(body) {
       allowedChatIds: process.env.LARK_DISPATCH_ALLOWED_CHAT_IDS,
     },
   });
-  const result = await Promise.race([dispatchTask, deadline(DISPATCH_DEADLINE_MS)]);
+  const result = await Promise.race([dispatchTask, deadline(DISPATCH_DEADLINE_MS, { isRosterForm })]);
   if (result.errorCode === 'CALLBACK_DEADLINE') {
     // Keep the complete reliable workflow alive after the <3s acknowledgement.
     // If it eventually produces a delayed card update, run that as part of the
@@ -111,6 +116,10 @@ async function handleCardAction(body) {
     scheduleAfterResponse(async () => {
       const finalResult = await dispatchTask;
       if (typeof finalResult.afterResponse === 'function') await finalResult.afterResponse();
+      if (isRosterForm && formMessageId && finalResult.errorCode) {
+        const message = finalResult.body?.toast?.content || '派单未完成，请重新提交名单';
+        await larkClient.updateMessageCard(formMessageId, buildRosterRetryCard(message));
+      }
     });
   }
   return result;
