@@ -195,6 +195,44 @@ test('电子表格按列字母写入后 GET 回读，不一致即失败', async 
   await assert.rejects(() => client.writeSheetAssignee({ sheetUrl: fields.sheetUrl, sheetId: 'sheetA', rowIndex: 8, assigneeFieldId: 'D', assignee: '张三' }), (error) => error instanceof LarkApiError && error.code === 'SHEET_READBACK_MISMATCH');
 });
 
+test('知识库表格链接先解析为真实 spreadsheet token，再写入并回读', async () => {
+  const calls = [];
+  const fetchImpl = async (url, request) => {
+    calls.push({ url: String(url), request });
+    const parsed = new URL(String(url));
+    if (parsed.pathname.includes('tenant_access_token')) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ code: 0, tenant_access_token: 'token', expire: 7200 }) };
+    }
+    if (parsed.pathname.endsWith('/wiki/v2/spaces/get_node')) {
+      assert.equal(parsed.searchParams.get('token'), 'wikiNodeToken');
+      return { ok: true, status: 200, text: async () => JSON.stringify({ code: 0, data: { node: { obj_type: 'sheet', obj_token: 'spreadsheetToken' } } }) };
+    }
+    if (request.method === 'PUT') return { ok: true, status: 200, text: async () => JSON.stringify({ code: 0 }) };
+    return { ok: true, status: 200, text: async () => JSON.stringify({ code: 0, data: { valueRange: { values: [[' 张三 ']] } } }) };
+  };
+  const client = new LarkClient({ appId: 'id', appSecret: 'secret', fetchImpl, baseUrl: 'https://open.feishu.test' });
+  await client.writeSheetAssignee({
+    sheetUrl: 'https://example.feishu.cn/wiki/wikiNodeToken?sheet=sheetA',
+    sheetId: 'sheetA', rowIndex: 8, assigneeFieldId: 'D', assignee: '张三',
+  });
+  assert.equal(calls.filter((item) => item.url.includes('/wiki/v2/spaces/get_node')).length, 1);
+  assert.ok(calls.some((item) => item.url.includes('/spreadsheets/spreadsheetToken/values')));
+});
+
+test('知识库链接指向非电子表格时拒绝写入', async () => {
+  const fetchImpl = async (url) => {
+    if (String(url).includes('tenant_access_token')) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ code: 0, tenant_access_token: 'token', expire: 7200 }) };
+    }
+    return { ok: true, status: 200, text: async () => JSON.stringify({ code: 0, data: { node: { obj_type: 'docx', obj_token: 'docToken' } } }) };
+  };
+  const client = new LarkClient({ appId: 'id', appSecret: 'secret', fetchImpl, baseUrl: 'https://open.feishu.test' });
+  await assert.rejects(() => client.writeSheetAssignee({
+    sheetUrl: 'https://example.feishu.cn/wiki/wikiNodeToken',
+    sheetId: 'sheetA', rowIndex: 8, assigneeFieldId: 'D', assignee: '张三',
+  }), (error) => error instanceof LarkApiError && error.code === 'WIKI_NODE_NOT_SHEET');
+});
+
 test('P1 延迟卡片更新失败会记录脱敏错误码而不是静默吞错', async () => {
   const store = new FakeStore();
   store.state = { roster: ['张三', '李四'] };
