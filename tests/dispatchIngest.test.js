@@ -46,13 +46,26 @@ test('初始派单卡包含可回调按钮和完整写回参数', () => {
   assert.match(text, /bess_auto_dispatch/);
 });
 
-test('外部 ingest 缺省日期列为千川本地表 H 列且 action.value 向后兼容携带新字段', () => {
-  const { fields } = normalizeDispatchIngest(localBody);
+test('外部 ingest 缺省千川本地表字段并在 action.value 携带项目过滤配置', () => {
+  const { fields } = normalizeDispatchIngest({ ...localBody, sheet_id: undefined });
   assert.equal(fields.dateFieldId, 'H');
   assert.equal(fields.dateFieldName, '提需时间');
-  assert.equal(normalizeDispatchIngest({ ...localBody, sheet_id: undefined }).fields.sheetId, 'TQuzLA');
-  const card = buildInitialDispatchCard(fields, dispatchActionValue(fields));
-  assert.match(JSON.stringify(card), /date_field_id/);
+  assert.equal(fields.sheetId, 'TQuzLA');
+  assert.equal(fields.projectFieldId, 'C');
+  assert.equal(fields.projectFieldName, '项目');
+  assert.equal(fields.projectValue, '本地');
+  const actionValue = dispatchActionValue(fields);
+  assert.equal(actionValue.project_field_id, 'C');
+  assert.equal(actionValue.project_value, '本地');
+  const explicit = normalizeDispatchIngest({
+    ...localBody, project_field_id: 'E', project_field_name: '业务项目', project_value: '本地业务',
+  }).fields;
+  assert.deepEqual(
+    [explicit.projectFieldId, explicit.projectFieldName, explicit.projectValue],
+    ['E', '业务项目', '本地业务'],
+  );
+  const card = buildInitialDispatchCard(fields, actionValue);
+  assert.match(JSON.stringify(card), /project_field_id/);
 });
 
 test('有效签名由排单buddy发送卡片并携带幂等 uuid', async () => {

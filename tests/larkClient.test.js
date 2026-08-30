@@ -211,7 +211,7 @@ test('updateMessageCard 使用 PATCH interactive 消息格式更新原卡片', a
 });
 
 
-test('readSheetDispatchRows 根据网格范围分块读取日期与负责人列', async () => {
+test('readSheetDispatchRows 按相同行号对齐读取日期、负责人和项目列', async () => {
   const requestedRanges = [];
   const stub = stubFetch((call) => {
     if (call.url.pathname.endsWith('/tenant_access_token/internal')) {
@@ -224,16 +224,21 @@ test('readSheetDispatchRows 根据网格范围分块读取日期与负责人列'
     const range = decodeURIComponent(encodedRange);
     requestedRanges.push(range);
     if (range.includes('!H')) return jsonResponse(200, { code: 0, data: { valueRange: { values: [['2026-08-30'], ['8.30']] } } });
+    if (range.includes('!C')) return jsonResponse(200, { code: 0, data: { valueRange: { values: [['千川'], [['本地', '千川']], ['仅项目']] } } });
     return jsonResponse(200, { code: 0, data: { valueRange: { values: [['张三'], ['李四']] } } });
   });
   try {
     const client = new LarkClient({ appId: 'cli_x', appSecret: 'sec', baseUrl: 'https://open.feishu.test' });
     const rows = await client.readSheetDispatchRows({
       sheetUrl: 'https://example.feishu.cn/sheets/spreadsheetToken', sheetId: 'TQuzLA',
-      dateFieldId: 'H', assigneeFieldId: 'J',
+      dateFieldId: 'H', assigneeFieldId: 'J', projectFieldId: 'C',
     });
-    assert.deepEqual(rows, [['2026-08-30', '张三'], ['8.30', '李四']]);
-    assert.deepEqual(requestedRanges.sort(), ['TQuzLA!H1:H3', 'TQuzLA!J1:J3']);
+    assert.deepEqual(rows, [
+      ['2026-08-30', '张三', '千川'],
+      ['8.30', '李四', ['本地', '千川']],
+      [undefined, undefined, '仅项目'],
+    ]);
+    assert.deepEqual(requestedRanges.sort(), ['TQuzLA!C1:C3', 'TQuzLA!H1:H3', 'TQuzLA!J1:J3']);
   } finally {
     stub.restore();
   }

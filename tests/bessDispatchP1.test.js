@@ -13,7 +13,10 @@ const fields = {
   dateFieldId: 'B', dateFieldName: '提需时间', assigneeFieldId: 'D', assigneeFieldName: '负责人',
 };
 
-function body({ form = false, requestId = 'p1_1', businessType = '千川', messageId = 'om_original' } = {}) {
+function body({
+  form = false, requestId = 'p1_1', businessType = '千川', targetCategory = '', messageId = 'om_original',
+  projectFieldId = '', projectFieldName = '', projectValue = '',
+} = {}) {
   return {
     header: { event_id: `evt_${requestId}` },
     event: {
@@ -24,10 +27,12 @@ function body({ form = false, requestId = 'p1_1', businessType = '千川', messa
       } : {
         tag: 'button', value: {
           schema_version: 1, action: 'bess_auto_dispatch', request_id: requestId,
-          request_name: 'P1 需求', business_type: businessType, sheet_url: fields.sheetUrl,
+          request_name: 'P1 需求', business_type: businessType, target_category: targetCategory,
+          sheet_url: fields.sheetUrl,
           sheet_id: fields.sheetId, row_index: fields.rowIndex,
           date_field_id: fields.dateFieldId, date_field_name: fields.dateFieldName,
           assignee_field_id: fields.assigneeFieldId, assignee_field_name: fields.assigneeFieldName,
+          project_field_id: projectFieldId, project_field_name: projectFieldName, project_value: projectValue,
         },
       },
       context: { open_chat_id: 'oc_allowed', open_message_id: messageId },
@@ -119,7 +124,9 @@ test('上海日界线和次日零点正确，业务方向符合规则', () => {
 test('首次点击无名单：创建话题 Card 2.0 表单并保存 pending 映射，不提前派单', async () => {
   const store = new FakeStore();
   const client = new FakeClient();
-  const result = await handleDispatchEvent(body(), options(store, client));
+  const result = await handleDispatchEvent(body({
+    targetCategory: 'qianchuan', projectFieldId: 'C', projectValue: '千川',
+  }), options(store, client));
   assert.equal(result.body.toast.type, 'success');
   assert.equal(store.assignments.size, 0);
   assert.equal(store.calibrations.length, 0);
@@ -232,6 +239,49 @@ test('后续派单从最新有效人工锚点轮转，并跳过空值、非当�
   assert.equal(client.calls.filter((item) => item.kind === 'readRows').length, 1);
 });
 
+test('千川锚点忽略当天更新的本地行', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['张三', '李四', '王五'] };
+  const client = new FakeClient({ sheetRows: [
+    ['2026-08-30', '张三', 'CMS千川'],
+    ['2026-08-30', '李四', '本地推'],
+  ] });
+  await handleDispatchEvent(body({
+    requestId: 'project_qianchuan', targetCategory: 'qianchuan', projectFieldId: 'C',
+  }), options(store, client));
+  assert.equal(store.assignments.get('project_qianchuan').assignee, '李四');
+  const read = client.calls.find((item) => item.kind === 'readRows');
+  assert.equal(read.projectFieldId, 'C');
+});
+
+test('本地推锚点忽略当天更新的千川行', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['张三', '李四', '王五'] };
+  const client = new FakeClient({ sheetRows: [
+    ['2026-08-30', '张三', '本地直播'],
+    ['2026-08-30', '李四', '千川投放'],
+  ] });
+  await handleDispatchEvent(body({
+    requestId: 'project_local', businessType: '本地推', targetCategory: 'local_promo', projectFieldId: 'C',
+  }), options(store, client));
+  assert.equal(store.assignments.get('project_local').assignee, '王五');
+});
+
+test('项目字段支持多选和分隔文本，空负责人及名单外人员仍跳过', () => {
+  const rows = [
+    ['2026-08-30', '张三', ['千川', '本地']],
+    ['2026-08-30', '李四', '千川+本地'],
+    ['2026-08-30', '名单外', ['本地']],
+    ['2026-08-30', '', '本地'],
+  ];
+  assert.equal(latestDailyAnchor(rows, {
+    targetDay: '2026-08-30', roster: ['张三', '李四'], projectValue: '千川',
+  }), '李四');
+  assert.equal(latestDailyAnchor(rows, {
+    targetDay: '2026-08-30', roster: ['张三', '李四'], projectValue: '本地',
+  }), '李四');
+});
+
 test('后续倒序派单选择锚点上一位并循环轮转', async () => {
   const store = new FakeStore();
   store.state = { roster: ['张三', '李四', '王五'] };
@@ -281,10 +331,14 @@ test('旧卡按固定 sheet_id 补齐日期列和负责人列，新字段保持�
     schema_version: 1, action: 'bess_auto_dispatch', request_id: 'legacy_1', request_name: '旧卡',
     business_type: '千川', sheet_url: fields.sheetUrl, row_index: 3,
   };
-  const qianchuan = validateDispatchValue({ ...base, sheet_id: 'TQuzLA' });
+  const qianchuan = validateDispatchValue({ ...base, sheet_id: 'TQuzLA', target_category: 'qianchuan' });
   assert.deepEqual(
-    [qianchuan.dateFieldId, qianchuan.dateFieldName, qianchuan.assigneeFieldId, qianchuan.assigneeFieldName],
-    ['H', '提需时间', 'J', '执行人'],
+    [
+      qianchuan.dateFieldId, qianchuan.dateFieldName,
+      qianchuan.assigneeFieldId, qianchuan.assigneeFieldName,
+      qianchuan.projectFieldId, qianchuan.projectFieldName, qianchuan.projectValue,
+    ],
+    ['H', '提需时间', 'J', '执行人', 'C', '项目', '千川'],
   );
   const stock = validateDispatchValue({ ...base, sheet_id: 'p7Wqx4', assignee_field_id: 'F' });
   assert.deepEqual([stock.dateFieldId, stock.dateFieldName, stock.assigneeFieldId], ['D', '创建时间', 'F']);
