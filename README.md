@@ -110,7 +110,7 @@ npm run preview     # 本地预览生产产物
 
 ### P1 部署步骤
 
-1. 在 Supabase SQL Editor 执行 [`db/bess-dispatch.sql`](db/bess-dispatch.sql)。迁移会创建 daily state、pending form、assignments 和 `bess_assign_next` 原子 RPC；pending 仅在表格写回、结果卡发送和原卡更新全部成功后标记完成，失败重试会复用原 assignment 与原消息关联；表已启用 RLS，仅 `service_role` 可访问。
+1. 在 Supabase SQL Editor 先执行主迁移 [`db/bess-dispatch.sql`](db/bess-dispatch.sql)，再执行只读验收脚本 [`db/bess-dispatch-verify.sql`](db/bess-dispatch-verify.sql)。主迁移可安全重复执行，不删除或覆盖已有业务数据；它会创建或补齐 daily state、pending form、assignments 和保持现有 Node 调用签名的 `bess_assign_next` 原子 RPC，并对三张表启用及强制 RLS，仅向 `service_role` 授予必要的表、序列和 RPC 权限。验收脚本不会修改数据库，会检查结构、约束、索引、RLS、策略、权限以及 RPC 属性和返回结构，不符合预期时会集中抛错。pending 仅在表格写回、结果卡发送和原卡更新全部成功后标记完成，失败重试会复用原 assignment 与原消息关联。
 2. 在 Vercel 配置 `SUPABASE_URL`、`SUPABASE_SERVICE_ROLE_KEY`、`CRON_SECRET`、`LARK_VERIFICATION_TOKEN`、`LARK_APP_ID`、`LARK_APP_SECRET`、`LARK_ENCRYPT_KEY`、`LARK_DISPATCH_ALLOWED_CHAT_IDS`。服务端变量禁止加 `VITE_` 前缀。
 3. 飞书应用需开通消息读取/回复/更新、卡片回调，以及电子表格读取和写入权限；目标表格必须授权给该应用。
 4. 按钮 `action.value` 必须携带 `request_id`、`request_name`、`business_type`、`sheet_url`、`sheet_id`、`row_index`，以及 `assignee_field_id`（推荐，列字母）或 `assignee_field_name`。
