@@ -4,6 +4,7 @@ import {
   patchCardForDispatched,
   buildDispatchedCard,
   buildDispatchThreadText,
+  buildBatchDispatchCard,
   formatDispatchTime,
   DISPATCH_DONE_PREFIX,
 } from '../lib/lark/card-renderer.js';
@@ -145,4 +146,25 @@ test('话题消息在无行号/无卡片标题时省略对应行', () => {
 test('formatDispatchTime 输出上海时区 yyyy-MM-dd HH:mm:ss', () => {
   const formatted = formatDispatchTime(new Date('2026-08-29T11:40:05Z')); // 19:40:05 +08:00
   assert.match(formatted, /^2026-08-29 19:40:05$/);
+});
+
+
+test('patchCardForDispatched updates only the matching item in a batch card', () => {
+  const fields = [
+    { requestId: '715430', requestName: '需求一', businessType: '本地推', rowIndex: 89 },
+    { requestId: '715431', requestName: '需求二', businessType: '本地推', rowIndex: 90 },
+  ];
+  const values = fields.map((item) => ({ request_id: item.requestId }));
+  const card = buildBatchDispatchCard(fields, values, { cardTitle: 'E 段' });
+  const result = patchCardForDispatched(card, {
+    requestId: '715431',
+    dispatchedAt: '2026-08-30 18:30',
+    assignee: '测试同学',
+  });
+  assert.equal(result.patched, true);
+  const serialized = JSON.stringify(result.card);
+  assert.match(serialized, /需求一/);
+  assert.match(serialized, /需求二/);
+  assert.match(serialized, /需求一[^]*已分配给：-/);
+  assert.match(serialized, /需求二[^]*已分配给：✅ 测试同学/);
 });

@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import test from 'node:test';
 import handler from '../api/dispatch/send.js';
-import { canonicalJson, dispatchActionValue, normalizeDispatchIngest } from '../lib/dispatch/ingest.js';
-import { buildInitialDispatchCard } from '../lib/lark/card-renderer.js';
+import { canonicalJson, dispatchActionValue, normalizeBatchDispatchIngest, normalizeDispatchIngest } from '../lib/dispatch/ingest.js';
+import { buildBatchDispatchCard, buildInitialDispatchCard } from '../lib/lark/card-renderer.js';
 
 const SECRET = 'dispatch-ingest-test-secret';
 const NOW = Math.floor(Date.now() / 1000);
@@ -102,4 +102,49 @@ test('错误签名和过期请求均拒绝且不调用飞书', async () => {
     assert.equal(stale.status, 401);
     assert.equal(stale.body.error_code, 'STALE_REQUEST');
   } finally { globalThis.fetch = originalFetch; }
+});
+
+
+test('batch ingest normalizes multiple unique requests for one allowed chat', () => {
+  const body = {
+    chat_id: localBody.chat_id,
+    card_title: '【本地推】E 段自动派单',
+    items: [
+      localBody,
+      { ...localBody, request_id: '715431', request_name: '本地新增需求 2', row_index: 90 },
+    ],
+  };
+  const normalized = normalizeBatchDispatchIngest(body);
+  assert.equal(normalized.chatId, localBody.chat_id);
+  assert.equal(normalized.fieldsList.length, 2);
+  assert.equal(normalized.fieldsList[0].batchCard, true);
+  assert.equal(dispatchActionValue(normalized.fieldsList[0]).batch_card, true);
+});
+
+test('batch dispatch card contains one independent callback button per request', () => {
+  const body = {
+    chat_id: localBody.chat_id,
+    card_title: '【本地推】E 段自动派单',
+    items: [
+      localBody,
+      { ...localBody, request_id: '715431', request_name: '本地新增需求 2', row_index: 90 },
+    ],
+  };
+  const { fieldsList, cardTitle } = normalizeBatchDispatchIngest(body);
+  const card = buildBatchDispatchCard(fieldsList, fieldsList.map(dispatchActionValue), { cardTitle });
+  assert.equal(card.header.title.content, '【本地推】E 段自动派单');
+  const serialized = JSON.stringify(card);
+  assert.match(serialized, /dsp_715430/);
+  assert.match(serialized, /dsp_715431/);
+  assert.match(serialized, /共 \*\*2\*\* 条 E 段需求/);
+});
+
+test('batch ingest rejects duplicate request ids', () => {
+  assert.throws(
+    () => normalizeBatchDispatchIngest({
+      chat_id: localBody.chat_id,
+      items: [localBody, { ...localBody }],
+    }),
+    (error) => error.code === 'DUPLICATE_REQUEST_ID',
+  );
 });
