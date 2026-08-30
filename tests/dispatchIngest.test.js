@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { createHmac } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import test from 'node:test';
 import handler from '../api/dispatch/send.js';
-import { canonicalJson, dispatchActionValue, normalizeBatchDispatchIngest, normalizeDispatchIngest } from '../lib/dispatch/ingest.js';
+import { batchDispatchActionValue, canonicalJson, dispatchActionValue, normalizeBatchDispatchIngest, normalizeDispatchIngest } from '../lib/dispatch/ingest.js';
 import { buildBatchDispatchCard, buildInitialDispatchCard } from '../lib/lark/card-renderer.js';
 
 const SECRET = 'dispatch-ingest-test-secret';
@@ -121,22 +121,26 @@ test('batch ingest normalizes multiple unique requests for one allowed chat', ()
   assert.equal(dispatchActionValue(normalized.fieldsList[0]).batch_card, true);
 });
 
-test('batch dispatch card contains one independent callback button per request', () => {
+test('batch dispatch card contains one callback button with batch_id and all items', () => {
   const body = {
     chat_id: localBody.chat_id,
+    batch_id: 'batch_715430',
     card_title: '【本地推】E 段自动派单',
     items: [
       localBody,
       { ...localBody, request_id: '715431', request_name: '本地新增需求 2', row_index: 90 },
     ],
   };
-  const { fieldsList, cardTitle } = normalizeBatchDispatchIngest(body);
-  const card = buildBatchDispatchCard(fieldsList, fieldsList.map(dispatchActionValue), { cardTitle });
+  const { fieldsList, cardTitle, batchId } = normalizeBatchDispatchIngest(body);
+  const card = buildBatchDispatchCard(fieldsList, batchDispatchActionValue(batchId, fieldsList), { cardTitle, batchId });
   assert.equal(card.header.title.content, '【本地推】E 段自动派单');
-  const serialized = JSON.stringify(card);
-  assert.match(serialized, /dsp_715430/);
-  assert.match(serialized, /dsp_715431/);
-  assert.match(serialized, /共 \*\*2\*\* 条 E 段需求/);
+  const buttons = card.body.elements.filter((element) => element.tag === 'button');
+  assert.equal(buttons.length, 1);
+  assert.equal(buttons[0].element_id, 'batch_batch_715430');
+  assert.equal(buttons[0].behaviors[0].value.action, 'bess_batch_auto_dispatch');
+  assert.equal(buttons[0].behaviors[0].value.batch_id, 'batch_715430');
+  assert.equal(buttons[0].behaviors[0].value.items.length, 2);
+  assert.match(JSON.stringify(card), /共 \*\*2\*\* 条 E 段需求/);
 });
 
 test('batch ingest rejects duplicate request ids', () => {
@@ -147,4 +151,68 @@ test('batch ingest rejects duplicate request ids', () => {
     }),
     (error) => error.code === 'DUPLICATE_REQUEST_ID',
   );
+});
+
+
+test('batch ingest 发送单按钮卡并返回 batch_id', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  process.env.LARK_APP_ID = 'cli_dispatch';
+  process.env.LARK_APP_SECRET = 'secret';
+  const body = {
+    chat_id: localBody.chat_id,
+    batch_id: 'batch_api_1',
+    card_title: '批量派单',
+    items: [localBody, { ...localBody, request_id: '715432', request_name: '需求三', row_index: 91 }],
+  };
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    if (String(url).includes('/auth/v3/')) return new Response(JSON.stringify({ code: 0, tenant_access_token: 'token', expire: 7200 }), { status: 200 });
+    return new Response(JSON.stringify({ code: 0, data: { message_id: 'om_batch_1' } }), { status: 200 });
+  };
+  try {
+    const result = await invoke(body);
+    assert.equal(result.status, 200);
+    assert.equal(result.body.batch_id, 'batch_api_1');
+    const send = calls.find((call) => call.url.includes('/im/v1/messages'));
+    const payload = JSON.parse(send.options.body);
+    const expectedUuid = `bess-batch-${createHash('sha256')
+      .update(`${body.chat_id}:${body.batch_id}`)
+      .digest('hex')
+      .slice(0, 32)}`;
+    assert.equal(payload.uuid, expectedUuid);
+    assert.equal(payload.uuid.length, 43);
+    const card = JSON.parse(payload.content);
+    assert.equal(card.body.elements.filter((element) => element.tag === 'button').length, 1);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+
+test('长 batch_id 共享相同前缀时消息 UUID 仍不碰撞', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  process.env.LARK_APP_ID = 'cli_dispatch';
+  process.env.LARK_APP_SECRET = 'secret';
+  const prefix = 'batch_'.padEnd(55, 'x');
+  const bodies = ['first0001', 'second002'].map((suffix) => ({
+    chat_id: localBody.chat_id,
+    batch_id: `${prefix}${suffix}`.slice(0, 64),
+    items: [localBody],
+  }));
+  assert.equal(bodies[0].batch_id.slice(0, 50), bodies[1].batch_id.slice(0, 50));
+
+  const originalFetch = globalThis.fetch;
+  const uuids = [];
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url).includes('/auth/v3/')) return new Response(JSON.stringify({ code: 0, tenant_access_token: 'token', expire: 7200 }), { status: 200 });
+    uuids.push(JSON.parse(options.body).uuid);
+    return new Response(JSON.stringify({ code: 0, data: { message_id: `om_${uuids.length}` } }), { status: 200 });
+  };
+  try {
+    await invoke(bodies[0]);
+    await invoke(bodies[1]);
+    assert.equal(uuids.length, 2);
+    assert.notEqual(uuids[0], uuids[1]);
+    assert.ok(uuids.every((uuid) => uuid.length <= 50));
+  } finally { globalThis.fetch = originalFetch; }
 });

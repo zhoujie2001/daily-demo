@@ -13,7 +13,7 @@
       "maxDuration": 10
     },
     "api/lark/callback.js": {
-      "maxDuration": 30
+      "maxDuration": 300
     },
     "api/cron/bess-dispatch-cleanup.js": {
       "maxDuration": 10
