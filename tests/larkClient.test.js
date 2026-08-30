@@ -209,3 +209,86 @@ test('updateMessageCard 使用 PATCH interactive 消息格式更新原卡片', a
     stub.restore();
   }
 });
+
+
+test('readSheetDispatchRows 根据网格范围分块读取日期与负责人列', async () => {
+  const requestedRanges = [];
+  const stub = stubFetch((call) => {
+    if (call.url.pathname.endsWith('/tenant_access_token/internal')) {
+      return jsonResponse(200, { code: 0, tenant_access_token: 't-1', expire: 7200 });
+    }
+    if (call.url.pathname.endsWith('/sheets/TQuzLA')) {
+      return jsonResponse(200, { code: 0, data: { sheet: { grid_properties: { row_count: 3 } } } });
+    }
+    const encodedRange = call.url.pathname.split('/values/')[1];
+    const range = decodeURIComponent(encodedRange);
+    requestedRanges.push(range);
+    if (range.includes('!H')) return jsonResponse(200, { code: 0, data: { valueRange: { values: [['2026-08-30'], ['8.30']] } } });
+    return jsonResponse(200, { code: 0, data: { valueRange: { values: [['张三'], ['李四']] } } });
+  });
+  try {
+    const client = new LarkClient({ appId: 'cli_x', appSecret: 'sec', baseUrl: 'https://open.feishu.test' });
+    const rows = await client.readSheetDispatchRows({
+      sheetUrl: 'https://example.feishu.cn/sheets/spreadsheetToken', sheetId: 'TQuzLA',
+      dateFieldId: 'H', assigneeFieldId: 'J',
+    });
+    assert.deepEqual(rows, [['2026-08-30', '张三'], ['8.30', '李四']]);
+    assert.deepEqual(requestedRanges.sort(), ['TQuzLA!H1:H3', 'TQuzLA!J1:J3']);
+  } finally {
+    stub.restore();
+  }
+});
+
+
+test('row_count 不超过上限时从第 1 行分块扫描并找到前部数据', async () => {
+  const requestedRanges = [];
+  const stub = stubFetch((call) => {
+    if (call.url.pathname.endsWith('/tenant_access_token/internal')) {
+      return jsonResponse(200, { code: 0, tenant_access_token: 't-1', expire: 7200 });
+    }
+    if (call.url.pathname.endsWith('/sheets/TQuzLA')) {
+      return jsonResponse(200, { code: 0, data: { sheet: { grid_properties: { row_count: 20000 } } } });
+    }
+    const range = decodeURIComponent(call.url.pathname.split('/values/')[1]);
+    requestedRanges.push(range);
+    if (range === 'TQuzLA!H1:H5000') return jsonResponse(200, { code: 0, data: { valueRange: { values: [['2026-08-30']] } } });
+    if (range === 'TQuzLA!J1:J5000') return jsonResponse(200, { code: 0, data: { valueRange: { values: [['张三']] } } });
+    return jsonResponse(200, { code: 0, data: { valueRange: { values: [] } } });
+  });
+  try {
+    const client = new LarkClient({ appId: 'cli_x', appSecret: 'sec', baseUrl: 'https://open.feishu.test' });
+    const rows = await client.readSheetDispatchRows({
+      sheetUrl: 'https://example.feishu.cn/sheets/spreadsheetToken', sheetId: 'TQuzLA',
+      dateFieldId: 'H', assigneeFieldId: 'J',
+    });
+    assert.deepEqual(rows, [['2026-08-30', '张三']]);
+    assert.ok(requestedRanges.includes('TQuzLA!H1:H5000'));
+    assert.ok(requestedRanges.includes('TQuzLA!H15001:H20000'));
+    assert.ok(!requestedRanges.some((range) => range.includes('80001')));
+  } finally {
+    stub.restore();
+  }
+});
+
+
+test('物理 row_count 超过 20000 时立即 fail-closed 且不读取单元格', async () => {
+  const stub = stubFetch((call) => {
+    if (call.url.pathname.endsWith('/tenant_access_token/internal')) {
+      return jsonResponse(200, { code: 0, tenant_access_token: 't-1', expire: 7200 });
+    }
+    if (call.url.pathname.endsWith('/sheets/TQuzLA')) {
+      return jsonResponse(200, { code: 0, data: { sheet: { grid_properties: { row_count: 100000 } } } });
+    }
+    return jsonResponse(200, { code: 0, data: { valueRange: { values: [['仍有数据']] } } });
+  });
+  try {
+    const client = new LarkClient({ appId: 'cli_x', appSecret: 'sec', baseUrl: 'https://open.feishu.test' });
+    await assert.rejects(() => client.readSheetDispatchRows({
+      sheetUrl: 'https://example.feishu.cn/sheets/spreadsheetToken', sheetId: 'TQuzLA',
+      dateFieldId: 'H', assigneeFieldId: 'J', selectLatest: () => null,
+    }), (error) => error instanceof LarkApiError && error.code === 'SHEET_SCAN_LIMIT_EXCEEDED');
+    assert.equal(stub.calls.filter((call) => call.url.pathname.includes('/values/')).length, 0);
+  } finally {
+    stub.restore();
+  }
+});

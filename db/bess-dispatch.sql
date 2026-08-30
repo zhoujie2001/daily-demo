@@ -119,6 +119,7 @@ declare
   v_existing public.bess_dispatch_assignments%rowtype;
   v_count integer;
   v_index bigint;
+  v_anchor_index bigint;
   v_original_message_id text;
 begin
   if p_day_key is null then
@@ -199,14 +200,33 @@ begin
   end if;
 
   v_count := jsonb_array_length(v_state.roster);
-  if p_direction = 'forward' then
+
+  -- 人工填写的当日表格是后续派单顺序事实来源。Node 仅在当天名单已存在时
+  -- 读取并校验锚点；RPC 再次确认锚点仍在事务内锁定的 roster 中。
+  select item.ordinality - 1
+    into v_anchor_index
+    from jsonb_array_elements_text(v_state.roster) with ordinality as item(value, ordinality)
+   where item.value = nullif(btrim(p_context ->> 'anchor_assignee'), '')
+   limit 1;
+
+  if v_anchor_index is not null then
+    if p_direction = 'forward' then
+      v_index := (v_anchor_index + 1) % v_count;
+    else
+      v_index := (v_anchor_index - 1 + v_count) % v_count;
+    end if;
+  elsif p_direction = 'forward' then
     v_index := v_state.forward_cursor % v_count;
+  else
+    v_index := v_count - 1 - (v_state.reverse_cursor % v_count);
+  end if;
+
+  if p_direction = 'forward' then
     update public.bess_dispatch_daily_state as state
        set forward_cursor = state.forward_cursor + 1,
            updated_at = now()
      where state.day_key = p_day_key;
   else
-    v_index := v_count - 1 - (v_state.reverse_cursor % v_count);
     update public.bess_dispatch_daily_state as state
        set reverse_cursor = state.reverse_cursor + 1,
            updated_at = now()

@@ -4,11 +4,13 @@ import { parseRoster, secureShuffle, shanghaiDay, nextShanghaiMidnight, dispatch
 import { buildRosterFormCard, buildRosterProcessingCard, buildRosterCompletedCard, buildRosterRetryCard, buildDispatchResultCard } from '../lib/lark/card-renderer.js';
 import { handleDispatchEvent } from '../lib/dispatch/dispatch-service.js';
 import { LarkApiError, LarkClient } from '../lib/lark/client.js';
+import { latestDailyAnchor, sheetDateDay } from '../lib/dispatch/sheet-anchor.js';
+import { validateDispatchValue } from '../lib/lark/card-actions.js';
 
 const fields = {
   requestId: 'p1_1', requestName: 'P1 需求', businessType: '千川', cardTitle: '派单',
   sheetUrl: 'https://example.feishu.cn/sheets/token123', sheetId: 'sheetA', rowIndex: 8,
-  assigneeFieldId: 'D', assigneeFieldName: '负责人',
+  dateFieldId: 'B', dateFieldName: '提需时间', assigneeFieldId: 'D', assigneeFieldName: '负责人',
 };
 
 function body({ form = false, requestId = 'p1_1', businessType = '千川', messageId = 'om_original' } = {}) {
@@ -24,6 +26,7 @@ function body({ form = false, requestId = 'p1_1', businessType = '千川', messa
           schema_version: 1, action: 'bess_auto_dispatch', request_id: requestId,
           request_name: 'P1 需求', business_type: businessType, sheet_url: fields.sheetUrl,
           sheet_id: fields.sheetId, row_index: fields.rowIndex,
+          date_field_id: fields.dateFieldId, date_field_name: fields.dateFieldName,
           assignee_field_id: fields.assigneeFieldId, assignee_field_name: fields.assigneeFieldName,
         },
       },
@@ -33,7 +36,7 @@ function body({ form = false, requestId = 'p1_1', businessType = '千川', messa
 }
 
 class FakeStore {
-  constructor() { this.state = null; this.pending = new Map(); this.assignments = new Map(); this.forward = 0; this.reverse = 0; this.cleanupCalls = 0; this.assignCalls = 0; }
+  constructor() { this.state = null; this.pending = new Map(); this.assignments = new Map(); this.forward = 0; this.reverse = 0; this.cleanupCalls = 0; this.assignCalls = 0; this.assignmentQueries = 0; this.calibrations = []; }
   async cleanupExpired() { this.cleanupCalls += 1; }
   async getDailyState() { return this.state; }
   async savePending(row) { this.pending.set(row.form_message_id, { ...row, completed_at: null }); return row; }
@@ -42,12 +45,24 @@ class FakeStore {
     return !includeCompleted && row?.completed_at ? null : row;
   }
   async markPendingCompleted(id, at) { const row = this.pending.get(id); row.completed_at = at.toISOString(); return row; }
+  async getAssignment(_dayKey, requestId) {
+    this.assignmentQueries += 1;
+    return this.assignments.get(requestId) || null;
+  }
+  async calibrateCursor({ dayKey, direction, cursor }) {
+    this.calibrations.push({ dayKey, direction, cursor });
+    if (direction === 'forward') this.forward = cursor;
+    else this.reverse = cursor;
+    return { ...(this.state || {}), [`${direction}_cursor`]: cursor };
+  }
   async assign({ requestId, direction, roster }) {
     this.assignCalls += 1;
     if (this.assignments.has(requestId)) return { ...this.assignments.get(requestId), roster: this.state.roster, replayed: true };
     if (!this.state) this.state = { roster };
     const list = this.state.roster;
-    const index = direction === 'forward' ? this.forward++ % list.length : list.length - 1 - (this.reverse++ % list.length);
+    const index = direction === 'forward' ? this.forward % list.length : list.length - 1 - (this.reverse % list.length);
+    if (direction === 'forward') this.forward += 1;
+    else this.reverse += 1;
     const assignment = { assignee: list[index], direction };
     this.assignments.set(requestId, assignment);
     return { ...assignment, roster: list, replayed: false };
@@ -55,12 +70,16 @@ class FakeStore {
 }
 
 class FakeClient {
-  constructor({ failUpdateOnce = false, failDelay = false } = {}) { this.calls = []; this.failUpdateOnce = failUpdateOnce; this.failDelay = failDelay; }
+  constructor({ failUpdateOnce = false, failDelay = false, sheetRows = [] } = {}) { this.calls = []; this.failUpdateOnce = failUpdateOnce; this.failDelay = failDelay; this.sheetRows = sheetRows; }
   async replyInteractiveCard(args) {
     this.calls.push({ kind: 'replyCard', ...args });
     return { message_id: args.uuid.startsWith('bess-form') ? 'om_form' : 'om_result' };
   }
   async writeSheetAssignee(args) { this.calls.push({ kind: 'write', ...args }); }
+  async readSheetDispatchRows(args) {
+    this.calls.push({ kind: 'readRows', ...args });
+    return typeof args.selectLatest === 'function' ? args.selectLatest(this.sheetRows) : this.sheetRows;
+  }
   async getMessage(messageId) { this.calls.push({ kind: 'get', messageId }); return null; }
   async updateMessageCard(messageId, card) {
     this.calls.push({ kind: 'update', messageId, card });
@@ -103,6 +122,8 @@ test('首次点击无名单：创建话题 Card 2.0 表单并保存 pending 映�
   const result = await handleDispatchEvent(body(), options(store, client));
   assert.equal(result.body.toast.type, 'success');
   assert.equal(store.assignments.size, 0);
+  assert.equal(store.calibrations.length, 0);
+  assert.equal(client.calls.filter((item) => item.kind === 'readRows').length, 0, '首次点击不得读取锚点表格');
   assert.equal(store.pending.get('om_form').original_message_id, 'om_original');
   const call = client.calls.find((item) => item.kind === 'replyCard');
   assert.equal(call.replyInThread, true);
@@ -146,6 +167,8 @@ test('首次表单提交：按 message_id 找回原请求、立即派单、写�
   const result = await handleDispatchEvent(body({ form: true, messageId: 'om_form' }), options(store, client));
   assert.equal(result.body.toast.type, 'success');
   assert.equal(store.assignments.size, 1);
+  assert.equal(store.calibrations.length, 0);
+  assert.equal(client.calls.filter((item) => item.kind === 'readRows').length, 0, '首次名单提交派单不得读取锚点');
   assert.equal(client.calls.find((item) => item.kind === 'write').assignee, store.assignments.get('p1_1').assignee);
   const resultCard = client.calls.filter((item) => item.kind === 'replyCard').at(-1).card;
   assert.match(JSON.stringify(resultCard), /正序名单（从上到下）/);
@@ -189,6 +212,93 @@ test('同日正序/倒序游标独立，重复 request_id 跨实例语义幂等'
   const replay = await store.assign({ requestId: 'a', direction: 'reverse' });
   assert.equal(replay.assignee, '张三');
   assert.equal(replay.replayed, true);
+});
+
+test('后续派单从最新有效人工锚点轮转，并跳过空值、非当天和名单外姓名', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['张三', '李四', '王五'] };
+  const client = new FakeClient({ sheetRows: [
+    ['2026-08-29 23:00:00', '王五'],
+    ['2026-08-30', '张三'],
+    ['8.30', '李四'],
+    ['08.30', ''],
+    ['2026-08-30 11:30:00', '名单外人员'],
+  ] });
+  const result = await handleDispatchEvent(body({ requestId: 'anchor_forward' }), options(store, client));
+  assert.equal(result.body.toast.type, 'success');
+  assert.equal(store.assignments.get('anchor_forward').assignee, '王五');
+  assert.deepEqual(store.calibrations, [{ dayKey: '2026-08-30', direction: 'forward', cursor: 2 }]);
+  assert.equal(store.assignmentQueries, 1);
+  assert.equal(client.calls.filter((item) => item.kind === 'readRows').length, 1);
+});
+
+test('后续倒序派单选择锚点上一位并循环轮转', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['张三', '李四', '王五'] };
+  const client = new FakeClient({ sheetRows: [['2026-08-30 09:00:00', '张三']] });
+  await handleDispatchEvent(body({ requestId: 'anchor_reverse', businessType: '本地推' }), options(store, client));
+  assert.equal(store.assignments.get('anchor_reverse').assignee, '王五');
+  assert.deepEqual(store.calibrations, [{ dayKey: '2026-08-30', direction: 'reverse', cursor: 3 }]);
+});
+
+test('当天没有有效锚点时沿用现有游标排序', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['张三', '李四', '王五'] };
+  store.forward = 1;
+  const client = new FakeClient({ sheetRows: [['2026-08-30', '名单外'], ['2026-08-29', '王五']] });
+  await handleDispatchEvent(body({ requestId: 'fallback_cursor' }), options(store, client));
+  assert.equal(store.assignments.get('fallback_cursor').assignee, '李四');
+  assert.equal(store.calibrations.length, 0);
+  assert.equal(store.assignmentQueries, 0);
+});
+
+test('同 request_id 重放返回原负责人且不再次校准或推进游标', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['张三', '李四', '王五'] };
+  const client = new FakeClient({ sheetRows: [['2026-08-30', '张三']] });
+  await handleDispatchEvent(body({ requestId: 'rpc_replay' }), options(store, client));
+  const cursorAfterFirst = store.forward;
+  const replay = await handleDispatchEvent(body({ requestId: 'rpc_replay' }), options(store, client));
+  assert.match(replay.body.toast.content, /李四/);
+  assert.equal(store.forward, cursorAfterFirst);
+  assert.equal(store.assignments.size, 1);
+  assert.equal(store.assignmentQueries, 2);
+  assert.equal(store.calibrations.length, 1);
+});
+
+test('锚点日期解析覆盖完整日期、短日期和飞书数值日期', () => {
+  const excelDate = (Date.UTC(2026, 7, 30) - Date.UTC(1899, 11, 30)) / 86400000;
+  for (const value of ['2026-08-30 12:34:56', '2026-08-30', '8.30', '08.30', excelDate]) {
+    assert.equal(sheetDateDay(value, '2026-08-30'), '2026-08-30');
+  }
+  assert.equal(latestDailyAnchor([
+    ['2026-08-30', '张三'], ['08.30', '李四'], ['2026-08-30', '名单外'],
+  ], { targetDay: '2026-08-30', roster: ['张三', '李四'] }), '李四');
+});
+
+test('旧卡按固定 sheet_id 补齐日期列和负责人列，新字段保持兼容', () => {
+  const base = {
+    schema_version: 1, action: 'bess_auto_dispatch', request_id: 'legacy_1', request_name: '旧卡',
+    business_type: '千川', sheet_url: fields.sheetUrl, row_index: 3,
+  };
+  const qianchuan = validateDispatchValue({ ...base, sheet_id: 'TQuzLA' });
+  assert.deepEqual(
+    [qianchuan.dateFieldId, qianchuan.dateFieldName, qianchuan.assigneeFieldId, qianchuan.assigneeFieldName],
+    ['H', '提需时间', 'J', '执行人'],
+  );
+  const stock = validateDispatchValue({ ...base, sheet_id: 'p7Wqx4', assignee_field_id: 'F' });
+  assert.deepEqual([stock.dateFieldId, stock.dateFieldName, stock.assigneeFieldId], ['D', '创建时间', 'F']);
+});
+
+test('后续读表失败时 fail-closed，不调用事务派单和写表', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['张三', '李四'] };
+  const client = new FakeClient();
+  client.readSheetDispatchRows = async () => { throw new LarkApiError('LARK_API_TIMEOUT', 'timeout'); };
+  const result = await handleDispatchEvent(body({ requestId: 'read_failed' }), options(store, client));
+  assert.equal(result.errorCode, 'LARK_API_TIMEOUT');
+  assert.equal(store.assignCalls, 0);
+  assert.equal(client.calls.filter((item) => item.kind === 'write').length, 0);
 });
 
 test('表单卡与结果卡包含黄色正序、蓝色倒序和完整名单', () => {

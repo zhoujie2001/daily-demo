@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import test from 'node:test';
 import handler from '../api/dispatch/send.js';
-import { canonicalJson, normalizeDispatchIngest } from '../lib/dispatch/ingest.js';
+import { canonicalJson, dispatchActionValue, normalizeDispatchIngest } from '../lib/dispatch/ingest.js';
 import { buildInitialDispatchCard } from '../lib/lark/card-renderer.js';
 
 const SECRET = 'dispatch-ingest-test-secret';
@@ -44,6 +44,15 @@ test('初始派单卡包含可回调按钮和完整写回参数', () => {
   assert.match(text, /🎯 自动派单/);
   assert.match(text, /715430/);
   assert.match(text, /bess_auto_dispatch/);
+});
+
+test('外部 ingest 缺省日期列为千川本地表 H 列且 action.value 向后兼容携带新字段', () => {
+  const { fields } = normalizeDispatchIngest(localBody);
+  assert.equal(fields.dateFieldId, 'H');
+  assert.equal(fields.dateFieldName, '提需时间');
+  assert.equal(normalizeDispatchIngest({ ...localBody, sheet_id: undefined }).fields.sheetId, 'TQuzLA');
+  const card = buildInitialDispatchCard(fields, dispatchActionValue(fields));
+  assert.match(JSON.stringify(card), /date_field_id/);
 });
 
 test('有效签名由排单buddy发送卡片并携带幂等 uuid', async () => {
