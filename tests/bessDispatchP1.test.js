@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseRoster, secureShuffle, shanghaiDay, nextShanghaiMidnight, dispatchDirection, RosterValidationError } from '../lib/dispatch/roster.js';
-import { buildRosterFormCard, buildDispatchResultCard } from '../lib/lark/card-renderer.js';
+import { buildRosterFormCard, buildRosterProcessingCard, buildRosterCompletedCard, buildRosterRetryCard, buildDispatchResultCard } from '../lib/lark/card-renderer.js';
 import { handleDispatchEvent } from '../lib/dispatch/dispatch-service.js';
 import { LarkApiError, LarkClient } from '../lib/lark/client.js';
 
@@ -121,7 +121,25 @@ test('首次点击无名单：创建话题 Card 2.0 表单并保存 pending 映�
   assert.notEqual(input.name, submit.name);
 });
 
-test('首次表单提交：按 message_id 找回原请求、立即派单、写表、发结果卡并置灰原卡', async () => {
+test('名单提交过程卡、完成卡和失败重试卡提供明确状态且不会保留无效按钮', () => {
+  const processing = buildRosterProcessingCard();
+  assert.match(JSON.stringify(processing), /无需重复点击/);
+  assert.doesNotMatch(JSON.stringify(processing), /保存名单并立即派单/);
+
+  const completed = buildRosterCompletedCard(fields, {
+    assignee: '周杰', direction: 'forward', dispatchedAt: '2026-08-30 09:00:00',
+  });
+  assert.match(JSON.stringify(completed), /名单已保存并完成派单/);
+  assert.match(JSON.stringify(completed), /周杰/);
+
+  const retry = buildRosterRetryCard('表格写回失败');
+  const form = retry.body.elements.find((element) => element.tag === 'form');
+  assert.ok(form);
+  assert.equal(form.elements.at(-1).form_action_type, 'submit');
+  assert.match(JSON.stringify(retry), /重新保存名单并派单/);
+});
+
+test('首次表单提交：按 message_id 找回原请求、立即派单、写表、发结果卡并更新原卡与表单卡', async () => {
   const store = new FakeStore();
   const client = new FakeClient();
   await handleDispatchEvent(body(), options(store, client));
@@ -132,9 +150,11 @@ test('首次表单提交：按 message_id 找回原请求、立即派单、写�
   const resultCard = client.calls.filter((item) => item.kind === 'replyCard').at(-1).card;
   assert.match(JSON.stringify(resultCard), /正序名单（从上到下）/);
   assert.match(JSON.stringify(resultCard), /倒序名单（从下到上）/);
-  const update = client.calls.find((item) => item.kind === 'update');
-  assert.equal(update.messageId, 'om_original');
-  assert.equal(update.card.body.elements.at(-1).disabled, true);
+  const updates = client.calls.filter((item) => item.kind === 'update');
+  const originalUpdate = updates.find((item) => item.messageId === 'om_original');
+  const formUpdate = updates.find((item) => item.messageId === 'om_form');
+  assert.equal(originalUpdate.card.body.elements.at(-1).disabled, true);
+  assert.match(JSON.stringify(formUpdate.card), /名单已保存并完成派单/);
   assert.ok(store.pending.get('om_form').completed_at, '全部外部副作用成功后才标记 pending 完成');
 });
 
@@ -154,7 +174,9 @@ test('外部消息更新失败时保留 pending，重试复用同一 assignment 
   assert.equal(store.assignments.size, 1);
   assert.equal(store.assignCalls, 2, 'RPC 可重试并返回已有 assignment');
   assert.ok(store.pending.get('om_form').completed_at);
-  assert.ok(client.calls.filter((item) => item.kind === 'update').every((item) => item.messageId === 'om_original'));
+  const updateIds = client.calls.filter((item) => item.kind === 'update').map((item) => item.messageId);
+  assert.ok(updateIds.includes('om_original'));
+  assert.ok(updateIds.includes('om_form'));
 });
 
 test('同日正序/倒序游标独立，重复 request_id 跨实例语义幂等', async () => {
