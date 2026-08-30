@@ -158,22 +158,23 @@ test('首次表单提交：按 message_id 找回原请求、立即派单、写�
   assert.ok(store.pending.get('om_form').completed_at, '全部外部副作用成功后才标记 pending 完成');
 });
 
-test('外部消息更新失败时保留 pending，重试复用同一 assignment 和原消息关联', async () => {
+test('外部消息更新失败不回滚已完成派单，pending 标记完成且记录失败操作', async () => {
   const store = new FakeStore();
   const client = new FakeClient({ failUpdateOnce: true });
+  const logs = [];
   await handleDispatchEvent(body(), options(store, client));
 
-  const failed = await handleDispatchEvent(body({ form: true, messageId: 'om_form' }), options(store, client));
-  assert.equal(failed.body.toast.type, 'error');
-  assert.equal(store.pending.get('om_form').completed_at, null);
-  const firstAssignee = store.assignments.get('p1_1').assignee;
-
-  const retried = await handleDispatchEvent(body({ form: true, messageId: 'om_form' }), options(store, client));
-  assert.equal(retried.body.toast.type, 'success');
-  assert.equal(store.assignments.get('p1_1').assignee, firstAssignee);
+  const result = await handleDispatchEvent(body({ form: true, messageId: 'om_form' }), {
+    ...options(store, client),
+    logger: { info(line) { logs.push(JSON.parse(line)); } },
+  });
+  assert.equal(result.body.toast.type, 'success');
   assert.equal(store.assignments.size, 1);
-  assert.equal(store.assignCalls, 2, 'RPC 可重试并返回已有 assignment');
   assert.ok(store.pending.get('om_form').completed_at);
+  assert.equal(store.assignCalls, 1);
+  const failure = logs.find((entry) => entry.stage === 'ui_update_failed');
+  assert.equal(failure.operation, 'update_original_card');
+  assert.equal(failure.error_code, 'LARK_API_TIMEOUT');
   const updateIds = client.calls.filter((item) => item.kind === 'update').map((item) => item.messageId);
   assert.ok(updateIds.includes('om_original'));
   assert.ok(updateIds.includes('om_form'));
