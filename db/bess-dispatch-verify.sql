@@ -337,6 +337,14 @@ begin
     if exists (select 1 from pg_catalog.pg_roles where rolname = 'service_role')
        and not has_function_privilege('service_role', v_function, 'EXECUTE')
     then v_errors := array_append(v_errors, 'service_role 缺少 bess_assign_next EXECUTE'); end if;
+
+    v_definition := pg_get_functiondef(v_function);
+    if v_definition not like '%p_context ->> ''anchor_assignee''%'
+       or v_definition not like '%v_anchor_index + 1%'
+       or v_definition not like '%v_anchor_index - 1 + v_count%'
+    then
+      v_errors := array_append(v_errors, 'RPC 缺少人工表格锚点的正序/倒序轮转逻辑');
+    end if;
   end if;
 
   if cardinality(v_errors) > 0 then

@@ -4,6 +4,9 @@ import {
   patchCardForDispatched,
   buildDispatchedCard,
   buildDispatchThreadText,
+  buildBatchDispatchCard,
+  buildBatchStatusCard,
+  buildBatchThreadText,
   formatDispatchTime,
   DISPATCH_DONE_PREFIX,
 } from '../lib/lark/card-renderer.js';
@@ -145,4 +148,35 @@ test('话题消息在无行号/无卡片标题时省略对应行', () => {
 test('formatDispatchTime 输出上海时区 yyyy-MM-dd HH:mm:ss', () => {
   const formatted = formatDispatchTime(new Date('2026-08-29T11:40:05Z')); // 19:40:05 +08:00
   assert.match(formatted, /^2026-08-29 19:40:05$/);
+});
+
+
+test('批次状态卡禁用唯一按钮并展示逐项结果', () => {
+  const fields = [
+    { requestId: '715430', requestName: '需求一', businessType: '本地推', rowIndex: 89 },
+    { requestId: '715431', requestName: '需求二', businessType: '本地推', rowIndex: 90 },
+  ];
+  const action = { action: 'bess_batch_auto_dispatch', batch_id: 'batch_renderer', items: [] };
+  const ready = buildBatchDispatchCard(fields, action, { cardTitle: 'E 段', batchId: 'batch_renderer' });
+  assert.equal(ready.body.elements.filter((item) => item.tag === 'button').length, 1);
+
+  const results = [
+    { requestId: '715430', requestName: '需求一', status: 'SUCCESS', assignee: '张三' },
+    { requestId: '715431', requestName: '需求二', status: 'FAILED', message: '写表失败' },
+  ];
+  const card = buildBatchStatusCard(fields, {
+    batchId: 'batch_renderer', status: 'PARTIAL', results, cardTitle: 'E 段',
+  });
+  const serialized = JSON.stringify(card);
+  assert.match(serialized, /PARTIAL/);
+  assert.match(serialized, /负责人：张三/);
+  assert.match(serialized, /原因：写表失败/);
+  const button = card.body.elements.at(-1);
+  assert.equal(button.disabled, true);
+  assert.deepEqual(button.behaviors, []);
+
+  const text = buildBatchThreadText({ batchId: 'batch_renderer', status: 'PARTIAL', results, dispatchedAt: 't' });
+  assert.match(text, /批量自动派单结果/);
+  assert.match(text, /715430.*SUCCESS/);
+  assert.match(text, /715431.*FAILED/);
 });

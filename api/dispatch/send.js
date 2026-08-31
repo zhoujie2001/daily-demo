@@ -1,9 +1,12 @@
 import process from 'node:process';
+import { createHash } from 'node:crypto';
 import { LarkClient, LarkApiError } from '../../lib/lark/client.js';
-import { buildInitialDispatchCard } from '../../lib/lark/card-renderer.js';
+import { buildBatchDispatchCard, buildInitialDispatchCard } from '../../lib/lark/card-renderer.js';
 import {
   DispatchIngestError,
+  batchDispatchActionValue,
   dispatchActionValue,
+  normalizeBatchDispatchIngest,
   normalizeDispatchIngest,
   verifyDispatchIngestSignature,
 } from '../../lib/dispatch/ingest.js';
@@ -28,6 +31,34 @@ export default async function handler(req, res) {
       signature: req.headers?.['x-bess-signature'],
       secret: process.env.BESS_DISPATCH_INGEST_SECRET,
     });
+    if (Array.isArray(body?.items)) {
+      const { chatId, fieldsList, cardTitle, batchId } = normalizeBatchDispatchIngest(body);
+      const card = buildBatchDispatchCard(
+        fieldsList,
+        batchDispatchActionValue(batchId, fieldsList),
+        { cardTitle, batchId },
+      );
+      const messageUuid = `bess-batch-${createHash('sha256')
+        .update(`${chatId}:${batchId}`)
+        .digest('hex')
+        .slice(0, 32)}`;
+      const message = await client.sendMessage({
+        receiveId: chatId,
+        msgType: 'interactive',
+        content: card,
+        uuid: messageUuid,
+      });
+      console.info(JSON.stringify({
+        module: 'bess-dispatch-ingest', stage: 'batch_sent', batch_id: batchId,
+        request_count: fieldsList.length, chat_id: chatId, message_id: message.message_id,
+      }));
+      return res.status(200).json({
+        ok: true,
+        batch_id: batchId,
+        request_ids: fieldsList.map((item) => item.requestId),
+        message_id: message.message_id,
+      });
+    }
     const { chatId, fields } = normalizeDispatchIngest(body);
     const card = buildInitialDispatchCard(fields, dispatchActionValue(fields));
     const message = await client.sendMessage({

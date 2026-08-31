@@ -106,6 +106,10 @@ async function handleCardAction(body) {
     config: {
       featureEnabled: process.env.LARK_DISPATCH_FEATURE_ENABLED,
       allowedChatIds: process.env.LARK_DISPATCH_ALLOWED_CHAT_IDS,
+      // Keep a 60s margin below the 300s platform limit; stop starting an item
+      // with less than 30s left so progress and the lease can be persisted.
+      batchExecutionDeadlineMs: 240_000,
+      batchItemStartReserveMs: 30_000,
     },
   });
   const result = await Promise.race([dispatchTask, deadline(DISPATCH_DEADLINE_MS, { isRosterForm })]);
