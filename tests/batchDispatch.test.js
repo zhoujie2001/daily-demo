@@ -49,6 +49,7 @@ class BatchStore {
   constructor({ now = () => new Date('2026-08-30T11:00:00Z') } = {}) {
     this.state = { roster: ['张三', '李四'] };
     this.assignments = new Map();
+    this.pending = new Map();
     this.assignCalls = 0;
     this.cursor = 0;
     this.batchStore = createMemoryBatchStore({ now });
@@ -66,7 +67,13 @@ class BatchStore {
   async getDailyState() { return this.state; }
   async getAssignment(_day, requestId) { return this.assignments.get(requestId) || null; }
   async calibrateCursor() {}
-  async assign({ requestId }) {
+  async savePending(args) { this.pending.set(args.form_message_id, args); return args; }
+  async getPending(id) { return this.pending.get(id) || null; }
+  async markPendingCompleted(id) {
+    if (this.pending.has(id)) this.pending.get(id).completed_at = new Date().toISOString();
+  }
+  async assign({ requestId, roster }) {
+    if (roster) this.state = { roster };
     this.assignCalls += 1;
     if (this.assignments.has(requestId)) {
       return { ...this.assignments.get(requestId), roster: this.state.roster, replayed: true };
@@ -100,6 +107,10 @@ class BatchClient {
     this.calls.push({ kind: 'reply', ...args });
     if (this.failReplyOnce) { this.failReplyOnce = false; throw new Error('thread reply failed'); }
     return { message_id: 'om_thread' };
+  }
+  async replyInteractiveCard(args) {
+    this.calls.push({ kind: 'replyCard', ...args });
+    return { message_id: 'om_form' };
   }
 }
 
@@ -314,6 +325,49 @@ test('内部截止时间前主动暂停、持久化进度并开放同 batch_id �
   assert.equal(completed.results.length, 2);
   assert.equal(store.assignCalls, 2, '续跑不得重派已成功项');
   assert.equal(client.calls.filter((call) => call.kind === 'reply').length, 1);
+});
+
+
+test('批量派单首次点击若名单未初始化，则引导填写表单；提交名单后自动恢复并处理全部需求', async () => {
+  const store = new BatchStore();
+  store.state = null; // Uninitialized
+  const client = new BatchClient();
+  const body = batchBody('batch_init');
+
+  // 1. Initial click
+  const result = await handleDispatchEvent(body, options(store, client));
+  assert.equal(result.httpStatus, 200);
+  assert.match(result.body.toast.content, /已创建批量派单话题/);
+  assert.equal(client.calls.filter((c) => c.kind === 'replyCard').length, 1);
+  assert.equal(store.pending.size, 1);
+  assert.equal(store.assignCalls, 0);
+
+  // 2. Submit form
+  const formBody = {
+    header: { event_id: 'evt_form' },
+    event: {
+      operator: { open_id: 'ou_operator' },
+      action: {
+        tag: 'dispatch_roster_submit',
+        form_value: { roster_names: '王五, 赵六' },
+      },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  };
+  const resumeResult = await handleDispatchEvent(formBody, options(store, client));
+  assert.equal(resumeResult.httpStatus, 200);
+  assert.match(resumeResult.body.toast.content, /受理/);
+
+  await resumeResult.afterResponse();
+  assert.equal(store.assignCalls, 2);
+  assert.equal(store.state.roster.length, 2);
+  assert.ok(store.state.roster.includes('王五'));
+  assert.ok(store.state.roster.includes('赵六'));
+
+  const update = client.calls.find((c) => c.kind === 'update' && c.messageId === 'om_batch');
+  assert.match(JSON.stringify(update.card), /SUCCESS/);
+  const formUpdate = client.calls.find((c) => c.kind === 'update' && c.messageId === 'om_form');
+  assert.match(JSON.stringify(formUpdate.card), /名单已保存并完成派单/);
 });
 
 
