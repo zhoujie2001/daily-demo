@@ -37,6 +37,34 @@ test('接入参数强制绑定群聊与业务类型', () => {
   assert.throws(() => normalizeDispatchIngest({ ...localBody, chat_id: 'oc_unknown' }), (error) => error.code === 'FORBIDDEN_CHAT');
 });
 
+test('主监控群允许多业务类型，但必须显式提供工作表', () => {
+  const mainChatId = 'oc_aa1602f07bf35a5fdfd289aff67025a4';
+  const qianchuan = normalizeDispatchIngest({
+    ...localBody,
+    chat_id: mainChatId,
+    business_type: '千川',
+    target_category: 'qianchuan',
+    sheet_id: 'TQuzLA',
+  });
+  assert.equal(qianchuan.fields.businessType, '千川');
+  assert.equal(qianchuan.fields.targetCategory, 'qianchuan');
+
+  const stock = normalizeDispatchIngest({
+    ...localBody,
+    chat_id: mainChatId,
+    business_type: '存量',
+    target_category: 'stock',
+    sheet_id: 'StockSheet',
+  });
+  assert.equal(stock.fields.businessType, '存量');
+  assert.equal(stock.fields.targetCategory, 'stock');
+
+  assert.throws(
+    () => normalizeDispatchIngest({ ...localBody, chat_id: mainChatId, sheet_id: undefined }),
+    (error) => error.code === 'INVALID_SHEET_TARGET',
+  );
+});
+
 test('初始派单卡包含可回调按钮和完整写回参数', () => {
   const { fields } = normalizeDispatchIngest(localBody);
   const card = buildInitialDispatchCard(fields, { action: 'bess_auto_dispatch', request_id: fields.requestId });
