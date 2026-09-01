@@ -94,6 +94,13 @@ test('外部 ingest 缺省千川本地表字段并在 action.value 携带项目�
   );
   const card = buildInitialDispatchCard(fields, actionValue);
   assert.match(JSON.stringify(card), /project_field_id/);
+
+  const explicitSheetId = normalizeDispatchIngest({
+    ...localBody, sheet_id: 'runtime-sheet-id',
+  }).fields;
+  assert.equal(explicitSheetId.projectFieldId, 'C');
+  assert.equal(explicitSheetId.projectFieldName, '项目');
+  assert.equal(explicitSheetId.projectValue, '本地');
 });
 
 test('有效签名由排单buddy发送卡片并携带幂等 uuid', async () => {
