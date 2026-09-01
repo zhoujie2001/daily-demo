@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
-import { handleDispatchEvent } from '../lib/dispatch/dispatch-service.js';
+import { handleDispatchEvent, redactLarkApiMessage } from '../lib/dispatch/dispatch-service.js';
 import { createMemoryBatchStore } from '../lib/dispatch/memory-batch-store.js';
 
 const silentLogger = { info() {} };
@@ -320,4 +320,16 @@ test('内部截止时间前主动暂停、持久化进度并开放同 batch_id �
 test('Vercel callback 运行上限为 300 秒', async () => {
   const config = JSON.parse(await readFile(new URL('../vercel.json', import.meta.url), 'utf8'));
   assert.equal(config.functions['api/lark/callback.js'].maxDuration, 300);
+});
+
+
+test('飞书错误日志脱敏 Token、Secret、邮箱和手机号', () => {
+  const message = 'Bearer abc.def token=tok_123 secret:sec_456 user@example.com 13800138000';
+  const redacted = redactLarkApiMessage(message);
+  assert.equal(redacted.includes('abc.def'), false);
+  assert.equal(redacted.includes('tok_123'), false);
+  assert.equal(redacted.includes('sec_456'), false);
+  assert.equal(redacted.includes('user@example.com'), false);
+  assert.equal(redacted.includes('13800138000'), false);
+  assert.match(redacted, /\[REDACTED\]/);
 });

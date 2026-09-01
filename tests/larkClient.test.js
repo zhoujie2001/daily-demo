@@ -120,6 +120,28 @@ test('OpenAPI 业务错误码转为 LarkApiError', async () => {
   }
 });
 
+test('HTTP 错误保留飞书业务码、状态码、端点与 log_id', async () => {
+  const stub = stubFetch(() => jsonResponse(400, {
+    code: 99991668,
+    msg: 'Invalid access token for authorization.',
+    error: { log_id: 'log_123' },
+  }));
+  try {
+    const client = new LarkClient({ appId: 'cli_x', appSecret: 'sec', baseUrl: 'https://open.feishu.test' });
+    await assert.rejects(() => client.getTenantAccessToken(), (error) => {
+      assert.equal(error.code, 'LARK_API_99991668');
+      assert.equal(error.httpStatus, 400);
+      assert.equal(error.endpoint, '/open-apis/auth/v3/tenant_access_token/internal');
+      assert.equal(error.apiCode, 99991668);
+      assert.equal(error.apiMessage, 'Invalid access token for authorization.');
+      assert.equal(error.logId, 'log_123');
+      return true;
+    });
+  } finally {
+    stub.restore();
+  }
+});
+
 test('HTTP 5xx 与超时分别映射错误码', async () => {
   const stub500 = stubFetch(() => ({ ok: false, status: 500, async text() { return '{}'; } }));
   try {
