@@ -120,6 +120,28 @@ test('OpenAPI 业务错误码转为 LarkApiError', async () => {
   }
 });
 
+test('HTTP 错误保留飞书业务码、状态码、端点与 log_id', async () => {
+  const stub = stubFetch(() => jsonResponse(400, {
+    code: 99991668,
+    msg: 'Invalid access token for authorization.',
+    error: { log_id: 'log_123' },
+  }));
+  try {
+    const client = new LarkClient({ appId: 'cli_x', appSecret: 'sec', baseUrl: 'https://open.feishu.test' });
+    await assert.rejects(() => client.getTenantAccessToken(), (error) => {
+      assert.equal(error.code, 'LARK_API_99991668');
+      assert.equal(error.httpStatus, 400);
+      assert.equal(error.endpoint, '/open-apis/auth/v3/tenant_access_token/internal');
+      assert.equal(error.apiCode, 99991668);
+      assert.equal(error.apiMessage, 'Invalid access token for authorization.');
+      assert.equal(error.logId, 'log_123');
+      return true;
+    });
+  } finally {
+    stub.restore();
+  }
+});
+
 test('HTTP 5xx 与超时分别映射错误码', async () => {
   const stub500 = stubFetch(() => ({ ok: false, status: 500, async text() { return '{}'; } }));
   try {
@@ -217,8 +239,8 @@ test('readSheetDispatchRows 按相同行号对齐读取日期、负责人和项�
     if (call.url.pathname.endsWith('/tenant_access_token/internal')) {
       return jsonResponse(200, { code: 0, tenant_access_token: 't-1', expire: 7200 });
     }
-    if (call.url.pathname.endsWith('/sheets/TQuzLA')) {
-      return jsonResponse(200, { code: 0, data: { sheet: { grid_properties: { row_count: 3 } } } });
+    if (call.url.pathname.endsWith('/sheets/query')) {
+      return jsonResponse(200, { code: 0, data: { sheets: [{ sheet_id: 'TQuzLA', grid_properties: { row_count: 3 } }] } });
     }
     const encodedRange = call.url.pathname.split('/values/')[1];
     const range = decodeURIComponent(encodedRange);
@@ -251,8 +273,8 @@ test('row_count 不超过上限时从第 1 行分块扫描并找到前部数据'
     if (call.url.pathname.endsWith('/tenant_access_token/internal')) {
       return jsonResponse(200, { code: 0, tenant_access_token: 't-1', expire: 7200 });
     }
-    if (call.url.pathname.endsWith('/sheets/TQuzLA')) {
-      return jsonResponse(200, { code: 0, data: { sheet: { grid_properties: { row_count: 20000 } } } });
+    if (call.url.pathname.endsWith('/sheets/query')) {
+      return jsonResponse(200, { code: 0, data: { sheets: [{ sheet_id: 'TQuzLA', grid_properties: { row_count: 20000 } }] } });
     }
     const range = decodeURIComponent(call.url.pathname.split('/values/')[1]);
     requestedRanges.push(range);
@@ -281,8 +303,8 @@ test('物理 row_count 超过 20000 时立即 fail-closed 且不读取单元格'
     if (call.url.pathname.endsWith('/tenant_access_token/internal')) {
       return jsonResponse(200, { code: 0, tenant_access_token: 't-1', expire: 7200 });
     }
-    if (call.url.pathname.endsWith('/sheets/TQuzLA')) {
-      return jsonResponse(200, { code: 0, data: { sheet: { grid_properties: { row_count: 100000 } } } });
+    if (call.url.pathname.endsWith('/sheets/query')) {
+      return jsonResponse(200, { code: 0, data: { sheets: [{ sheet_id: 'TQuzLA', grid_properties: { row_count: 100000 } }] } });
     }
     return jsonResponse(200, { code: 0, data: { valueRange: { values: [['仍有数据']] } } });
   });
