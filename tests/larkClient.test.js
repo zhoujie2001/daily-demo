@@ -106,13 +106,22 @@ test('OpenAPI 业务错误码转为 LarkApiError', async () => {
     if (call.url.pathname.endsWith('/tenant_access_token/internal')) {
       return jsonResponse(200, { code: 0, tenant_access_token: 't-1', expire: 7200 });
     }
-    return jsonResponse(200, { code: 230001, msg: 'bad request' });
+    return jsonResponse(200, {
+      code: 230001,
+      msg: 'bad request',
+      error: { log_id: 'log_business_200' },
+    });
   });
   try {
     const client = new LarkClient({ appId: 'cli_x', appSecret: 'sec', baseUrl: 'https://open.feishu.test' });
     await assert.rejects(() => client.getMessage('om_card_1'), (error) => {
       assert.ok(error instanceof LarkApiError);
       assert.equal(error.code, 'LARK_API_230001');
+      assert.equal(error.httpStatus, 200);
+      assert.equal(error.endpoint, '/open-apis/im/v1/messages/om_card_1');
+      assert.equal(error.apiCode, 230001);
+      assert.equal(error.apiMessage, 'bad request');
+      assert.equal(error.logId, 'log_business_200');
       return true;
     });
   } finally {

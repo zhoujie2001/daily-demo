@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
+import { LarkApiError } from '../lib/lark/client.js';
 import { handleDispatchEvent, redactLarkApiMessage } from '../lib/dispatch/dispatch-service.js';
 import { createMemoryBatchStore } from '../lib/dispatch/memory-batch-store.js';
 
@@ -108,7 +109,7 @@ function options(store, client, overrides = {}) {
     store,
     client,
     config: { allowedChatIds: 'oc_allowed', ...(overrides.config || {}) },
-    logger: silentLogger,
+    logger: overrides.logger || silentLogger,
     now: overrides.now || (() => new Date('2026-08-30T11:00:00Z')),
   };
 }
@@ -324,12 +325,42 @@ test('Vercel callback 运行上限为 300 秒', async () => {
 
 
 test('飞书错误日志脱敏 Token、Secret、邮箱和手机号', () => {
-  const message = 'Bearer abc.def token=tok_123 secret:sec_456 user@example.com 13800138000';
+  const message = 'Bearer abc/DEF+ghi==TAIL token=tok_123 secret:sec_456 user@example.com 13800138000';
   const redacted = redactLarkApiMessage(message);
-  assert.equal(redacted.includes('abc.def'), false);
+  assert.equal(redacted.includes('abc/DEF+ghi==TAIL'), false);
+  assert.equal(redacted.includes('TAIL'), false);
   assert.equal(redacted.includes('tok_123'), false);
   assert.equal(redacted.includes('sec_456'), false);
   assert.equal(redacted.includes('user@example.com'), false);
   assert.equal(redacted.includes('13800138000'), false);
   assert.match(redacted, /\[REDACTED\]/);
+});
+
+
+test('HTTP 200 飞书业务错误写入准确且脱敏的批次诊断日志', async () => {
+  const store = new BatchStore();
+  const client = new BatchClient();
+  client.readSheetDispatchRows = async () => {
+    throw new LarkApiError('LARK_API_230001', 'bad request', {
+      httpStatus: 200,
+      endpoint: '/open-apis/sheets/v3/spreadsheets/token/sheets/query',
+      apiCode: 230001,
+      apiMessage: 'bad request Bearer abc/DEF+ghi==TAIL user@example.com',
+      logId: 'log_business_200',
+    });
+  };
+  const logs = [];
+  const result = await handleDispatchEvent(
+    batchBody('batch_business_error', [item('business_error_1', 10)]),
+    options(store, client, { logger: { info(line) { logs.push(JSON.parse(line)); } } }),
+  );
+  await result.afterResponse();
+
+  const failure = logs.find((entry) => entry.stage === 'batch_item_failed');
+  assert.equal(failure.api_code, 230001);
+  assert.equal(failure.http_status, 200);
+  assert.equal(failure.endpoint, '/open-apis/sheets/v3/spreadsheets/token/sheets/query');
+  assert.equal(failure.lark_log_id, 'log_business_200');
+  assert.equal(failure.api_message, 'bad request Bearer [REDACTED] [REDACTED_EMAIL]');
+  assert.equal(JSON.stringify(failure).includes('TAIL'), false);
 });
