@@ -18,6 +18,38 @@ const defaultClient = new LarkClient({
   baseUrl: () => process.env.LARK_API_BASE_URL || 'https://open.feishu.cn',
 });
 
+const BUDDY_INTRO_CHAT_ID = 'oc_aa1602f07bf35a5fdfd289aff67025a4';
+
+export function buildBuddyIntroCard() {
+  const section = (title, content, color = 'blue') => ({
+    tag: 'column_set', flex_mode: 'none',
+    columns: [{
+      tag: 'column', width: 'weighted', weight: 1, background_style: `${color}-50`, padding: '12px', vertical_spacing: '4px',
+      elements: [
+        { tag: 'markdown', content: `**<font color='${color}'>${title}</font>**` },
+        { tag: 'markdown', content },
+      ],
+    }],
+  });
+  return {
+    schema: '2.0',
+    config: { update_multi: true, width_mode: 'default', summary: { content: '自我介绍｜排单 Buddy' } },
+    header: {
+      title: { tag: 'plain_text', content: '自我介绍' }, subtitle: { tag: 'plain_text', content: '排单 Buddy' },
+      template: 'blue', icon: { tag: 'standard_icon', token: 'myai_colorful' },
+    },
+    body: {
+      direction: 'vertical', padding: '12px 12px 20px 12px', vertical_spacing: '12px',
+      elements: [
+        section('我能干什么', '• 接收批量派单需求\n• 根据每日排班名单分配执行人\n• 按千川、本地推和存量等业务规则轮转\n• 将负责人写回对应台账并回读核验\n• 更新派单卡片，汇总展示处理结果'),
+        section('我的工作逻辑', '我以每日排班名单为基础，结合不同业务的轮转方向和台账中最近一次有效负责人，计算下一位执行人。派单使用批次与需求双层幂等：成功项不会重复处理，失败项可以单独重试。写回后还会重新读取台账，确认负责人填写正确。', 'violet'),
+        section('我在什么情况下出现', '当 BESS 监控发现新增需求、完成二次确认并成功写入台账后，我会在对应业务群中发送派单卡片。没有新增需求、需求被过滤、写表失败或流程异常时，我不会发起派单。'),
+        section('使用方式', '1. 在派单卡片中点击“批量自动派单”\n2. 当天首次使用时，按提示提交真实姓名排班名单\n3. 我会自动完成轮转计算、负责人写回和卡片更新\n4. 如有失败项，可再次点击进行补偿重试', 'grey'),
+      ],
+    },
+  };
+}
+
 function log(level, stage, fields = {}) {
   console[level](JSON.stringify({ module: 'bess-dispatch-ingest', stage, ...fields }));
 }
@@ -41,6 +73,18 @@ export function createDispatchSendHandler({
         signature: req.headers?.['x-bess-signature'],
         secret: process.env.BESS_DISPATCH_INGEST_SECRET,
       });
+      if (body?.action === 'send_buddy_intro') {
+        // Fixed-purpose branch: callers cannot supply a chat ID or arbitrary card content.
+        if (Object.keys(body).length !== 1) throw new DispatchIngestError('INVALID_SCHEMA', '自我介绍请求不接受额外字段');
+        const message = await client.sendMessage({
+          receiveId: BUDDY_INTRO_CHAT_ID,
+          msgType: 'interactive',
+          content: buildBuddyIntroCard(),
+          uuid: 'bess-buddy-intro-v1-main-chat',
+        });
+        log('info', 'buddy_intro_sent', { chat_id: BUDDY_INTRO_CHAT_ID, message_id: message.message_id });
+        return res.status(200).json({ ok: true, message_id: message.message_id });
+      }
       if (Array.isArray(body?.items)) {
         const { chatId, fieldsList, cardTitle, batchId, period } = normalizeBatchDispatchIngest(body);
         const fingerprint = createHash('sha256').update(JSON.stringify(fieldsList)).digest('hex');
