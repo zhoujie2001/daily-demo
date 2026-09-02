@@ -12,7 +12,10 @@ import { handleDispatchEvent } from '../../lib/dispatch/dispatch-service.js';
 // Feishu. Allow the batch claim to finish so the callback can usually return the
 // disabled "processing" card instead of only a transient toast. The remaining
 // margin still keeps the response inside Feishu's ~3s callback window.
-const DISPATCH_DEADLINE_MS = 1_800;
+// Reserve most of Feishu's ~3s callback budget for Vercel cold start, module
+// loading, network transit and response flushing. Business work continues through
+// waitUntil when this short acknowledgement deadline wins the race.
+const DISPATCH_DEADLINE_MS = 500;
 
 // Module-level so the tenant_access_token cache survives warm invocations.
 // Env values are read lazily through accessors.
