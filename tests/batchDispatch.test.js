@@ -150,6 +150,9 @@ test('批量点击立即禁用按钮，逐项处理后只更新原卡并在单�
   assert.match(JSON.stringify(update.card), /PARTIAL/);
   assert.match(JSON.stringify(update.card), /SUCCESS/);
   assert.match(JSON.stringify(update.card), /FAILED/);
+  const retryButton = update.card.body.elements.at(-1);
+  assert.equal(retryButton.disabled, false, '部分失败时原卡必须允许重试失败项');
+  assert.equal(retryButton.value.batch_id, 'batch_partial');
   const reply = client.calls.find((call) => call.kind === 'reply');
   assert.equal(reply.replyInThread, true);
   assert.equal(reply.msgType, 'text');
