@@ -9,6 +9,7 @@ import {
   dispatchActionValue,
   normalizeBatchDispatchIngest,
   normalizeDispatchIngest,
+  shouldSkipLocalPromoDispatch,
   verifyDispatchIngestSignature,
 } from '../../lib/dispatch/ingest.js';
 
@@ -105,7 +106,16 @@ export function createDispatchSendHandler({
         return res.status(200).json({ ok: true, messages: messageIds });
       }
       if (Array.isArray(body?.items)) {
-        const { chatId, fieldsList, cardTitle, batchId, period } = normalizeBatchDispatchIngest(body);
+        const skippedItems = body.items.filter((item) => shouldSkipLocalPromoDispatch(body.chat_id, item));
+        const dispatchBody = skippedItems.length
+          ? { ...body, items: body.items.filter((item) => !shouldSkipLocalPromoDispatch(body.chat_id, item)) }
+          : body;
+        if (dispatchBody.items.length === 0) {
+          return res.status(200).json({
+            ok: true, skipped: true, skipped_request_ids: skippedItems.map((item) => String(item?.request_id || '')),
+          });
+        }
+        const { chatId, fieldsList, cardTitle, batchId, period } = normalizeBatchDispatchIngest(dispatchBody);
         const fingerprint = createHash('sha256').update(JSON.stringify(fieldsList)).digest('hex');
         const source = String(req.headers?.['x-bess-source'] || 'unknown').slice(0, 64);
         const store = storeFactory();
@@ -140,8 +150,13 @@ export function createDispatchSendHandler({
           message_id: message.message_id, request_fingerprint: fingerprint,
         });
         return res.status(200).json({
-          ok: true, batch_id: batchId, request_ids: fieldsList.map((item) => item.requestId), message_id: message.message_id,
+          ok: true, batch_id: batchId, request_ids: fieldsList.map((item) => item.requestId),
+          skipped_request_ids: skippedItems.map((item) => String(item?.request_id || '')),
+          message_id: message.message_id,
         });
+      }
+      if (shouldSkipLocalPromoDispatch(body?.chat_id, body)) {
+        return res.status(200).json({ ok: true, skipped: true, skipped_request_ids: [String(body?.request_id || '')] });
       }
       const { chatId, fields } = normalizeDispatchIngest(body);
       const card = buildInitialDispatchCard(fields, dispatchActionValue(fields));
