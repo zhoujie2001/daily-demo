@@ -166,6 +166,12 @@ test('批量点击立即禁用按钮，逐项处理后更新原卡并在单一�
     { dispatch_order: '1', request_id: 'batch_partial_1', request_name: '需求 batch_partial_1', assignee: '张三' },
     { dispatch_order: '2', request_id: 'batch_partial_2', request_name: '需求 batch_partial_2', assignee: '-' },
   ]);
+  const rosterColumns = reply.card.body.elements.find((element) => element.tag === 'column_set');
+  assert.ok(rosterColumns, '话题卡片必须包含千川正序和本地倒序名单');
+  assert.match(rosterColumns.columns[0].elements[0].content, /千川正序名单（从上到下）/);
+  assert.match(rosterColumns.columns[0].elements[0].content, /1\. 张三 \*\*← 当前人员\*\*/);
+  assert.match(rosterColumns.columns[1].elements[0].content, /本地倒序名单（从下到上）/);
+  assert.doesNotMatch(rosterColumns.columns[1].elements[0].content, /当前人员/);
   assert.doesNotMatch(JSON.stringify(reply.card), /本批次负责人/);
   assert.doesNotMatch(JSON.stringify(reply.card), /sensitive write error/);
 });
