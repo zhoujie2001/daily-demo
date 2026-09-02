@@ -68,6 +68,9 @@ class BatchStore {
   async getDailyState() { return this.state; }
   async getAssignment(_day, requestId) { return this.assignments.get(requestId) || null; }
   async calibrateCursor() {}
+  async getPendingByRequest(requestId, chatId) {
+    return [...this.pending.values()].find((row) => row.request_id === requestId && row.chat_id === chatId && !row.completed_at) || null;
+  }
   async savePending(args) { this.pending.set(args.form_message_id, args); return args; }
   async getPending(id) { return this.pending.get(id) || null; }
   async markPendingCompleted(id) {
@@ -87,9 +90,10 @@ class BatchStore {
 }
 
 class BatchClient {
-  constructor({ failRow, failUpdateOnce = false, failReplyOnce = false, onWrite } = {}) {
+  constructor({ failRow, failRows = [], failUpdateOnce = false, failReplyOnce = false, onWrite } = {}) {
     this.calls = [];
     this.failRow = failRow;
+    this.failRows = new Set(failRows);
     this.failUpdateOnce = failUpdateOnce;
     this.failReplyOnce = failReplyOnce;
     this.onWrite = onWrite;
@@ -98,7 +102,7 @@ class BatchClient {
   async writeSheetAssignee(args) {
     this.calls.push({ kind: 'write', ...args });
     this.onWrite?.(args);
-    if (args.rowIndex === this.failRow) throw new Error('sensitive write error');
+    if (args.rowIndex === this.failRow || this.failRows.has(args.rowIndex)) throw new Error('sensitive write error');
   }
   async updateMessageCard(messageId, card) {
     this.calls.push({ kind: 'update', messageId, card });
@@ -377,6 +381,74 @@ test('Vercel callback 运行上限为 300 秒', async () => {
   assert.equal(config.functions['api/lark/callback.js'].maxDuration, 300);
 });
 
+
+test('重复 roster callback 复用既有 batch pending/form，不重复回复或写状态', async () => {
+  const store = new BatchStore();
+  store.state = null;
+  const client = new BatchClient();
+  const body = batchBody('batch_form_reuse');
+  const first = await handleDispatchEvent(body, options(store, client));
+  const second = await handleDispatchEvent(body, options(store, client));
+  assert.match(first.body.toast.content, /已创建/);
+  assert.match(second.body.toast.content, /已有待填写/);
+  assert.equal(client.calls.filter((call) => call.kind === 'replyCard').length, 1);
+  assert.equal(store.pending.size, 1);
+});
+
+test('名单表单 PARTIAL 显示橙色真实结果且保持 pending，重试只执行失败项并在 SUCCESS 后完成', async () => {
+  const store = new BatchStore();
+  store.state = null;
+  const client = new BatchClient({ failRow: 11 });
+  const body = batchBody('batch_form_partial');
+  await handleDispatchEvent(body, options(store, client));
+  const formBody = {
+    header: { event_id: 'evt_partial_form' },
+    event: {
+      operator: { open_id: 'ou_operator' },
+      action: { tag: 'dispatch_roster_submit', form_value: { roster_names: '王五, 赵六' } },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  };
+  const first = await handleDispatchEvent(formBody, options(store, client));
+  await first.afterResponse();
+  const partialCard = client.calls.filter((call) => call.kind === 'update' && call.messageId === 'om_form').at(-1).card;
+  assert.equal(partialCard.header.template, 'orange');
+  assert.match(JSON.stringify(partialCard), /PARTIAL/);
+  assert.doesNotMatch(JSON.stringify(partialCard), /派单结果已写回台账|批量处理完成/);
+  assert.equal(store.pending.get('om_form').completed_at, undefined);
+  assert.equal(store.assignCalls, 2);
+
+  client.failRow = undefined;
+  const retry = await handleDispatchEvent(formBody, options(store, client));
+  await retry.afterResponse();
+  const successCard = client.calls.filter((call) => call.kind === 'update' && call.messageId === 'om_form').at(-1).card;
+  assert.equal(successCard.header.template, 'green');
+  assert.match(JSON.stringify(successCard), /派单结果已写回台账/);
+  assert.ok(store.pending.get('om_form').completed_at);
+  assert.equal(store.assignCalls, 3);
+});
+
+
+test('名单表单 FAILED 显示红色结果且不完成 pending', async () => {
+  const store = new BatchStore();
+  store.state = null;
+  const client = new BatchClient({ failRows: [10, 11] });
+  await handleDispatchEvent(batchBody('batch_form_failed'), options(store, client));
+  const result = await handleDispatchEvent({
+    header: { event_id: 'evt_failed_form' },
+    event: {
+      operator: { open_id: 'ou_operator' },
+      action: { tag: 'dispatch_roster_submit', form_value: { roster_names: '王五, 赵六' } },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  }, options(store, client));
+  await result.afterResponse();
+  const card = client.calls.filter((call) => call.kind === 'update' && call.messageId === 'om_form').at(-1).card;
+  assert.equal(card.header.template, 'red');
+  assert.match(JSON.stringify(card), /FAILED/);
+  assert.doesNotMatch(JSON.stringify(card), /派单结果已写回台账|批量处理完成/);
+  assert.equal(store.pending.get('om_form').completed_at, undefined);
+});
 
 test('飞书错误日志脱敏 Token、Secret、邮箱和手机号', () => {
   const message = 'Bearer abc/DEF+ghi==TAIL token=tok_123 secret:sec_456 user@example.com 13800138000';

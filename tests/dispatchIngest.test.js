@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, createHmac } from 'node:crypto';
 import test from 'node:test';
-import handler from '../api/dispatch/send.js';
+import handler, { createDispatchSendHandler } from '../api/dispatch/send.js';
 import { batchDispatchActionValue, canonicalJson, dispatchActionValue, normalizeBatchDispatchIngest, normalizeDispatchIngest } from '../lib/dispatch/ingest.js';
 import { buildBatchDispatchCard, buildInitialDispatchCard } from '../lib/lark/card-renderer.js';
 
@@ -18,18 +18,34 @@ function signature(body, timestamp = NOW) {
   return createHmac('sha256', SECRET).update(`${timestamp}.${canonicalJson(body)}`).digest('hex');
 }
 
-async function invoke(body, { timestamp = NOW, signed = true } = {}) {
+async function invoke(body, { timestamp = NOW, signed = true, targetHandler = handler } = {}) {
   const result = { headers: {} };
   const response = {
     setHeader(name, value) { result.headers[name] = value; },
     status(code) { result.status = code; return response; },
     json(value) { result.body = value; return response; },
   };
-  await handler({
+  await targetHandler({
     method: 'POST', body,
     headers: { 'x-bess-timestamp': String(timestamp), 'x-bess-signature': signed ? `sha256=${signature(body, timestamp)}` : 'bad' },
   }, response);
   return result;
+}
+
+function createMemoryIngestStore() {
+  const rows = new Map();
+  return {
+    async claimIngestBatch({ chatId, batchId, fingerprint }) {
+      const key = `${chatId}:${batchId}`;
+      const row = rows.get(key);
+      if (!row) { rows.set(key, { fingerprint, status: 'SENDING' }); return { outcome: 'CLAIMED' }; }
+      if (row.fingerprint !== fingerprint) return { outcome: 'CONFLICT' };
+      return { outcome: row.status === 'SENT' ? 'COMPLETE' : 'IN_FLIGHT', message_id: row.messageId || '' };
+    },
+    async completeIngestBatch({ chatId, batchId, fingerprint, messageId }) {
+      rows.set(`${chatId}:${batchId}`, { fingerprint, status: 'SENT', messageId });
+    },
+  };
 }
 
 test('接入参数强制绑定群聊与业务类型', () => {
@@ -207,7 +223,8 @@ test('batch ingest 发送单按钮卡并返回 batch_id', async () => {
     return new Response(JSON.stringify({ code: 0, data: { message_id: 'om_batch_1' } }), { status: 200 });
   };
   try {
-    const result = await invoke(body);
+    const targetHandler = createDispatchSendHandler({ storeFactory: () => createMemoryIngestStore() });
+    const result = await invoke(body, { targetHandler });
     assert.equal(result.status, 200);
     assert.equal(result.body.batch_id, 'batch_api_1');
     const send = calls.find((call) => call.url.includes('/im/v1/messages'));
@@ -244,10 +261,52 @@ test('长 batch_id 共享相同前缀时消息 UUID 仍不碰撞', async () => {
     return new Response(JSON.stringify({ code: 0, data: { message_id: `om_${uuids.length}` } }), { status: 200 });
   };
   try {
-    await invoke(bodies[0]);
-    await invoke(bodies[1]);
+    const store = createMemoryIngestStore();
+    const targetHandler = createDispatchSendHandler({ storeFactory: () => store });
+    await invoke(bodies[0], { targetHandler });
+    await invoke(bodies[1], { targetHandler });
     assert.equal(uuids.length, 2);
     assert.notEqual(uuids[0], uuids[1]);
     assert.ok(uuids.every((uuid) => uuid.length <= 50));
   } finally { globalThis.fetch = originalFetch; }
+});
+
+
+test('batch send 持久化门禁阻止并发重复发送并拒绝需求集合冲突', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const store = createMemoryIngestStore();
+  let resolveSend;
+  let sends = 0;
+  const client = {
+    async sendMessage() {
+      sends += 1;
+      await new Promise((resolve) => { resolveSend = resolve; });
+      return { message_id: 'om_once' };
+    },
+  };
+  const targetHandler = createDispatchSendHandler({ client, storeFactory: () => store });
+  const body = {
+    chat_id: localBody.chat_id, batch_id: 'batch_gate',
+    items: [localBody, { ...localBody, request_id: '715499', row_index: 99 }],
+  };
+  const firstPromise = invoke(body, { targetHandler });
+  await new Promise((resolve) => setImmediate(resolve));
+  const concurrent = await invoke(body, { targetHandler });
+  assert.equal(concurrent.status, 202);
+  assert.equal(sends, 1);
+  resolveSend();
+  const first = await firstPromise;
+  assert.equal(first.status, 200);
+
+  const replay = await invoke(body, { targetHandler });
+  assert.equal(replay.status, 200);
+  assert.equal(replay.body.reused, true);
+  assert.equal(sends, 1);
+
+  const conflict = await invoke({
+    ...body, items: [{ ...localBody, request_id: 'different', row_index: 101 }],
+  }, { targetHandler });
+  assert.equal(conflict.status, 409);
+  assert.equal(conflict.body.error_code, 'BATCH_ID_CONFLICT');
+  assert.equal(sends, 1);
 });
