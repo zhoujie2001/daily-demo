@@ -64,7 +64,7 @@ test('仅本地推群过滤指定拒绝理由，团购价值观需求正常派�
   const blockedReasons = [
     '涉及保证产品/服务效果',
     '投资类:未显著标明“投资有风险”提示语',
-    '其他有违客观事实的虚假内容',
+    '【团购】其他有违客观事实的虚假内容',
   ];
   for (const reason of blockedReasons) {
     assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { reject_reason: `前缀 ${reason} 后缀` }), true);
@@ -104,7 +104,7 @@ test('本地推批次跳过命中拒绝理由的需求且全部命中时不发�
   const allBlocked = await invoke({
     ...body,
     batch_id: 'batch_all_rejected',
-    items: [{ ...localBody, request_id: 'blocked_2', reject_reason: '其他有违客观事实的虚假内容' }],
+    items: [{ ...localBody, request_id: 'blocked_2', reject_reason: '【团购】其他有违客观事实的虚假内容' }],
   }, { targetHandler });
   assert.equal(allBlocked.status, 200);
   assert.equal(allBlocked.body.skipped, true);
