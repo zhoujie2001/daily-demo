@@ -42,7 +42,7 @@ export function createDispatchSendHandler({
         secret: process.env.BESS_DISPATCH_INGEST_SECRET,
       });
       if (Array.isArray(body?.items)) {
-        const { chatId, fieldsList, cardTitle, batchId } = normalizeBatchDispatchIngest(body);
+        const { chatId, fieldsList, cardTitle, batchId, period } = normalizeBatchDispatchIngest(body);
         const fingerprint = createHash('sha256').update(JSON.stringify(fieldsList)).digest('hex');
         const source = String(req.headers?.['x-bess-source'] || 'unknown').slice(0, 64);
         const store = storeFactory();
@@ -68,7 +68,7 @@ export function createDispatchSendHandler({
             message_id: claim.message_id, reused: true,
           });
         }
-        const card = buildBatchDispatchCard(fieldsList, batchDispatchActionValue(batchId, fieldsList), { cardTitle, batchId });
+        const card = buildBatchDispatchCard(fieldsList, batchDispatchActionValue(batchId, fieldsList), { cardTitle, batchId, period });
         const messageUuid = `bess-batch-${createHash('sha256').update(`${chatId}:${batchId}`).digest('hex').slice(0, 32)}`;
         const message = await client.sendMessage({ receiveId: chatId, msgType: 'interactive', content: card, uuid: messageUuid });
         await store.completeIngestBatch({ chatId, batchId, fingerprint, messageId: message.message_id, completedAt: now() });

@@ -10,7 +10,7 @@ const NOW = Math.floor(Date.now() / 1000);
 const localBody = {
   chat_id: 'oc_99cb9239c03701fe263b870cc26a825c',
   request_id: '715430', request_name: '本地新增需求', business_type: '本地推', target_category: 'local_promo',
-  card_title: '【本地推】新增回扫需求', sheet_url: 'https://example.feishu.cn/sheets/token',
+  card_title: '【本地推】新增回扫需求', time_segment: 'E', sheet_url: 'https://example.feishu.cn/sheets/token',
   sheet_id: 'sheetA', row_index: 89, assignee_field_id: 'J', assignee_field_name: '执行人',
 };
 
@@ -160,6 +160,9 @@ test('batch ingest normalizes multiple unique requests for one allowed chat', ()
   const body = {
     chat_id: localBody.chat_id,
     card_title: '【本地推】E 段自动派单',
+    time_segment: 'E',
+    window_start: '2026-09-01 16:00:00',
+    window_end: '2026-09-01 17:00:00',
     items: [
       localBody,
       { ...localBody, request_id: '715431', request_name: '本地新增需求 2', row_index: 90 },
@@ -177,14 +180,17 @@ test('batch dispatch card contains one callback button with batch_id and all ite
     chat_id: localBody.chat_id,
     batch_id: 'batch_715430',
     card_title: '【本地推】E 段自动派单',
+    time_segment: 'E',
+    window_start: '2026-09-01 16:00:00',
+    window_end: '2026-09-01 17:00:00',
     items: [
       localBody,
       { ...localBody, request_id: '715431', request_name: '本地新增需求 2', row_index: 90 },
     ],
   };
-  const { fieldsList, cardTitle, batchId } = normalizeBatchDispatchIngest(body);
-  const card = buildBatchDispatchCard(fieldsList, batchDispatchActionValue(batchId, fieldsList), { cardTitle, batchId });
-  assert.equal(card.header.title.content, '【本地推】E 段自动派单');
+  const { fieldsList, cardTitle, batchId, period } = normalizeBatchDispatchIngest(body);
+  const card = buildBatchDispatchCard(fieldsList, batchDispatchActionValue(batchId, fieldsList), { cardTitle, batchId, period });
+  assert.equal(card.header.title.content, '【本地推】E 段新增 2 条｜批量自动派单（2026-09-01 16:00:00 ~ 2026-09-01 17:00:00 CST）');
   const buttons = card.body.elements.filter((element) => element.tag === 'button');
   assert.equal(buttons.length, 1);
   assert.equal(buttons[0].element_id, 'batch_batch_715430');
@@ -309,4 +315,28 @@ test('batch send 持久化门禁阻止并发重复发送并拒绝需求集合冲
   assert.equal(conflict.status, 409);
   assert.equal(conflict.body.error_code, 'BATCH_ID_CONFLICT');
   assert.equal(sends, 1);
+});
+
+
+test('dedicated business chats reject missing or conflicting time segments', () => {
+  const missing = {
+    chat_id: localBody.chat_id,
+    card_title: '本地推复盘线上化批量自动派单',
+    items: [{ ...localBody, time_segment: undefined }],
+  };
+  assert.throws(
+    () => normalizeBatchDispatchIngest(missing),
+    (error) => error.code === 'MISSING_TIME_SEGMENT',
+  );
+
+  const conflicting = {
+    chat_id: localBody.chat_id,
+    card_title: '本地推复盘线上化 D 段批量自动派单',
+    time_segment: 'E',
+    items: [localBody],
+  };
+  assert.throws(
+    () => normalizeBatchDispatchIngest(conflicting),
+    (error) => error.code === 'TIME_SEGMENT_CONFLICT',
+  );
 });
