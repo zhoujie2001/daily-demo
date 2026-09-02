@@ -19,6 +19,10 @@ const defaultClient = new LarkClient({
 });
 
 const BUDDY_INTRO_CHAT_ID = 'oc_aa1602f07bf35a5fdfd289aff67025a4';
+const BUDDY_INTRO_BUSINESS_CHATS = Object.freeze([
+  Object.freeze({ chatId: 'oc_99cb9239c03701fe263b870cc26a825c', uuid: 'bess-buddy-intro-v1-local-promo' }),
+  Object.freeze({ chatId: 'oc_2ecc53a432a03f6f81f6a18babe8cda1', uuid: 'bess-buddy-intro-v1-qianchuan' }),
+]);
 
 export function buildBuddyIntroCard() {
   const section = (title, content, color = 'blue') => ({
@@ -84,6 +88,21 @@ export function createDispatchSendHandler({
         });
         log('info', 'buddy_intro_sent', { chat_id: BUDDY_INTRO_CHAT_ID, message_id: message.message_id });
         return res.status(200).json({ ok: true, message_id: message.message_id });
+      }
+      if (body?.action === 'send_buddy_intro_business_chats') {
+        // The two business chats are fixed here; callers cannot supply additional destinations.
+        if (Object.keys(body).length !== 1) throw new DispatchIngestError('INVALID_SCHEMA', '业务群自我介绍请求不接受额外字段');
+        const messages = await Promise.all(BUDDY_INTRO_BUSINESS_CHATS.map(({ chatId, uuid }) => client.sendMessage({
+          receiveId: chatId,
+          msgType: 'interactive',
+          content: buildBuddyIntroCard(),
+          uuid,
+        })));
+        const messageIds = messages.map((message, index) => ({
+          chat_id: BUDDY_INTRO_BUSINESS_CHATS[index].chatId, message_id: message.message_id,
+        }));
+        log('info', 'buddy_intro_business_chats_sent', { messages: messageIds });
+        return res.status(200).json({ ok: true, messages: messageIds });
       }
       if (Array.isArray(body?.items)) {
         const { chatId, fieldsList, cardTitle, batchId, period } = normalizeBatchDispatchIngest(body);

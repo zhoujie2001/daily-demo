@@ -42,6 +42,23 @@ test('自我介绍动作只向固定主群发送固定无回调 Card 2.0', async
   assert.doesNotMatch(JSON.stringify(calls[0].content), /callback|behaviors|button/);
 });
 
+test('业务群动作仅向本地推和千川两个固定群发送', async () => {
+  const calls = [];
+  const result = await invoke({ action: 'send_buddy_intro_business_chats' }, {
+    client: { async sendMessage(payload) { calls.push(payload); return { message_id: `om_intro_${calls.length}` }; } },
+  });
+  assert.equal(result.status, 200);
+  assert.deepEqual(calls.map((call) => call.receiveId), [
+    'oc_99cb9239c03701fe263b870cc26a825c',
+    'oc_2ecc53a432a03f6f81f6a18babe8cda1',
+  ]);
+  assert.deepEqual(result.body.messages, [
+    { chat_id: calls[0].receiveId, message_id: 'om_intro_1' },
+    { chat_id: calls[1].receiveId, message_id: 'om_intro_2' },
+  ]);
+  assert.ok(calls.every((call) => call.content.header.title.content === '自我介绍'));
+});
+
 test('自我介绍动作拒绝无效签名及调用方注入的群或卡片', async () => {
   const client = { async sendMessage() { throw new Error('should not send'); } };
   const unsigned = await invoke({ action: 'send_buddy_intro' }, { signed: false, client });
