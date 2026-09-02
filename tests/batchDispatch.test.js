@@ -115,7 +115,8 @@ class BatchClient {
   }
   async replyInteractiveCard(args) {
     this.calls.push({ kind: 'replyCard', ...args });
-    return { message_id: 'om_form' };
+    if (this.failReplyOnce) { this.failReplyOnce = false; throw new Error('thread reply failed'); }
+    return { message_id: args.uuid?.startsWith('bess-form') ? 'om_form' : 'om_thread' };
   }
 }
 
@@ -129,7 +130,7 @@ function options(store, client, overrides = {}) {
   };
 }
 
-test('批量点击立即禁用按钮，逐项处理后只更新原卡并在单一话题文本中汇总', async () => {
+test('批量点击立即禁用按钮，逐项处理后更新原卡并在单一话题卡片中展示结果与人员名单', async () => {
   const store = new BatchStore();
   const client = new BatchClient({ failRow: 11 });
   const result = await handleDispatchEvent(batchBody('batch_partial'), options(store, client));
@@ -142,19 +143,31 @@ test('批量点击立即禁用按钮，逐项处理后只更新原卡并在单�
 
   await result.afterResponse();
   assert.equal(store.assignCalls, 2);
-  assert.equal(client.calls.filter((call) => call.kind === 'reply').length, 1);
+  assert.equal(client.calls.filter((call) => call.kind === 'reply').length, 0);
   assert.equal(client.calls.filter((call) => call.kind === 'update').length, 1);
-  assert.equal(client.calls.filter((call) => call.kind === 'replyCard').length, 0);
+  assert.equal(client.calls.filter((call) => call.kind === 'replyCard').length, 1);
   const update = client.calls.find((call) => call.kind === 'update');
   assert.equal(update.messageId, 'om_batch');
   assert.match(JSON.stringify(update.card), /PARTIAL/);
   assert.match(JSON.stringify(update.card), /SUCCESS/);
   assert.match(JSON.stringify(update.card), /FAILED/);
-  const reply = client.calls.find((call) => call.kind === 'reply');
+  const reply = client.calls.find((call) => call.kind === 'replyCard');
   assert.equal(reply.replyInThread, true);
-  assert.equal(reply.msgType, 'text');
-  assert.match(reply.content.text, /批量自动派单结果/);
-  assert.doesNotMatch(reply.content.text, /sensitive write error/);
+  assert.equal(reply.card.schema, '2.0');
+  assert.match(JSON.stringify(reply.card), /批次状态：PARTIAL/);
+  assert.match(JSON.stringify(reply.card), /派单排序：正序（从上到下）/);
+  const resultTable = reply.card.body.elements.find((element) => element.tag === 'table');
+  assert.ok(resultTable, '话题卡片必须包含派单名单表格');
+  assert.deepEqual(
+    resultTable.columns.map((column) => column.display_name),
+    ['派单顺序', '需求 ID', '需求名称', '负责人'],
+  );
+  assert.deepEqual(resultTable.rows, [
+    { dispatch_order: '1', request_id: 'batch_partial_1', request_name: '需求 batch_partial_1', assignee: '张三' },
+    { dispatch_order: '2', request_id: 'batch_partial_2', request_name: '需求 batch_partial_2', assignee: '-' },
+  ]);
+  assert.doesNotMatch(JSON.stringify(reply.card), /本批次负责人/);
+  assert.doesNotMatch(JSON.stringify(reply.card), /sensitive write error/);
 });
 
 test('同 batch_id 并发重复点击不重复派单，完成后重放也不新增副作用', async () => {
@@ -170,7 +183,7 @@ test('同 batch_id 并发重复点击不重复派单，完成后重放也不新�
   await first.afterResponse();
   await first.afterResponse();
   assert.equal(store.assignCalls, 2, '后台任务自身也必须幂等');
-  assert.equal(client.calls.filter((call) => call.kind === 'reply').length, 1);
+  assert.equal(client.calls.filter((call) => call.kind === 'replyCard').length, 1);
 
   const replay = await handleDispatchEvent(body, options(store, client));
   assert.equal(replay.errorCode, 'BATCH_ALREADY_PROCESSED');
@@ -222,7 +235,7 @@ test('原卡更新与批次话题分别记账，重放只补偿失败的收尾�
       failedEffect === 'card' ? 2 : 1,
     );
     assert.equal(
-      client.calls.filter((call) => call.kind === 'reply').length,
+      client.calls.filter((call) => call.kind === 'replyCard').length,
       failedEffect === 'thread' ? 2 : 1,
     );
   }
@@ -329,7 +342,7 @@ test('内部截止时间前主动暂停、持久化进度并开放同 batch_id �
   assert.equal(completed.status, 'SUCCESS');
   assert.equal(completed.results.length, 2);
   assert.equal(store.assignCalls, 2, '续跑不得重派已成功项');
-  assert.equal(client.calls.filter((call) => call.kind === 'reply').length, 1);
+  assert.equal(client.calls.filter((call) => call.kind === 'replyCard').length, 1);
 });
 
 
