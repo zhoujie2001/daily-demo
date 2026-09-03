@@ -315,6 +315,10 @@ test('重放只跳过 SUCCESS，FAILED 使用既有 assignment 重试并原位�
   const first = await handleDispatchEvent(body, options(store, client));
   await first.afterResponse();
   assert.equal(store.getBatch('oc_allowed', batchId).status, 'PARTIAL');
+  const partialOriginalCard = client.calls.filter((call) => call.kind === 'update' && call.messageId === 'om_batch').at(-1).card;
+  assert.equal(partialOriginalCard.body.elements.at(-1).disabled, false);
+  assert.equal(partialOriginalCard.body.elements.at(-1).value.batch_id, batchId);
+  assert.match(partialOriginalCard.body.elements.at(-1).text.content, /重试失败项/);
   assert.equal(store.assignCalls, 2);
 
   client.failRow = undefined;
@@ -323,6 +327,9 @@ test('重放只跳过 SUCCESS，FAILED 使用既有 assignment 重试并原位�
 
   const completed = store.getBatch('oc_allowed', batchId);
   assert.equal(completed.status, 'SUCCESS');
+  const successOriginalCard = client.calls.filter((call) => call.kind === 'update' && call.messageId === 'om_batch').at(-1).card;
+  assert.equal(successOriginalCard.body.elements.at(-1).disabled, true);
+  assert.match(successOriginalCard.body.elements.at(-1).text.content, /已完成/);
   assert.equal(completed.results.length, 2, '重试结果必须替换旧 FAILED，不得追加重复项');
   assert.equal(completed.results.filter((entry) => entry.requestId === `${batchId}_2`).length, 1);
   assert.equal(completed.results.find((entry) => entry.requestId === `${batchId}_2`).status, 'SUCCESS');
@@ -483,6 +490,10 @@ test('名单表单 FAILED 显示红色结果且不完成 pending', async () => {
   assert.equal(card.header.template, 'red');
   assert.match(JSON.stringify(card), /FAILED/);
   assert.doesNotMatch(JSON.stringify(card), /派单结果已写回台账|批量处理完成/);
+  const retryButton = card.body.elements.at(-1);
+  assert.equal(retryButton.disabled, false);
+  assert.equal(retryButton.value.batch_id, 'batch_form_failed');
+  assert.match(retryButton.text.content, /重试失败项/);
   assert.equal(store.pending.get('om_form').completed_at, undefined);
 });
 

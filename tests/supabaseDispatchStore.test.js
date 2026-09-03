@@ -143,3 +143,51 @@ test('批次进度和 finalization 状态写入 pending request_context 并校�
   assert.equal(JSON.parse(calls[3].options.body).request_context.cardUpdateDone, true);
   assert.equal(JSON.parse(calls[3].options.body).completed_at, null);
 });
+
+
+test('calibrateCursor 在新 RPC 未部署时使用现有 daily_state CAS 兼容校准', async () => {
+  const calls = [];
+  const fetchImpl = async (url, options) => {
+    calls.push({ url, options });
+    if (url.endsWith('/rpc/bess_calibrate_cursor')) {
+      return response({ code: 'PGRST202', message: 'Could not find bess_calibrate_cursor' }, { ok: false, status: 404 });
+    }
+    if (options.method === 'GET') {
+      return response([{ day_key: '2026-08-30', roster: ['张三', '周杰', '罗世坤'], forward_cursor: 0, reverse_cursor: 0 }]);
+    }
+    return response([{ day_key: '2026-08-30', roster: ['张三', '周杰', '罗世坤'], forward_cursor: 2, reverse_cursor: 2 }]);
+  };
+  const store = createSupabaseDispatchStore({
+    url: 'https://example.supabase.co', serviceRoleKey: 'service-key', fetchImpl,
+  });
+
+  const state = await store.calibrateCursor({
+    dayKey: '2026-08-30', assignee: '周杰', roster: ['张三', '周杰', '罗世坤'],
+  });
+
+  assert.equal(calls.length, 3);
+  assert.match(calls[1].url, /bess_dispatch_daily_state\?day_key=eq\.2026-08-30/);
+  assert.equal(calls[2].options.method, 'PATCH');
+  assert.match(calls[2].url, /forward_cursor=eq\.0/);
+  assert.match(calls[2].url, /reverse_cursor=eq\.0/);
+  assert.deepEqual(JSON.parse(calls[2].options.body), {
+    forward_cursor: 2, reverse_cursor: 2, updated_at: JSON.parse(calls[2].options.body).updated_at,
+  });
+  assert.equal(state.forward_cursor, 2);
+});
+
+test('calibrateCursor 兼容 CAS 遇到并发游标变化时 fail-closed', async () => {
+  const payloads = [
+    response({ code: 'PGRST202', message: 'missing bess_calibrate_cursor' }, { ok: false, status: 404 }),
+    response([{ roster: ['张三', '周杰'], forward_cursor: 0, reverse_cursor: 0 }]),
+    response([]),
+  ];
+  const store = createSupabaseDispatchStore({
+    url: 'https://example.supabase.co', serviceRoleKey: 'service-key', fetchImpl: async () => payloads.shift(),
+  });
+
+  await assert.rejects(
+    store.calibrateCursor({ dayKey: '2026-08-30', assignee: '周杰', roster: ['张三', '周杰'] }),
+    (error) => error instanceof DispatchStoreError && error.code === 'CURSOR_CALIBRATION_CONFLICT',
+  );
+});
