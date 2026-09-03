@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { handleDispatchEvent } from '../lib/dispatch/dispatch-service.js';
 import { createMemoryBatchStore } from '../lib/dispatch/memory-batch-store.js';
@@ -157,4 +158,27 @@ test('离岗后派单：跳过离岗人员，若全员离岗则失败并禁用�
   assert.equal(result2.errorCode, 'ALL_OFF_DUTY');
   assert.match(result2.body.toast.content, /所有人员均已离岗/);
   assert.equal(result2.body.card.data.body.elements.find(el => el.tag === 'button').disabled, true);
+});
+
+
+test('人员状态 RPC：使用空 search_path 且仅允许 service_role 执行', () => {
+  const migration = readFileSync(new URL('../db/bess-dispatch.sql', import.meta.url), 'utf8');
+  const verification = readFileSync(new URL('../db/bess-dispatch-verify.sql', import.meta.url), 'utf8');
+
+  assert.match(
+    migration,
+    /create or replace function public\.bess_update_roster_status[\s\S]*?security definer\s+set search_path = ''/i,
+  );
+  assert.match(
+    migration,
+    /revoke all on function public\.bess_update_roster_status\(date, jsonb, bigint\)\s+from public, anon, authenticated, service_role;/i,
+  );
+  assert.match(
+    migration,
+    /grant execute on function public\.bess_update_roster_status\(date, jsonb, bigint\)\s+to service_role;/i,
+  );
+  assert.match(verification, /acl\.grantee = 0[\s\S]*?acl\.privilege_type = 'EXECUTE'/i);
+  assert.match(verification, /anon 仍可执行 bess_update_roster_status/);
+  assert.match(verification, /authenticated 仍可执行 bess_update_roster_status/);
+  assert.match(verification, /service_role 缺少 bess_update_roster_status EXECUTE/);
 });

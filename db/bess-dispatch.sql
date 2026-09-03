@@ -277,7 +277,7 @@ create or replace function public.bess_update_roster_status(
 returns setof public.bess_dispatch_daily_state
 language plpgsql
 security definer
-set search_path = pg_catalog, public
+set search_path = ''
 as $$
 begin
   return query
@@ -425,6 +425,11 @@ grant execute on function public.bess_assign_next(date, text, text, jsonb, times
 revoke all on function public.bess_calibrate_cursor(date, text, jsonb)
   from public, anon, authenticated, service_role;
 grant execute on function public.bess_calibrate_cursor(date, text, jsonb)
+  to service_role;
+
+revoke all on function public.bess_update_roster_status(date, jsonb, bigint)
+  from public, anon, authenticated, service_role;
+grant execute on function public.bess_update_roster_status(date, jsonb, bigint)
   to service_role;
 
 commit;

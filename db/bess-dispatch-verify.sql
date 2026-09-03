@@ -347,6 +347,52 @@ begin
     end if;
   end if;
 
+  -- 人员状态写 RPC 必须保持 SECURITY DEFINER + 空 search_path，且 EXECUTE 仅授予 service_role。
+  v_function := to_regprocedure(
+    'public.bess_update_roster_status(date,jsonb,bigint)'
+  );
+  if v_function is null then
+    v_errors := array_append(v_errors, '缺少 RPC bess_update_roster_status(date,jsonb,bigint)');
+  else
+    if not exists (
+      select 1
+      from pg_catalog.pg_proc p
+      where p.oid = v_function
+        and p.prosecdef
+        and exists (
+          select 1
+          from unnest(p.proconfig) as config(value)
+          where split_part(config.value, '=', 1) = 'search_path'
+            and btrim(translate(split_part(config.value, '=', 2), chr(34), '')) = ''
+        )
+    ) then
+      v_errors := array_append(
+        v_errors,
+        'bess_update_roster_status 必须为 SECURITY DEFINER 且 search_path 为空'
+      );
+    end if;
+
+    if exists (
+      select 1
+      from pg_catalog.pg_proc p,
+           lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
+      where p.oid = v_function
+        and acl.grantee = 0
+        and acl.privilege_type = 'EXECUTE'
+    ) then
+      v_errors := array_append(v_errors, 'PUBLIC 仍可执行 bess_update_roster_status');
+    end if;
+    if exists (select 1 from pg_catalog.pg_roles where rolname = 'anon')
+       and has_function_privilege('anon', v_function, 'EXECUTE')
+    then v_errors := array_append(v_errors, 'anon 仍可执行 bess_update_roster_status'); end if;
+    if exists (select 1 from pg_catalog.pg_roles where rolname = 'authenticated')
+       and has_function_privilege('authenticated', v_function, 'EXECUTE')
+    then v_errors := array_append(v_errors, 'authenticated 仍可执行 bess_update_roster_status'); end if;
+    if exists (select 1 from pg_catalog.pg_roles where rolname = 'service_role')
+       and not has_function_privilege('service_role', v_function, 'EXECUTE')
+    then v_errors := array_append(v_errors, 'service_role 缺少 bess_update_roster_status EXECUTE'); end if;
+  end if;
+
   if cardinality(v_errors) > 0 then
     raise exception using
       errcode = 'P0001',
