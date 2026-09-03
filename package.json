@@ -9,6 +9,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "test": "node --test",
+    "test:blackbox": "node --test tests/blackbox/dispatch-blackbox.test.js",
     "deploy": "gh-pages -d dist",
     "preview": "vite preview"
   },
