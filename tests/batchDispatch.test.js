@@ -76,12 +76,14 @@ class BatchStore {
   async markPendingCompleted(id) {
     if (this.pending.has(id)) this.pending.get(id).completed_at = new Date().toISOString();
   }
-  async assign({ requestId, roster }) {
+  async assign({ requestId, roster, context = {} }) {
     if (roster) this.state = { roster };
     this.assignCalls += 1;
     if (this.assignments.has(requestId)) {
       return { ...this.assignments.get(requestId), roster: this.state.roster, replayed: true };
     }
+    const anchorIndex = this.state.roster.indexOf(context.anchor_assignee);
+    if (anchorIndex >= 0) this.cursor = (anchorIndex + 1) % this.state.roster.length;
     const assignment = { assignee: this.state.roster[this.cursor % this.state.roster.length] };
     this.cursor += 1;
     this.assignments.set(requestId, assignment);
@@ -541,4 +543,35 @@ test('批量派单回归测试：人工填写行作为锚点推顺序且自身�
   assert.ok(writes.some(w => w.rowIndex === 10 && w.assignee === '张三'));
   assert.ok(!writes.some(w => w.rowIndex === 11), '人工填写行不应触发写入');
   assert.ok(writes.some(w => w.rowIndex === 12 && w.assignee === '王五'));
+});
+
+
+test('本地推首项把人工负责人作为事务锚点并分配下一位，禁止连续同名', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['张三', '李四', '杨新雨'] };
+  store.assign = async ({ requestId, direction, context }) => {
+    assert.equal(direction, 'reverse');
+    assert.equal(context.anchor_assignee, '杨新雨');
+    const anchorIndex = store.state.roster.indexOf(context.anchor_assignee);
+    const assignee = store.state.roster[(anchorIndex - 1 + store.state.roster.length) % store.state.roster.length];
+    const assignment = { assignee, roster: store.state.roster, replayed: false };
+    store.assignments.set(requestId, assignment);
+    return assignment;
+  };
+  const sheetRows = new Array(20).fill(null).map(() => ['', '', '']);
+  sheetRows[9] = ['9.3 13:17', '杨新雨', '本地'];
+  const client = new BatchClient({ sheetRows });
+  const localItem = { ...item('728665', 11), business_type: '本地推', target_category: 'local_promo', project_value: '本地' };
+
+  const result = await handleDispatchEvent(
+    batchBody('batch_manual_anchor_local', [localItem]),
+    options(store, client, { now: () => new Date('2026-09-03T08:09:00Z') }),
+  );
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'batch_manual_anchor_local');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.equal(batch.results[0].assignee, '李四');
+  assert.notEqual(batch.results[0].assignee, '杨新雨');
+  assert.ok(client.calls.some(call => call.kind === 'write' && call.assignee === '李四'));
 });
