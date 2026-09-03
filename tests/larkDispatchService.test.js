@@ -296,7 +296,11 @@ test('回复消息失败：错误 Toast 且不回写卡片', async () => {
   assert.equal(result.body.toast.type, 'error');
   assert.match(result.body.toast.content, /派单失败/);
   assert.equal(result.errorCode, 'LARK_API_230001');
-  assert.ok(!result.body.card);
+  assert.equal(result.body.card.type, 'raw');
+  const retryButton = result.body.card.data.body.elements.at(-1);
+  assert.equal(retryButton.text.content, '🎯 自动派单');
+  assert.notEqual(retryButton.disabled, true);
+  assert.equal(retryButton.behaviors[0].value.request_id, '806300');
 });
 
 test('读取原卡片失败：话题已创建并用回调字段生成已派单卡片', async () => {

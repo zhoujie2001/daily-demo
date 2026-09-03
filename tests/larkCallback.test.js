@@ -416,7 +416,10 @@ test('派单回调：回复接口失败时返回错误 Toast', async () => {
     assert.equal(result.status, 200);
     assert.equal(result.body.toast.type, 'error');
     assert.match(result.body.toast.content, /派单失败/);
-    assert.ok(!result.body.card, '失败时不得回写卡片');
+    assert.equal(result.body.card.type, 'raw', '失败时必须回写可重试卡片');
+    const retryButton = result.body.card.data.body.elements.at(-1);
+    assert.notEqual(retryButton.disabled, true);
+    assert.equal(retryButton.behaviors[0].value.request_id, requestId);
   } finally {
     globalThis.fetch = original;
   }
