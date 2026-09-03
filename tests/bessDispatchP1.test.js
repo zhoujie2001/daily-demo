@@ -286,7 +286,7 @@ test('项目字段支持多选和分隔文本，空负责人及名单外人员�
   }), '李四');
   assert.equal(latestDailyAnchor(rows, {
     targetDay: '2026-08-30', roster: ['张三', '李四'], projectValue: '本地',
-  }), null, '最近的相关负责人无效时不得回退到更旧锚点');
+  }), '李四', '名单外负责人应被忽略并继续寻找更旧的有效锚点');
 });
 
 test('后续倒序派单选择锚点上一位并循环轮转', async () => {
@@ -298,16 +298,15 @@ test('后续倒序派单选择锚点上一位并循环轮转', async () => {
   assert.deepEqual(store.calibrations, []);
 });
 
-test('当天存在名单外负责人时 fail-closed，不沿用旧游标', async () => {
+test('无有效锚点时忽略名单外负责人并沿用持久化游标', async () => {
   const store = new FakeStore();
   store.state = { roster: ['张三', '李四', '王五'] };
   store.forward = 1;
   const client = new FakeClient({ sheetRows: [['2026-08-30', '名单外'], ['2026-08-29', '王五']] });
   const result = await handleDispatchEvent(body({ requestId: 'fallback_cursor' }), options(store, client));
-  assert.equal(result.body.toast.type, 'error');
-  assert.equal(result.errorCode, 'INVALID_SHEET_ANCHOR');
-  assert.equal(store.assignments.size, 0);
-  assert.equal(store.forward, 1);
+  assert.equal(result.body.toast.type, 'success');
+  assert.equal(store.assignments.get('fallback_cursor').assignee, '李四');
+  assert.equal(store.forward, 2);
   assert.equal(store.calibrations.length, 0);
   assert.equal(store.assignmentQueries, 1);
 });
@@ -333,7 +332,7 @@ test('锚点日期解析覆盖完整日期、短日期和飞书数值日期', ()
   }
   assert.equal(latestDailyAnchor([
     ['2026-08-30', '张三'], ['08.30', '李四'], ['2026-08-30', '名单外'],
-  ], { targetDay: '2026-08-30', roster: ['张三', '李四'] }), null);
+  ], { targetDay: '2026-08-30', roster: ['张三', '李四'] }), '李四');
 });
 
 test('旧卡按固定 sheet_id 补齐日期列和负责人列，新字段保持兼容', () => {
@@ -588,7 +587,7 @@ test('专用业务表接受项目空值和本地变体，共享千川本地表�
   }), '周杰');
 });
 
-test('更近分块的无效负责人使旧锚点失效并 fail-closed', async () => {
+test('多块扫描跳过较新块名单外负责人并保留旧块有效锚点', async () => {
   const store = new FakeStore();
   store.state = { roster: ['周杰', '罗世坤'] };
   const client = new FakeClient();
@@ -605,9 +604,9 @@ test('更近分块的无效负责人使旧锚点失效并 fail-closed', async ()
 
   const result = await handleDispatchEvent(request, options(store, client));
 
-  assert.equal(result.errorCode, 'INVALID_SHEET_ANCHOR');
-  assert.equal(store.assignCalls, 0);
-  assert.equal(client.calls.filter((call) => call.kind === 'write').length, 0);
+  assert.equal(result.body.toast.type, 'success');
+  assert.equal(store.assignments.get('newer_invalid_chunk').assignee, '罗世坤');
+  assert.ok(client.calls.some((call) => call.kind === 'write' && call.assignee === '罗世坤'));
 });
 
 test('SQL：锚点原子同步双向游标、btrim 名单名称且先执行 request_id 重放', () => {
@@ -656,4 +655,45 @@ test('P1：目标行游标校准失败时 fail-closed，不返回成功且不写
   assert.equal(result.body.toast.type, 'error');
   assert.equal(client.calls.filter((call) => call.kind === 'write').length, 0);
   assert.equal(store.assignCalls, 0);
+});
+
+
+test('回归：729643 最近负责人赵刘霞不在 roster 时继续沿用更早有效锚点', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['周杰', '罗世坤', '杨新雨'] };
+  const rows = new Array(9).fill(null).map(() => []);
+  rows[5] = ['2026-08-30', '周杰'];
+  rows[6] = ['2026-08-30', '赵刘霞'];
+  const client = new FakeClient({ sheetRows: rows });
+  const request = body({ requestId: '729643' });
+  request.event.action.value.row_index = 8;
+
+  const result = await handleDispatchEvent(request, options(store, client));
+
+  assert.equal(result.body.toast.type, 'success');
+  assert.equal(store.assignments.get('729643').assignee, '罗世坤');
+  assert.ok(client.calls.some((call) => call.kind === 'write' && call.assignee === '罗世坤'));
+});
+
+test('目标行名单外负责人不覆盖也不持久化，下一条按上一有效锚点续派', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['周杰', '罗世坤', '杨新雨'] };
+  const rows = new Array(9).fill(null).map(() => []);
+  rows[6] = ['2026-08-30', '周杰'];
+  rows[7] = ['2026-08-30', '赵刘霞'];
+  const client = new FakeClient({ sheetRows: rows });
+
+  const filledRequest = body({ requestId: '729643' });
+  filledRequest.event.action.value.row_index = 8;
+  const filled = await handleDispatchEvent(filledRequest, options(store, client));
+  assert.match(filled.body.toast.content, /赵刘霞/);
+  assert.equal(store.assignCalls, 0);
+  assert.equal(store.calibrations.length, 0);
+  assert.ok(!store.assignments.has('729643'));
+  assert.ok(!client.calls.some((call) => call.kind === 'write' && call.rowIndex === 8));
+
+  const nextRequest = body({ requestId: '729644' });
+  nextRequest.event.action.value.row_index = 9;
+  await handleDispatchEvent(nextRequest, options(store, client));
+  assert.equal(store.assignments.get('729644').assignee, '罗世坤');
 });
