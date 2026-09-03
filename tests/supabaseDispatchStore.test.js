@@ -72,6 +72,7 @@ test('claimBatch 复用 pending_forms 唯一键原子插入，不依赖新表或
     kind: 'batch_dispatch', batchId: 'batch_1', fingerprint: 'a'.repeat(64), items: [{ requestId: 'r1' }],
     status: 'PROCESSING', results: [], claimToken: 'claim_1', leaseExpiresAt: '2026-08-30T11:05:00.000Z',
     cardUpdateDone: false, cardUpdateError: null, threadReplyDone: false, threadReplyError: null,
+    resultMessageId: '',
   };
   const inserted = {
     form_message_id: 'synthetic', request_id: 'synthetic', original_message_id: 'om_1',
