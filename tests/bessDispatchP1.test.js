@@ -55,11 +55,13 @@ class FakeStore {
     this.assignmentQueries += 1;
     return this.assignments.get(requestId) || null;
   }
-  async calibrateCursor({ dayKey, direction, cursor }) {
-    this.calibrations.push({ dayKey, direction, cursor });
-    if (direction === 'forward') this.forward = cursor;
-    else this.reverse = cursor;
-    return { ...(this.state || {}), [`${direction}_cursor`]: cursor };
+  async calibrateCursor({ dayKey, assignee, roster }) {
+    const index = roster.indexOf(assignee);
+    if (index < 0) throw new Error('ASSIGNEE_NOT_IN_ROSTER');
+    this.calibrations.push({ dayKey, assignee, roster });
+    this.forward = index + 1;
+    this.reverse = roster.length - index;
+    return { ...(this.state || {}), forward_cursor: this.forward, reverse_cursor: this.reverse };
   }
   async assign({ requestId, direction, roster, context = {} }) {
     this.assignCalls += 1;
@@ -484,7 +486,7 @@ test('当前行已有人工负责人时跳过写入且不消耗游标', async ()
 
 test('在飞书 API 截断 chunk 尾部空行时依然能通过 startRow 正确匹配 rowIndex', async () => {
   const store = new FakeStore();
-  store.state = { roster: ['张三', '李四'] };
+  store.state = { roster: ['张三', '李四', '王五'] };
   const targetRowIndex = 5005;
   const client = new FakeClient();
   client.readSheetDispatchRows = async (args) => {
@@ -616,4 +618,42 @@ test('SQL：锚点原子同步双向游标、btrim 名单名称且先执行 requ
   assert.match(sql, /where btrim\(item\.value\) = nullif\(btrim\(p_context ->> 'anchor_assignee'\), ''\)/);
   assert.match(sql, /if v_anchor_index is not null then\s+update[\s\S]*set forward_cursor = v_index \+ 1,\s+reverse_cursor = v_count - v_index/);
   assert.match(sql, /assignee := btrim\(v_state\.roster ->> v_index::integer\)/);
+});
+
+
+test('P1：目标行已有周杰时不写表，等待双向游标校准后下一需求分配罗世坤', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['张三', '周杰', '罗世坤'] };
+  const rows = new Array(9).fill(null).map(() => []);
+  rows[7] = ['2026-08-30', '周杰'];
+  const client = new FakeClient({ sheetRows: rows });
+
+  const filled = await handleDispatchEvent(body({ requestId: 'manual_zhou' }), options(store, client));
+  assert.equal(filled.body.toast.type, 'success');
+  assert.equal(client.calls.filter((call) => call.kind === 'write').length, 0);
+  assert.deepEqual(store.calibrations[0], {
+    dayKey: '2026-08-30', assignee: '周杰', roster: ['张三', '周杰', '罗世坤'],
+  });
+  assert.equal(store.forward, 2);
+  assert.equal(store.reverse, 2);
+
+  rows[8] = ['2026-08-30', ''];
+  const nextRequest = body({ requestId: 'after_manual_zhou' });
+  nextRequest.event.action.value.row_index = 9;
+  await handleDispatchEvent(nextRequest, options(store, client));
+  assert.equal(store.assignments.get('after_manual_zhou').assignee, '罗世坤');
+});
+
+test('P1：目标行游标校准失败时 fail-closed，不返回成功且不写表', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['周杰', '罗世坤'] };
+  store.calibrateCursor = async () => { throw new Error('database unavailable'); };
+  const rows = new Array(8).fill(null).map(() => []);
+  rows[7] = ['2026-08-30', '周杰'];
+  const client = new FakeClient({ sheetRows: rows });
+
+  const result = await handleDispatchEvent(body({ requestId: 'calibration_failed' }), options(store, client));
+  assert.equal(result.body.toast.type, 'error');
+  assert.equal(client.calls.filter((call) => call.kind === 'write').length, 0);
+  assert.equal(store.assignCalls, 0);
 });

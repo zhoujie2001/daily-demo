@@ -53,6 +53,8 @@ class BatchStore {
     this.pending = new Map();
     this.assignCalls = 0;
     this.cursor = 0;
+    this.reverseCursor = 0;
+    this.calibrations = [];
     this.batchStore = createMemoryBatchStore({ now });
   }
 
@@ -67,7 +69,13 @@ class BatchStore {
   async cleanupExpired() {}
   async getDailyState() { return this.state; }
   async getAssignment(_day, requestId) { return this.assignments.get(requestId) || null; }
-  async calibrateCursor({ cursor }) { this.cursor = cursor; }
+  async calibrateCursor({ dayKey, assignee, roster }) {
+    const index = roster.indexOf(assignee);
+    if (index < 0) throw new Error('ASSIGNEE_NOT_IN_ROSTER');
+    this.calibrations.push({ dayKey, assignee, roster });
+    this.cursor = index + 1;
+    this.reverseCursor = roster.length - index;
+  }
   async getPendingByRequest(requestId, chatId) {
     return [...this.pending.values()].find((row) => row.request_id === requestId && row.chat_id === chatId && !row.completed_at) || null;
   }
@@ -574,4 +582,44 @@ test('本地推首项把人工负责人作为事务锚点并分配下一位，�
   assert.equal(batch.results[0].assignee, '李四');
   assert.notEqual(batch.results[0].assignee, '杨新雨');
   assert.ok(client.calls.some(call => call.kind === 'write' && call.assignee === '李四'));
+});
+
+
+test('batch：目标行已有周杰时不写表并校准，下一需求分配罗世坤', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['张三', '周杰', '罗世坤'] };
+  const rows = new Array(12).fill(null).map(() => ['', '', '']);
+  rows[9] = ['2026-08-30', '周杰', '千川'];
+  const client = new BatchClient({ sheetRows: rows });
+  const result = await handleDispatchEvent(batchBody('batch_manual_zhou', [
+    item('manual_zhou', 10), item('after_manual_zhou', 11),
+  ]), options(store, client));
+
+  await result.afterResponse();
+  const batch = store.getBatch('oc_allowed', 'batch_manual_zhou');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.equal(batch.results[0].assignee, '周杰');
+  assert.equal(batch.results[0].replayed, true);
+  assert.equal(batch.results[1].assignee, '罗世坤');
+  assert.ok(!client.calls.some((call) => call.kind === 'write' && call.rowIndex === 10));
+  assert.ok(client.calls.some((call) => call.kind === 'write' && call.rowIndex === 11 && call.assignee === '罗世坤'));
+  assert.equal(store.calibrations[0].assignee, '周杰');
+});
+
+test('batch：目标行校准失败时该项不得记为成功且不写表', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['周杰', '罗世坤'] };
+  store.calibrateCursor = async () => { throw new Error('database unavailable'); };
+  const rows = new Array(10).fill(null).map(() => ['', '', '']);
+  rows[9] = ['2026-08-30', '周杰', '千川'];
+  const client = new BatchClient({ sheetRows: rows });
+  const result = await handleDispatchEvent(
+    batchBody('batch_calibration_failed', [item('manual_zhou_failed', 10)]), options(store, client),
+  );
+
+  await result.afterResponse();
+  const batch = store.getBatch('oc_allowed', 'batch_calibration_failed');
+  assert.equal(batch.status, 'FAILED');
+  assert.equal(batch.results[0].status, 'FAILED');
+  assert.ok(!client.calls.some((call) => call.kind === 'write'));
 });
