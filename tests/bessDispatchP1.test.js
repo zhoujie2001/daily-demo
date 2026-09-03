@@ -60,12 +60,15 @@ class FakeStore {
     else this.reverse = cursor;
     return { ...(this.state || {}), [`${direction}_cursor`]: cursor };
   }
-  async assign({ requestId, direction, roster }) {
+  async assign({ requestId, direction, roster, context = {} }) {
     this.assignCalls += 1;
     if (this.assignments.has(requestId)) return { ...this.assignments.get(requestId), roster: this.state.roster, replayed: true };
     if (!this.state) this.state = { roster };
     const list = this.state.roster;
-    const index = direction === 'forward' ? this.forward % list.length : list.length - 1 - (this.reverse % list.length);
+    const anchorIndex = list.indexOf(context.anchor_assignee);
+    const index = anchorIndex >= 0
+      ? (direction === 'forward' ? (anchorIndex + 1) % list.length : (anchorIndex - 1 + list.length) % list.length)
+      : (direction === 'forward' ? this.forward % list.length : list.length - 1 - (this.reverse % list.length));
     if (direction === 'forward') this.forward += 1;
     else this.reverse += 1;
     const assignment = { assignee: list[index], direction };
@@ -235,7 +238,7 @@ test('后续派单从最新有效人工锚点轮转，并跳过空值、非当�
   const result = await handleDispatchEvent(body({ requestId: 'anchor_forward' }), options(store, client));
   assert.equal(result.body.toast.type, 'success');
   assert.equal(store.assignments.get('anchor_forward').assignee, '王五');
-  assert.deepEqual(store.calibrations, [{ dayKey: '2026-08-30', direction: 'forward', cursor: 2 }]);
+  assert.deepEqual(store.calibrations, []);
   assert.equal(store.assignmentQueries, 1);
   assert.equal(client.calls.filter((item) => item.kind === 'readRows').length, 1);
 });
@@ -289,16 +292,19 @@ test('后续倒序派单选择锚点上一位并循环轮转', async () => {
   const client = new FakeClient({ sheetRows: [['2026-08-30 09:00:00', '张三']] });
   await handleDispatchEvent(body({ requestId: 'anchor_reverse', businessType: '本地推' }), options(store, client));
   assert.equal(store.assignments.get('anchor_reverse').assignee, '王五');
-  assert.deepEqual(store.calibrations, [{ dayKey: '2026-08-30', direction: 'reverse', cursor: 3 }]);
+  assert.deepEqual(store.calibrations, []);
 });
 
-test('当天没有有效锚点时沿用现有游标排序', async () => {
+test('当天存在名单外负责人时 fail-closed，不沿用旧游标', async () => {
   const store = new FakeStore();
   store.state = { roster: ['张三', '李四', '王五'] };
   store.forward = 1;
   const client = new FakeClient({ sheetRows: [['2026-08-30', '名单外'], ['2026-08-29', '王五']] });
-  await handleDispatchEvent(body({ requestId: 'fallback_cursor' }), options(store, client));
-  assert.equal(store.assignments.get('fallback_cursor').assignee, '李四');
+  const result = await handleDispatchEvent(body({ requestId: 'fallback_cursor' }), options(store, client));
+  assert.equal(result.body.toast.type, 'error');
+  assert.equal(result.errorCode, 'INVALID_SHEET_ANCHOR');
+  assert.equal(store.assignments.size, 0);
+  assert.equal(store.forward, 1);
   assert.equal(store.calibrations.length, 0);
   assert.equal(store.assignmentQueries, 1);
 });
@@ -314,7 +320,7 @@ test('同 request_id 重放返回原负责人且不再次校准或推进游标',
   assert.equal(store.forward, cursorAfterFirst);
   assert.equal(store.assignments.size, 1);
   assert.equal(store.assignmentQueries, 2);
-  assert.equal(store.calibrations.length, 1);
+  assert.equal(store.calibrations.length, 0);
 });
 
 test('锚点日期解析覆盖完整日期、短日期和飞书数值日期', () => {
@@ -519,4 +525,10 @@ test('已有 assignment 但与表格人工填写的不同时，以表格为准�
   assert.match(result.body.toast.content, /李四/);
   assert.equal(client.calls.filter(c => c.kind === 'write').length, 0);
   assert.equal(store.assignCalls, 0);
+});
+
+
+test('短日期带时间仍可识别为当天', () => {
+  assert.equal(sheetDateDay('9.3 13:17', '2026-09-03'), '2026-09-03');
+  assert.equal(sheetDateDay(' 9.3 13:17:05 ', '2026-09-03'), '2026-09-03');
 });
