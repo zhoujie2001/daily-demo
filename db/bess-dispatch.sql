@@ -206,7 +206,7 @@ begin
   select item.ordinality - 1
     into v_anchor_index
     from jsonb_array_elements_text(v_state.roster) with ordinality as item(value, ordinality)
-   where item.value = nullif(btrim(p_context ->> 'anchor_assignee'), '')
+   where btrim(item.value) = nullif(btrim(p_context ->> 'anchor_assignee'), '')
    limit 1;
 
   if v_anchor_index is not null then
@@ -221,7 +221,15 @@ begin
     v_index := v_count - 1 - (v_state.reverse_cursor % v_count);
   end if;
 
-  if p_direction = 'forward' then
+  -- 锚点命中时，以本次实际分配位置原子校准两个方向。这样后续无论
+  -- 切换正/倒序都从本次负责人之后继续，而不是沿用任一旧游标。
+  if v_anchor_index is not null then
+    update public.bess_dispatch_daily_state as state
+       set forward_cursor = v_index + 1,
+           reverse_cursor = v_count - v_index,
+           updated_at = now()
+     where state.day_key = p_day_key;
+  elsif p_direction = 'forward' then
     update public.bess_dispatch_daily_state as state
        set forward_cursor = state.forward_cursor + 1,
            updated_at = now()
@@ -233,7 +241,7 @@ begin
      where state.day_key = p_day_key;
   end if;
 
-  assignee := v_state.roster ->> v_index::integer;
+  assignee := btrim(v_state.roster ->> v_index::integer);
   roster := v_state.roster;
   direction := p_direction;
   replayed := false;
