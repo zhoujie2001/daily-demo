@@ -257,6 +257,55 @@ begin
 end;
 $$;
 
+-- 目标行已有人为负责人时不创建 assignment，但必须在返回成功前把该负责人
+-- 原子持久化为双向游标锚点。行锁保证校准不会与 bess_assign_next 丢失更新。
+create or replace function public.bess_calibrate_cursor(
+  p_day_key date,
+  p_assignee text,
+  p_roster jsonb
+)
+returns setof public.bess_dispatch_daily_state
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_state public.bess_dispatch_daily_state%rowtype;
+  v_index integer;
+  v_count integer;
+begin
+  select * into v_state
+    from public.bess_dispatch_daily_state as state
+   where state.day_key = p_day_key
+     and state.expires_at > now()
+   for update;
+
+  if not found then
+    raise exception 'DAILY_STATE_NOT_FOUND' using errcode = 'P0002';
+  end if;
+  if p_roster is null or jsonb_typeof(p_roster) <> 'array' or p_roster <> v_state.roster then
+    raise exception 'ROSTER_CHANGED' using errcode = 'P0001';
+  end if;
+
+  select item.ordinality - 1 into v_index
+    from jsonb_array_elements_text(v_state.roster) with ordinality as item(value, ordinality)
+   where btrim(item.value) = nullif(btrim(p_assignee), '')
+   limit 1;
+  if v_index is null then
+    raise exception 'ASSIGNEE_NOT_IN_ROSTER' using errcode = 'P0001';
+  end if;
+
+  v_count := jsonb_array_length(v_state.roster);
+  return query
+    update public.bess_dispatch_daily_state as state
+       set forward_cursor = v_index + 1,
+           reverse_cursor = v_count - v_index,
+           updated_at = now()
+     where state.day_key = p_day_key
+     returning state.*;
+end;
+$$;
+
 alter table public.bess_dispatch_daily_state enable row level security;
 alter table public.bess_dispatch_daily_state force row level security;
 alter table public.bess_dispatch_pending_forms enable row level security;
@@ -337,6 +386,11 @@ grant usage on sequence public.bess_dispatch_assignments_id_seq
 revoke all on function public.bess_assign_next(date, text, text, jsonb, timestamptz, jsonb)
   from public, anon, authenticated, service_role;
 grant execute on function public.bess_assign_next(date, text, text, jsonb, timestamptz, jsonb)
+  to service_role;
+
+revoke all on function public.bess_calibrate_cursor(date, text, jsonb)
+  from public, anon, authenticated, service_role;
+grant execute on function public.bess_calibrate_cursor(date, text, jsonb)
   to service_role;
 
 commit;
