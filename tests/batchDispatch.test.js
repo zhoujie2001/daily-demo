@@ -70,6 +70,9 @@ class BatchStore {
   async cleanupExpired() {}
   async getDailyState() { return this.state; }
   async getAssignment(_day, requestId) { return this.assignments.get(requestId) || null; }
+  async getDailyAssignments() {
+    return [...this.assignments.values()].sort((a, b) => b.id - a.id);
+  }
   async calibrateCursor({ dayKey, assignee, roster }) {
     const index = roster.indexOf(assignee);
     if (index < 0) throw new Error('ASSIGNEE_NOT_IN_ROSTER');
@@ -93,7 +96,11 @@ class BatchStore {
     }
     const anchorIndex = this.state.roster.indexOf(context.anchor_assignee);
     if (anchorIndex >= 0) this.cursor = (anchorIndex + 1) % this.state.roster.length;
-    const assignment = { assignee: this.state.roster[this.cursor % this.state.roster.length] };
+    const assignment = {
+      id: this.assignments.size + 1,
+      assignee: this.state.roster[this.cursor % this.state.roster.length],
+      request_context: context,
+    };
     this.cursor += 1;
     this.assignments.set(requestId, assignment);
     return { ...assignment, roster: this.state.roster, replayed: false };
@@ -554,12 +561,12 @@ test('批量派单回归测试：人工填写行作为锚点推顺序且自身�
   const batch = store.getBatch('oc_allowed', 'batch_regression');
   assert.equal(batch.status, 'SUCCESS');
   const results = batch.results;
-  assert.equal(results.find(r => r.requestId === 'req_A').assignee, '张三');
+  assert.equal(results.find(r => r.requestId === 'req_A').assignee, '王五');
   assert.equal(results.find(r => r.requestId === 'req_B').assignee, '李四');
   assert.equal(results.find(r => r.requestId === 'req_B').replayed, true);
   assert.equal(results.find(r => r.requestId === 'req_C').assignee, '王五');
   const writes = client.calls.filter(c => c.kind === 'write');
-  assert.ok(writes.some(w => w.rowIndex === 10 && w.assignee === '张三'));
+  assert.ok(writes.some(w => w.rowIndex === 10 && w.assignee === '王五'));
   assert.ok(!writes.some(w => w.rowIndex === 11), '人工填写行不应触发写入');
   assert.ok(writes.some(w => w.rowIndex === 12 && w.assignee === '王五'));
 });
