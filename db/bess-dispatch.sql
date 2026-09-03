@@ -24,10 +24,18 @@ create table if not exists public.bess_dispatch_daily_state (
     check (jsonb_typeof(roster) = 'array' and jsonb_array_length(roster) > 0),
   forward_cursor bigint not null default 0 check (forward_cursor >= 0),
   reverse_cursor bigint not null default 0 check (reverse_cursor >= 0),
+  off_duty jsonb not null default '[]'::jsonb
+    check (jsonb_typeof(off_duty) = 'array'),
+  version bigint not null default 1,
   expires_at timestamptz not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- 从早期版本升级时补充列；不覆盖已有行数据。
+alter table public.bess_dispatch_daily_state
+  add column if not exists off_duty jsonb not null default '[]'::jsonb,
+  add column if not exists version bigint not null default 1;
 
 create table if not exists public.bess_dispatch_pending_forms (
   form_message_id text primary key,
@@ -121,6 +129,7 @@ declare
   v_index bigint;
   v_anchor_index bigint;
   v_original_message_id text;
+  v_i integer;
 begin
   if p_day_key is null then
     raise exception using errcode = '22004', message = 'day key required';
@@ -221,27 +230,29 @@ begin
     v_index := v_count - 1 - (v_state.reverse_cursor % v_count);
   end if;
 
-  -- 锚点命中时，以本次实际分配位置原子校准两个方向。这样后续无论
-  -- 切换正/倒序都从本次负责人之后继续，而不是沿用任一旧游标。
-  if v_anchor_index is not null then
-    update public.bess_dispatch_daily_state as state
-       set forward_cursor = v_index + 1,
-           reverse_cursor = v_count - v_index,
-           updated_at = now()
-     where state.day_key = p_day_key;
-  elsif p_direction = 'forward' then
-    update public.bess_dispatch_daily_state as state
-       set forward_cursor = state.forward_cursor + 1,
-           updated_at = now()
-     where state.day_key = p_day_key;
-  else
-    update public.bess_dispatch_daily_state as state
-       set reverse_cursor = state.reverse_cursor + 1,
-           updated_at = now()
-     where state.day_key = p_day_key;
-  end if;
+  -- 跳过离岗人员（P0 状态调整）
+  for v_i in 0..v_count-1 loop
+    assignee := btrim(v_state.roster ->> v_index::integer);
+    if not (v_state.off_duty ? assignee) then
+      exit;
+    end if;
+    if p_direction = 'forward' then
+      v_index := (v_index + 1) % v_count;
+    else
+      v_index := (v_index - 1 + v_count) % v_count;
+    end if;
+    if v_i = v_count - 1 then
+      raise exception using errcode = 'P0001', message = 'ALL_OFF_DUTY';
+    end if;
+  end loop;
 
-  assignee := btrim(v_state.roster ->> v_index::integer);
+  -- 统一使用本次实际分配位置原子校准两个方向。
+  update public.bess_dispatch_daily_state as state
+     set forward_cursor = v_index + 1,
+         reverse_cursor = v_count - v_index,
+         updated_at = now()
+   where state.day_key = p_day_key;
+
   roster := v_state.roster;
   direction := p_direction;
   replayed := false;
@@ -254,6 +265,29 @@ begin
   );
 
   return next;
+end;
+$$;
+
+-- 原子更新人员状态（离岗/恢复）并递增版本号，支持乐观锁校验。
+create or replace function public.bess_update_roster_status(
+  p_day_key date,
+  p_off_duty jsonb,
+  p_expected_version bigint
+)
+returns setof public.bess_dispatch_daily_state
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  return query
+    update public.bess_dispatch_daily_state as state
+       set off_duty = p_off_duty,
+           version = state.version + 1,
+           updated_at = now()
+     where state.day_key = p_day_key
+       and state.version = p_expected_version
+     returning state.*;
 end;
 $$;
 
@@ -391,6 +425,11 @@ grant execute on function public.bess_assign_next(date, text, text, jsonb, times
 revoke all on function public.bess_calibrate_cursor(date, text, jsonb)
   from public, anon, authenticated, service_role;
 grant execute on function public.bess_calibrate_cursor(date, text, jsonb)
+  to service_role;
+
+revoke all on function public.bess_update_roster_status(date, jsonb, bigint)
+  from public, anon, authenticated, service_role;
+grant execute on function public.bess_update_roster_status(date, jsonb, bigint)
   to service_role;
 
 commit;

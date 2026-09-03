@@ -615,7 +615,7 @@ test('SQL：锚点原子同步双向游标、btrim 名单名称且先执行 requ
   const anchorAt = sql.indexOf('select item.ordinality - 1');
   assert.ok(replayAt > 0 && replayAt < anchorAt, 'request_id 重放必须在锚点和游标变更前返回');
   assert.match(sql, /where btrim\(item\.value\) = nullif\(btrim\(p_context ->> 'anchor_assignee'\), ''\)/);
-  assert.match(sql, /if v_anchor_index is not null then\s+update[\s\S]*set forward_cursor = v_index \+ 1,\s+reverse_cursor = v_count - v_index/);
+  assert.match(sql, /update[\s\S]*set forward_cursor = v_index \+ 1,\s+reverse_cursor = v_count - v_index/);
   assert.match(sql, /assignee := btrim\(v_state\.roster ->> v_index::integer\)/);
 });
 

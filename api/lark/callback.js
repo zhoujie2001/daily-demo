@@ -88,11 +88,11 @@ function parseRequestBody(rawBody, encryptKey) {
   return decryptPayload(body.encrypt, encryptKey);
 }
 
-function deadline(timeoutMs, { isRosterForm = false } = {}) {
+function deadline(timeoutMs, { isForm = false } = {}) {
   return new Promise((resolve) => {
     setTimeout(() => {
-      const body = { toast: { type: 'info', content: isRosterForm ? '名单已提交，正在派单，无需重复点击' : '派单请求已受理，正在后台处理' } };
-      if (isRosterForm) body.card = { type: 'raw', data: buildRosterProcessingCard() };
+      const body = { toast: { type: 'info', content: isForm ? '请求已提交，正在处理，无需重复点击' : '派单请求已受理，正在后台处理' } };
+      if (isForm) body.card = { type: 'raw', data: buildRosterProcessingCard() };
       resolve({
         httpStatus: 200,
         body,
@@ -103,7 +103,7 @@ function deadline(timeoutMs, { isRosterForm = false } = {}) {
 }
 
 async function handleCardAction(body) {
-  const isRosterForm = Boolean(body?.event?.action?.form_value);
+  const isForm = Boolean(body?.event?.action?.form_value);
   const formMessageId = String(body?.event?.context?.open_message_id || body?.event?.context?.message_id || '').trim();
   const dispatchTask = handleDispatchEvent(body, {
     client: larkClient,
@@ -116,7 +116,7 @@ async function handleCardAction(body) {
       batchItemStartReserveMs: 30_000,
     },
   });
-  const result = await Promise.race([dispatchTask, deadline(DISPATCH_DEADLINE_MS, { isRosterForm })]);
+  const result = await Promise.race([dispatchTask, deadline(DISPATCH_DEADLINE_MS, { isForm })]);
   if (result.errorCode === 'CALLBACK_DEADLINE') {
     // Keep the complete reliable workflow alive after the <3s acknowledgement.
     // If it eventually produces a delayed card update, run that as part of the
@@ -124,8 +124,8 @@ async function handleCardAction(body) {
     scheduleAfterResponse(async () => {
       const finalResult = await dispatchTask;
       if (typeof finalResult.afterResponse === 'function') await finalResult.afterResponse();
-      if (isRosterForm && formMessageId && finalResult.errorCode) {
-        const message = finalResult.body?.toast?.content || '派单未完成，请重新提交名单';
+      if (isForm && formMessageId && finalResult.errorCode) {
+        const message = finalResult.body?.toast?.content || '请求处理未完成，请重试';
         await larkClient.updateMessageCard(formMessageId, buildRosterRetryCard(message));
       }
     });
