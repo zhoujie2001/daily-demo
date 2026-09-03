@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import { parseRoster, secureShuffle, shanghaiDay, nextShanghaiMidnight, dispatchDirection, RosterValidationError } from '../lib/dispatch/roster.js';
 import { buildRosterFormCard, buildRosterProcessingCard, buildRosterCompletedCard, buildRosterRetryCard, buildDispatchResultCard } from '../lib/lark/card-renderer.js';
 import { handleDispatchEvent } from '../lib/dispatch/dispatch-service.js';
@@ -231,9 +232,9 @@ test('后续派单从最新有效人工锚点轮转，并跳过空值、非当�
   const client = new FakeClient({ sheetRows: [
     ['2026-08-29 23:00:00', '王五'],
     ['2026-08-30', '张三'],
+    ['2026-08-30 11:30:00', '名单外人员'],
     ['8.30', '李四'],
     ['08.30', ''],
-    ['2026-08-30 11:30:00', '名单外人员'],
   ] });
   const result = await handleDispatchEvent(body({ requestId: 'anchor_forward' }), options(store, client));
   assert.equal(result.body.toast.type, 'success');
@@ -283,7 +284,7 @@ test('项目字段支持多选和分隔文本，空负责人及名单外人员�
   }), '李四');
   assert.equal(latestDailyAnchor(rows, {
     targetDay: '2026-08-30', roster: ['张三', '李四'], projectValue: '本地',
-  }), '李四');
+  }), null, '最近的相关负责人无效时不得回退到更旧锚点');
 });
 
 test('后续倒序派单选择锚点上一位并循环轮转', async () => {
@@ -330,7 +331,7 @@ test('锚点日期解析覆盖完整日期、短日期和飞书数值日期', ()
   }
   assert.equal(latestDailyAnchor([
     ['2026-08-30', '张三'], ['08.30', '李四'], ['2026-08-30', '名单外'],
-  ], { targetDay: '2026-08-30', roster: ['张三', '李四'] }), '李四');
+  ], { targetDay: '2026-08-30', roster: ['张三', '李四'] }), null);
 });
 
 test('旧卡按固定 sheet_id 补齐日期列和负责人列，新字段保持兼容', () => {
@@ -531,4 +532,88 @@ test('已有 assignment 但与表格人工填写的不同时，以表格为准�
 test('短日期带时间仍可识别为当天', () => {
   assert.equal(sheetDateDay('9.3 13:17', '2026-09-03'), '2026-09-03');
   assert.equal(sheetDateDay(' 9.3 13:17:05 ', '2026-09-03'), '2026-09-03');
+});
+
+
+test('回归：728748 人工改为周杰后，729449 从实际上一负责人继续为罗世坤', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['周杰', '罗世坤'] };
+  const sheetRows = new Array(8).fill(null).map(() => []);
+  sheetRows[6] = ['2026-08-30', '周杰', ''];
+  const client = new FakeClient({ sheetRows });
+  const request = body({
+    requestId: '729449', businessType: '本地推', targetCategory: 'local_promo',
+    projectFieldId: 'C', projectValue: '本地推',
+  });
+
+  const result = await handleDispatchEvent(request, options(store, client));
+
+  assert.equal(result.body.toast.type, 'success');
+  assert.equal(store.assignments.get('729449').assignee, '罗世坤');
+  assert.ok(client.calls.some((call) => call.kind === 'write' && call.assignee === '罗世坤'));
+  assert.ok(!client.calls.some((call) => call.kind === 'write' && call.assignee === '周杰'));
+});
+
+test('专用业务表接受项目空值和本地变体，共享千川本地表不接受空值', async () => {
+  const dedicatedStore = new FakeStore();
+  dedicatedStore.state = { roster: ['周杰', '罗世坤'] };
+  const rows = new Array(8).fill(null).map(() => []);
+  rows[6] = ['2026-08-30', '周杰', null];
+  const dedicatedClient = new FakeClient({ sheetRows: rows });
+  const dedicatedRequest = body({
+    requestId: 'dedicated_blank', businessType: '本地', targetCategory: 'local_promo',
+    projectFieldId: 'C', projectValue: '本地推',
+  });
+  await handleDispatchEvent(dedicatedRequest, options(dedicatedStore, dedicatedClient));
+  assert.equal(dedicatedStore.assignments.get('dedicated_blank').assignee, '罗世坤');
+
+  const sharedStore = new FakeStore();
+  sharedStore.state = { roster: ['周杰', '罗世坤'] };
+  sharedStore.reverse = 1;
+  const sharedClient = new FakeClient({ sheetRows: rows });
+  const sharedRequest = body({
+    requestId: 'shared_blank', businessType: '本地推', targetCategory: 'local_promo',
+    projectFieldId: 'C', projectValue: '本地',
+  });
+  sharedRequest.event.action.value.sheet_id = 'TQuzLA';
+  await handleDispatchEvent(sharedRequest, options(sharedStore, sharedClient));
+  assert.equal(sharedStore.assignments.get('shared_blank').assignee, '周杰');
+
+  assert.equal(latestDailyAnchor([
+    ['2026-08-30', '周杰', [{ text: '千川' }, { text: '本地推' }]],
+  ], {
+    targetDay: '2026-08-30', roster: ['周杰', '罗世坤'], projectValue: '本地',
+  }), '周杰');
+});
+
+test('更近分块的无效负责人使旧锚点失效并 fail-closed', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['周杰', '罗世坤'] };
+  const client = new FakeClient();
+  client.readSheetDispatchRows = async (args) => {
+    const oldChunk = new Array(5000).fill(null).map(() => []);
+    oldChunk[4999] = ['2026-08-30', '周杰'];
+    args.selectLatest(oldChunk, 1);
+    const newerChunk = new Array(5).fill(null).map(() => []);
+    newerChunk[3] = ['2026-08-30', '已离职人员'];
+    return args.selectLatest(newerChunk, 5001);
+  };
+  const request = body({ requestId: 'newer_invalid_chunk' });
+  request.event.action.value.row_index = 5005;
+
+  const result = await handleDispatchEvent(request, options(store, client));
+
+  assert.equal(result.errorCode, 'INVALID_SHEET_ANCHOR');
+  assert.equal(store.assignCalls, 0);
+  assert.equal(client.calls.filter((call) => call.kind === 'write').length, 0);
+});
+
+test('SQL：锚点原子同步双向游标、btrim 名单名称且先执行 request_id 重放', () => {
+  const sql = readFileSync(new URL('../db/bess-dispatch.sql', import.meta.url), 'utf8');
+  const replayAt = sql.indexOf('if found then');
+  const anchorAt = sql.indexOf('select item.ordinality - 1');
+  assert.ok(replayAt > 0 && replayAt < anchorAt, 'request_id 重放必须在锚点和游标变更前返回');
+  assert.match(sql, /where btrim\(item\.value\) = nullif\(btrim\(p_context ->> 'anchor_assignee'\), ''\)/);
+  assert.match(sql, /if v_anchor_index is not null then\s+update[\s\S]*set forward_cursor = v_index \+ 1,\s+reverse_cursor = v_count - v_index/);
+  assert.match(sql, /assignee := btrim\(v_state\.roster ->> v_index::integer\)/);
 });
