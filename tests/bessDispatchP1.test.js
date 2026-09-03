@@ -83,7 +83,8 @@ class FakeClient {
   async writeSheetAssignee(args) { this.calls.push({ kind: 'write', ...args }); }
   async readSheetDispatchRows(args) {
     this.calls.push({ kind: 'readRows', ...args });
-    return typeof args.selectLatest === 'function' ? args.selectLatest(this.sheetRows) : this.sheetRows;
+    if (this.sheetRows.length === 0) return null;
+    return typeof args.selectLatest === 'function' ? args.selectLatest(this.sheetRows, 1) : this.sheetRows;
   }
   async getMessage(messageId) { this.calls.push({ kind: 'get', messageId }); return null; }
   async updateMessageCard(messageId, card) {
@@ -175,7 +176,7 @@ test('首次表单提交：按 message_id 找回原请求、立即派单、写�
   assert.equal(result.body.toast.type, 'success');
   assert.equal(store.assignments.size, 1);
   assert.equal(store.calibrations.length, 0);
-  assert.equal(client.calls.filter((item) => item.kind === 'readRows').length, 0, '首次名单提交派单不得读取锚点');
+  assert.equal(client.calls.filter((item) => item.kind === 'readRows').length, 1, '名单提交也应读表保护人工填写的负责人');
   assert.equal(client.calls.find((item) => item.kind === 'write').assignee, store.assignments.get('p1_1').assignee);
   const resultCard = client.calls.filter((item) => item.kind === 'replyCard').at(-1).card;
   assert.match(JSON.stringify(resultCard), /正序名单（从上到下）/);
@@ -299,7 +300,7 @@ test('当天没有有效锚点时沿用现有游标排序', async () => {
   await handleDispatchEvent(body({ requestId: 'fallback_cursor' }), options(store, client));
   assert.equal(store.assignments.get('fallback_cursor').assignee, '李四');
   assert.equal(store.calibrations.length, 0);
-  assert.equal(store.assignmentQueries, 0);
+  assert.equal(store.assignmentQueries, 1);
 });
 
 test('同 request_id 重放返回原负责人且不再次校准或推进游标', async () => {
@@ -355,7 +356,7 @@ test('后续读表失败时 fail-closed，不调用事务派单和写表', async
   assert.equal(client.calls.filter((item) => item.kind === 'write').length, 0);
 });
 
-test('表单卡与结果卡包含黄色正序、蓝色倒序和完整名单', () => {
+test('表单卡与结果卡包含黄色正序、蓝色倒序 and 完整名单', () => {
   const form = buildRosterFormCard(fields);
   assert.match(JSON.stringify(form), /roster_names/);
   const card = buildDispatchResultCard(fields, { assignee: '李四', direction: 'reverse', roster: ['张三', '李四'], dispatchedAt: 't' });
@@ -437,7 +438,7 @@ test('P1 延迟卡片更新失败会记录脱敏错误码而不是静默吞错',
   assert.ok(!JSON.stringify(failure).includes('sensitive upstream detail'));
 });
 
-test('已完成表单重提仅返回友好 Toast，不重复写 Sheet、发结果或更新卡片', async () => {
+test('已完成表单重提仅返回友好 Toast，不重复写 Sheet、发结果 or 更新卡片', async () => {
   const store = new FakeStore();
   const client = new FakeClient();
   await handleDispatchEvent(body(), options(store, client));
@@ -459,4 +460,63 @@ test('已完成表单重提仅返回友好 Toast，不重复写 Sheet、发结�
     reply: client.calls.filter((item) => item.kind === 'replyCard').length,
     update: client.calls.filter((item) => item.kind === 'update').length,
   }, before);
+});
+
+test('当前行已有人工负责人时跳过写入且不消耗游标', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['张三', '李四', '王五'] };
+  const sheetRows = new Array(8).fill(null).map(() => []);
+  sheetRows[7] = ['2026-08-30', '李四'];
+  const client = new FakeClient({ sheetRows });
+  const result = await handleDispatchEvent(body({ requestId: 'manual_row_filled' }), options(store, client));
+  assert.equal(result.body.toast.type, 'success');
+  assert.equal(client.calls.filter(c => c.kind === 'write').length, 0, '应该跳过写入');
+  assert.equal(store.assignCalls, 0, '不应该推进游标');
+  assert.match(result.body.toast.content, /李四/);
+});
+
+test('在飞书 API 截断 chunk 尾部空行时依然能通过 startRow 正确匹配 rowIndex', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['张三', '李四'] };
+  const targetRowIndex = 5005;
+  const client = new FakeClient();
+  client.readSheetDispatchRows = async (args) => {
+    client.calls.push({ kind: 'read', ...args });
+    const chunk1 = new Array(5000).fill(null).map(() => []);
+    const candidate1 = args.selectLatest(chunk1, 1);
+    const chunk2 = new Array(10).fill(null).map(() => []);
+    chunk2[4] = ['2026-08-30', '王五'];
+    const candidate2 = args.selectLatest(chunk2, 5001);
+    return candidate2 || candidate1;
+  };
+  const customBody = body({ requestId: 'truncated_chunk' });
+  customBody.event.action.value.row_index = targetRowIndex;
+  const result = await handleDispatchEvent(customBody, options(store, client));
+  assert.equal(client.calls.filter(c => c.kind === 'write').length, 0, '识别到非空行，应该跳过写入');
+  assert.match(result.body.toast.content, /王五/);
+});
+
+test('名单表单提交时，若目标行已被人工填写，应保护不覆盖', async () => {
+  const store = new FakeStore();
+  const client = new FakeClient();
+  await handleDispatchEvent(body(), options(store, client));
+  client.sheetRows = new Array(8).fill(null).map(() => []);
+  client.sheetRows[7] = ['2026-08-30', '王五'];
+  const result = await handleDispatchEvent(body({ form: true, messageId: 'om_form' }), options(store, client));
+  assert.equal(result.body.toast.type, 'success');
+  assert.match(result.body.toast.content, /王五/);
+  assert.equal(client.calls.filter(c => c.kind === 'write').length, 0, '表单提交也不应覆盖人工填写行');
+});
+
+test('已有 assignment 但与表格人工填写的不同时，以表格为准且跳过写入', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['张三', '李四'] };
+  store.assignments.set('p1_1', { assignee: '张三', replayed: false });
+  const sheetRows = new Array(8).fill(null).map(() => []);
+  sheetRows[7] = ['2026-08-30', '李四'];
+  const client = new FakeClient({ sheetRows });
+  const result = await handleDispatchEvent(body({ requestId: 'p1_1' }), options(store, client));
+  assert.match(result.body.toast.content, /李四/);
+  assert.equal(client.calls.filter(c => c.kind === 'write').length, 0);
+  assert.equal(store.assignCalls, 0);
 });

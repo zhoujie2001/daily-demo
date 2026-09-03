@@ -67,7 +67,7 @@ class BatchStore {
   async cleanupExpired() {}
   async getDailyState() { return this.state; }
   async getAssignment(_day, requestId) { return this.assignments.get(requestId) || null; }
-  async calibrateCursor() {}
+  async calibrateCursor({ cursor }) { this.cursor = cursor; }
   async getPendingByRequest(requestId, chatId) {
     return [...this.pending.values()].find((row) => row.request_id === requestId && row.chat_id === chatId && !row.completed_at) || null;
   }
@@ -90,15 +90,22 @@ class BatchStore {
 }
 
 class BatchClient {
-  constructor({ failRow, failRows = [], failUpdateOnce = false, failReplyOnce = false, onWrite } = {}) {
+  constructor({ failRow, failRows = [], failUpdateOnce = false, failReplyOnce = false, onWrite, sheetRows = [] } = {}) {
     this.calls = [];
     this.failRow = failRow;
     this.failRows = new Set(failRows);
     this.failUpdateOnce = failUpdateOnce;
     this.failReplyOnce = failReplyOnce;
     this.onWrite = onWrite;
+    this.sheetRows = sheetRows;
   }
-  async readSheetDispatchRows(args) { this.calls.push({ kind: 'read', ...args }); return null; }
+  async readSheetDispatchRows(args) {
+    this.calls.push({ kind: 'read', ...args });
+    if (typeof args.selectLatest === 'function') {
+      return args.selectLatest(this.sheetRows, 1);
+    }
+    return this.sheetRows.length > 0 ? this.sheetRows : null;
+  }
   async writeSheetAssignee(args) {
     this.calls.push({ kind: 'write', ...args });
     this.onWrite?.(args);
@@ -508,4 +515,30 @@ test('HTTP 200 飞书业务错误写入准确且脱敏的批次诊断日志', as
   assert.equal(failure.lark_log_id, 'log_business_200');
   assert.equal(failure.api_message, 'bad request Bearer [REDACTED] [REDACTED_EMAIL]');
   assert.equal(JSON.stringify(failure).includes('TAIL'), false);
+});
+
+test('批量派单回归测试：人工填写行作为锚点推顺序且自身不被覆盖，后续空行正常分配', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['张三', '李四', '王五'] };
+  const sheetRows = new Array(20).fill(null).map(() => ['', '', '']);
+  sheetRows[10] = ['2026-08-30', '李四', '千川'];
+  const client = new BatchClient({ sheetRows });
+  const items = [
+    item('req_A', 10),
+    item('req_B', 11),
+    item('req_C', 12),
+  ];
+  const result = await handleDispatchEvent(batchBody('batch_regression', items), options(store, client));
+  await result.afterResponse();
+  const batch = store.getBatch('oc_allowed', 'batch_regression');
+  assert.equal(batch.status, 'SUCCESS');
+  const results = batch.results;
+  assert.equal(results.find(r => r.requestId === 'req_A').assignee, '张三');
+  assert.equal(results.find(r => r.requestId === 'req_B').assignee, '李四');
+  assert.equal(results.find(r => r.requestId === 'req_B').replayed, true);
+  assert.equal(results.find(r => r.requestId === 'req_C').assignee, '王五');
+  const writes = client.calls.filter(c => c.kind === 'write');
+  assert.ok(writes.some(w => w.rowIndex === 10 && w.assignee === '张三'));
+  assert.ok(!writes.some(w => w.rowIndex === 11), '人工填写行不应触发写入');
+  assert.ok(writes.some(w => w.rowIndex === 12 && w.assignee === '王五'));
 });
