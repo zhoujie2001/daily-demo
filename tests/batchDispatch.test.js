@@ -64,6 +64,7 @@ class BatchStore {
   }
   async saveBatchProgress(args) { return this.batchStore.saveBatchProgress(args); }
   async markBatchFinalization(args) { return this.batchStore.markBatchFinalization(args); }
+  async saveBatchResultMessage(args) { return this.batchStore.saveBatchResultMessage(args); }
   async releaseBatchClaim(args) { return this.batchStore.releaseBatchClaim(args); }
   getBatch(chatId, batchId) { return this.batchStore.getBatch(chatId, batchId); }
   async cleanupExpired() {}
@@ -242,12 +243,11 @@ test('原卡更新与批次话题分别记账，重放只补偿失败的收尾�
 
     const afterFirst = store.getBatch('oc_allowed', batchId);
     assert.equal(afterFirst.card_update_done, failedEffect !== 'card');
-    assert.equal(afterFirst.thread_reply_done, failedEffect !== 'thread');
+    assert.equal(afterFirst.thread_reply_done, true, '话题发送失败应立即补发最终结果卡');
     assert.equal(store.assignCalls, 2);
 
     const replay = await handleDispatchEvent(body, options(store, client));
-    assert.match(replay.body.toast.content, /恢复|受理/);
-    await replay.afterResponse();
+    if (replay.afterResponse) await replay.afterResponse();
 
     const completed = store.getBatch('oc_allowed', batchId);
     assert.equal(completed.card_update_done, true);
@@ -633,4 +633,83 @@ test('batch：目标行校准失败时该项不得记为成功且不写表', asy
   assert.equal(batch.status, 'FAILED');
   assert.equal(batch.results[0].status, 'FAILED');
   assert.ok(!client.calls.some((call) => call.kind === 'write'));
+});
+
+
+test('FAILED→SUCCESS 重试原位更新已持久化的话题结果卡且重复重试不新增卡', async () => {
+  const batchId = 'batch_failed_to_success_thread';
+  const store = new BatchStore();
+  const client = new BatchClient({ failRow: 10 });
+  const body = batchBody(batchId, [item('729643', 10)]);
+
+  const first = await handleDispatchEvent(body, options(store, client));
+  await first.afterResponse();
+  assert.equal(store.getBatch('oc_allowed', batchId).result_message_id, 'om_thread');
+  assert.equal(client.calls.filter((call) => call.kind === 'replyCard').length, 1);
+
+  client.failRow = undefined;
+  const retry = await handleDispatchEvent(body, options(store, client));
+  await retry.afterResponse();
+  const threadUpdate = client.calls.find((call) => call.kind === 'update' && call.messageId === 'om_thread');
+  assert.ok(threadUpdate, '重试应更新同一 message_id');
+  assert.match(JSON.stringify(threadUpdate.card), /SUCCESS/);
+  assert.match(JSON.stringify(threadUpdate.card), /张三/);
+  assert.match(JSON.stringify(threadUpdate.card), /当前人员/);
+  assert.equal(client.calls.filter((call) => call.kind === 'replyCard').length, 1);
+
+  const duplicate = await handleDispatchEvent(body, options(store, client));
+  assert.equal(duplicate.errorCode, 'BATCH_ALREADY_PROCESSED');
+  assert.equal(client.calls.filter((call) => call.kind === 'replyCard').length, 1);
+});
+
+test('PARTIAL→SUCCESS 重试更新同一话题结果卡', async () => {
+  const batchId = 'batch_partial_to_success_thread';
+  const store = new BatchStore();
+  const client = new BatchClient({ failRow: 11 });
+  const body = batchBody(batchId);
+  const first = await handleDispatchEvent(body, options(store, client));
+  await first.afterResponse();
+
+  client.failRow = undefined;
+  const retry = await handleDispatchEvent(body, options(store, client));
+  await retry.afterResponse();
+  assert.equal(store.getBatch('oc_allowed', batchId).result_message_id, 'om_thread');
+  assert.equal(client.calls.filter((call) => call.kind === 'replyCard').length, 1);
+  const updated = client.calls.filter((call) => call.kind === 'update' && call.messageId === 'om_thread').at(-1);
+  assert.match(JSON.stringify(updated.card), /SUCCESS/);
+  assert.notEqual(updated.card.body.elements.find((element) => element.tag === 'table').rows[1].assignee, '-');
+});
+
+test('旧话题结果卡更新失败时补发最终结果卡并持久化新 message_id', async () => {
+  const batchId = 'batch_replace_stale_thread';
+  const store = new BatchStore();
+  const client = new BatchClient({ failRow: 10 });
+  let resultReplyCount = 0;
+  client.replyInteractiveCard = async function replyInteractiveCard(args) {
+    this.calls.push({ kind: 'replyCard', ...args });
+    resultReplyCount += 1;
+    return { message_id: resultReplyCount === 1 ? 'om_stale' : 'om_final' };
+  };
+  const originalUpdate = client.updateMessageCard.bind(client);
+  client.updateMessageCard = async (messageId, card) => {
+    if (messageId === 'om_stale') {
+      client.calls.push({ kind: 'update', messageId, card });
+      throw new Error('message not found');
+    }
+    return originalUpdate(messageId, card);
+  };
+  const body = batchBody(batchId, [item('729643', 10)]);
+  const first = await handleDispatchEvent(body, options(store, client));
+  await first.afterResponse();
+
+  client.failRow = undefined;
+  const retry = await handleDispatchEvent(body, options(store, client));
+  await retry.afterResponse();
+  const saved = store.getBatch('oc_allowed', batchId);
+  assert.equal(saved.result_message_id, 'om_final');
+  assert.equal(saved.thread_reply_done, true);
+  assert.equal(client.calls.filter((call) => call.kind === 'replyCard').length, 2);
+  const replacement = client.calls.filter((call) => call.kind === 'replyCard').at(-1).card;
+  assert.match(JSON.stringify(replacement), /此前的话题结果卡已失效/);
+  assert.match(JSON.stringify(replacement), /SUCCESS/);
 });
