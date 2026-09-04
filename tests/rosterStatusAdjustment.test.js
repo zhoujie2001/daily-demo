@@ -62,8 +62,12 @@ test('人员状态调整：展示调整表单卡片', async () => {
 
   const result = await handleDispatchEvent(event, options(store, client));
   assert.equal(result.httpStatus, 200);
-  assert.ok(result.body.card);
-  const card = result.body.card.data;
+  assert.match(result.body.toast.content, /表单已发送到当前话题/);
+  const reply = client.calls.find(call => call.kind === 'replyCard');
+  assert.ok(reply);
+  assert.equal(reply.messageId, 'om_original');
+  assert.equal(reply.replyInThread, true);
+  const card = reply.card;
   assert.equal(card.header.title.tag, 'plain_text');
   assert.match(card.header.title.content, /人员状态调整/);
   const form = card.body.elements.find(el => el.tag === 'form');
