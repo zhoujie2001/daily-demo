@@ -88,20 +88,30 @@ class BatchStore {
   async markPendingCompleted(id) {
     if (this.pending.has(id)) this.pending.get(id).completed_at = new Date().toISOString();
   }
-  async assign({ requestId, roster, context = {} }) {
+  async assign({ requestId, direction = 'forward', roster, context = {} }) {
     if (roster) this.state = { roster };
     this.assignCalls += 1;
     if (this.assignments.has(requestId)) {
       return { ...this.assignments.get(requestId), roster: this.state.roster, replayed: true };
     }
     const anchorIndex = this.state.roster.indexOf(context.anchor_assignee);
-    if (anchorIndex >= 0) this.cursor = (anchorIndex + 1) % this.state.roster.length;
+    let index;
+    if (anchorIndex >= 0) {
+      index = direction === 'forward'
+        ? (anchorIndex + 1) % this.state.roster.length
+        : (anchorIndex - 1 + this.state.roster.length) % this.state.roster.length;
+    } else {
+      index = direction === 'forward'
+        ? this.cursor % this.state.roster.length
+        : this.state.roster.length - 1 - (this.reverseCursor % this.state.roster.length);
+    }
     const assignment = {
       id: this.assignments.size + 1,
-      assignee: this.state.roster[this.cursor % this.state.roster.length],
+      assignee: this.state.roster[index],
       request_context: context,
     };
-    this.cursor += 1;
+    this.cursor = index + 1;
+    this.reverseCursor = this.state.roster.length - index;
     this.assignments.set(requestId, assignment);
     return { ...assignment, roster: this.state.roster, replayed: false };
   }
@@ -192,10 +202,10 @@ test('批量点击立即禁用按钮，逐项处理后更新原卡并在单一�
     { dispatch_order: '2', request_id: 'batch_partial_2', request_name: '需求 batch_partial_2', assignee: '-' },
   ]);
   const rosterColumns = reply.card.body.elements.find((element) => element.tag === 'column_set');
-  assert.ok(rosterColumns, '话题卡片必须包含千川正序和本地倒序名单');
-  assert.match(rosterColumns.columns[0].elements[0].content, /千川正序名单（从上到下）/);
+  assert.ok(rosterColumns, '话题卡片必须明确展示两套共享名单视图');
+  assert.match(rosterColumns.columns[0].elements[0].content, /共享名单视图｜正序（从上到下）/);
   assert.match(rosterColumns.columns[0].elements[0].content, /1\. 张三 \*\*← 当前人员\*\*/);
-  assert.match(rosterColumns.columns[1].elements[0].content, /本地倒序名单（从下到上）/);
+  assert.match(rosterColumns.columns[1].elements[0].content, /共享名单视图｜本地倒序（从下到上）/);
   assert.doesNotMatch(rosterColumns.columns[1].elements[0].content, /当前人员/);
   assert.doesNotMatch(JSON.stringify(reply.card), /本批次负责人/);
   assert.doesNotMatch(JSON.stringify(reply.card), /sensitive write error/);
@@ -564,26 +574,46 @@ test('批量派单回归测试：人工填写行作为锚点推顺序且自身�
   assert.equal(results.find(r => r.requestId === 'req_A').assignee, '王五');
   assert.equal(results.find(r => r.requestId === 'req_B').assignee, '李四');
   assert.equal(results.find(r => r.requestId === 'req_B').replayed, true);
-  assert.equal(results.find(r => r.requestId === 'req_C').assignee, '王五');
+  assert.equal(results.find(r => r.requestId === 'req_C').assignee, '张三');
   const writes = client.calls.filter(c => c.kind === 'write');
   assert.ok(writes.some(w => w.rowIndex === 10 && w.assignee === '王五'));
   assert.ok(!writes.some(w => w.rowIndex === 11), '人工填写行不应触发写入');
-  assert.ok(writes.some(w => w.rowIndex === 12 && w.assignee === '王五'));
+  assert.ok(writes.some(w => w.rowIndex === 12 && w.assignee === '张三'));
+});
+
+test('存量 11 条：第 2 条陈冰清固定为批次锚点，自动游标连续得到黄鲜/陈冰清/罗理', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['周杰', '马莲', '赵刘霞', '罗世坤', '罗理', '黄鲜', '陈冰清', '陈思宇'] };
+  const sheetRows = new Array(30).fill(null).map(() => ['', '']);
+  sheetRows[10] = ['2026-08-30', '陈冰清'];
+  const client = new BatchClient({ sheetRows });
+  const items = Array.from({ length: 11 }, (_, index) => ({
+    ...item(`stock_${index + 1}`, 10 + index),
+    business_type: '存量',
+    target_category: 'stock',
+    sheet_id: 'StockSheet',
+    project_field_id: '',
+    project_value: '',
+  }));
+
+  const result = await handleDispatchEvent(batchBody('batch_stock_fixed_anchor', items), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'batch_stock_fixed_anchor');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.deepEqual(batch.results.slice(0, 3).map(({ assignee }) => assignee), ['黄鲜', '陈冰清', '罗理']);
+  assert.equal(batch.results[1].replayed, true);
+  assert.deepEqual(store.calibrations.map(({ assignee }) => assignee), ['陈冰清']);
+  assert.ok(!client.calls.some((call) => call.kind === 'write' && call.rowIndex === 11));
+  const resultCard = client.calls.find((call) => call.kind === 'replyCard').card;
+  assert.match(JSON.stringify(resultCard), /本批业务：存量（本地倒序）/);
+  assert.doesNotMatch(JSON.stringify(resultCard), /千川正序/);
 });
 
 
 test('本地推首项把人工负责人作为事务锚点并分配下一位，禁止连续同名', async () => {
   const store = new BatchStore();
   store.state = { roster: ['张三', '李四', '杨新雨'] };
-  store.assign = async ({ requestId, direction, context }) => {
-    assert.equal(direction, 'reverse');
-    assert.equal(context.anchor_assignee, '杨新雨');
-    const anchorIndex = store.state.roster.indexOf(context.anchor_assignee);
-    const assignee = store.state.roster[(anchorIndex - 1 + store.state.roster.length) % store.state.roster.length];
-    const assignment = { assignee, roster: store.state.roster, replayed: false };
-    store.assignments.set(requestId, assignment);
-    return assignment;
-  };
   const sheetRows = new Array(20).fill(null).map(() => ['', '', '']);
   sheetRows[9] = ['9.3 13:17', '杨新雨', '本地'];
   const client = new BatchClient({ sheetRows });
