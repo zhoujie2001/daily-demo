@@ -611,6 +611,44 @@ test('存量 11 条：第 2 条陈冰清固定为批次锚点，自动游标连�
 });
 
 
+test('存量新批次以表格历史最新负责人校准，不沿用 DB 倒序游标', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['周杰', '马莲', '赵刘霞', '罗世坤', '罗理', '黄鲜', '陈冰清', '陈思宇'] };
+  // DB cursor currently points after 周杰 in reverse order, which would assign 陈思宇.
+  store.reverseCursor = store.state.roster.length;
+  // An assignment in another scope must neither suppress the stock sheet scan nor become its anchor.
+  store.assignments.set('qianchuan_history', {
+    id: 1,
+    assignee: '周杰',
+    request_context: { sheetId: 'QianchuanSheet', businessType: '千川', rowIndex: 10 },
+  });
+  const sheetRows = new Array(80).fill(null).map(() => ['', '']);
+  sheetRows[67] = ['2026-09-04', '黄鲜'];
+  sheetRows[68] = ['2026-09-04', ''];
+  const client = new BatchClient({ sheetRows });
+  const stockItem = {
+    ...item('731816', 69),
+    business_type: '存量',
+    target_category: 'local_promo',
+    sheet_id: 'p7Wqx4',
+    project_field_id: '',
+    project_value: '',
+  };
+
+  const result = await handleDispatchEvent(
+    batchBody('batch_731816_stock_sheet_anchor', [stockItem]),
+    options(store, client, { now: () => new Date('2026-09-04T07:12:00Z') }),
+  );
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'batch_731816_stock_sheet_anchor');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.equal(batch.results[0].assignee, '罗理');
+  assert.deepEqual(store.calibrations.map(({ assignee }) => assignee), ['黄鲜']);
+  assert.ok(client.calls.some(call => call.kind === 'write' && call.rowIndex === 69 && call.assignee === '罗理'));
+});
+
+
 test('本地推首项把人工负责人作为事务锚点并分配下一位，禁止连续同名', async () => {
   const store = new BatchStore();
   store.state = { roster: ['张三', '李四', '杨新雨'] };
