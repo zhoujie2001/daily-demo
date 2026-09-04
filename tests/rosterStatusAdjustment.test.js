@@ -67,6 +67,7 @@ test('人员状态调整：展示调整表单卡片', async () => {
   assert.ok(reply);
   assert.equal(reply.messageId, 'om_original');
   assert.equal(reply.replyInThread, true);
+  assert.match(reply.uuid, /evt_1/);
   const card = reply.card;
   assert.equal(card.header.title.tag, 'plain_text');
   assert.match(card.header.title.content, /人员状态调整/);
