@@ -120,6 +120,11 @@ test('人员状态调整：提交离岗申请、更新状态并留痕', async ()
   assert.match(audit.content.text, /人员状态调整/);
   assert.match(audit.content.text, /张三/);
   assert.match(audit.content.text, /临时离岗/);
+  assert.equal(audit.replyInThread, false);
+  assert.match(result.body.card.data.header.title.content, /调整成功/);
+  await result.afterResponse();
+  const update = client.calls.find(c => c.kind === 'update');
+  assert.match(update.card.header.title.content, /调整成功/);
 });
 
 test('离岗后派单：跳过离岗人员，若全员离岗则失败并禁用按钮', async () => {
@@ -190,4 +195,47 @@ test('人员状态 RPC：使用空 search_path 且仅允许 service_role 执行'
   assert.match(verification, /anon 仍可执行 bess_update_roster_status/);
   assert.match(verification, /authenticated 仍可执行 bess_update_roster_status/);
   assert.match(verification, /service_role 缺少 bess_update_roster_status EXECUTE/);
+});
+
+
+test('人员状态调整重试：目标状态已生效时幂等成功，审计回复失败不回滚业务结果', async () => {
+  const store = createMemoryBatchStore();
+  const client = new FakeClient();
+  client.replyMessage = async () => {
+    const error = new Error('nested thread rejected');
+    error.code = 'LARK_API_230099';
+    error.httpStatus = 400;
+    error.endpoint = '/reply';
+    throw error;
+  };
+  const dayKey = '2026-09-04';
+  await store.assign({
+    dayKey,
+    requestId: 'init-replay',
+    direction: 'forward',
+    roster: ['张三', '李四'],
+    expiresAt: '2026-09-05T00:00:00Z',
+    context: {},
+  });
+  await store.updateRosterStatus({ dayKey, offDuty: ['张三'], expectedVersion: 1 });
+
+  const event = {
+    header: { event_id: 'evt_replay' },
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: {
+        value: { action: 'bess_adjust_status_submit', day_key: dayKey, business_type: '千川', expected_version: 1 },
+        form_value: { target_name: '张三', op_type: 'leave', reason: '重试' },
+        tag: 'adjust_status_form',
+      },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  };
+
+  const result = await handleDispatchEvent(event, options(store, client));
+  assert.equal(result.httpStatus, 200);
+  assert.match(result.body.toast.content, /状态已更新为 离岗/);
+  const state = await store.getDailyState(dayKey);
+  assert.deepEqual(state.off_duty, ['张三']);
+  assert.equal(state.version, 2);
 });
