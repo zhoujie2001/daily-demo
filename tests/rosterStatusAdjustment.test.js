@@ -72,7 +72,12 @@ test('人员状态调整：展示调整表单卡片', async () => {
   assert.match(card.header.title.content, /人员状态调整/);
   const form = card.body.elements.find(el => el.tag === 'form');
   assert.equal(form.name, 'adjust_status_form');
+  assert.equal(form.elements.some(el => el.tag === 'radio'), false);
+  assert.equal(form.elements.find(el => el.name === 'target_name')?.tag, 'select_static');
+  assert.equal(form.elements.find(el => el.name === 'op_type')?.tag, 'select_static');
+  assert.equal(form.elements.find(el => el.name === 'reason')?.input_type, 'text');
   const submit = form.elements.find(el => el.tag === 'button');
+  assert.equal(submit.name, 'adjust_status_submit');
   assert.equal(submit.value.expected_version, 1);
 });
 
