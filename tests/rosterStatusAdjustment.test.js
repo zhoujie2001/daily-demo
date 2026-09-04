@@ -95,16 +95,24 @@ test('人员状态调整：提交离岗申请、更新状态并留痕', async ()
     context: {},
   });
 
+  await handleDispatchEvent({
+    header: { event_id: 'evt_2_open' },
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: { value: { action: 'bess_adjust_status', day_key: dayKey, business_type: '千川' } },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_original' },
+    },
+  }, options(store, client));
+
   const event = {
     header: { event_id: 'evt_2' },
     event: {
       operator: { open_id: 'ou_1' },
       action: {
-        value: { action: 'bess_adjust_status_submit', day_key: dayKey, business_type: '千川', expected_version: 1 },
         form_value: { target_name: '张三', op_type: 'leave', reason: '临时开会' },
         tag: 'adjust_status_form',
       },
-      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_original' },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
     },
   };
 
