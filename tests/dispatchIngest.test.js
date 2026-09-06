@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import { createHash, createHmac } from 'node:crypto';
 import test from 'node:test';
 import handler, { createDispatchSendHandler } from '../api/dispatch/send.js';
-import { batchDispatchActionValue, canonicalJson, dispatchActionValue, normalizeBatchDispatchIngest, normalizeDispatchIngest } from '../lib/dispatch/ingest.js';
+import {
+  batchDispatchActionValue,
+  canonicalJson,
+  dispatchActionValue,
+  normalizeBatchDispatchIngest,
+  normalizeDispatchIngest,
+  shouldSkipLocalPromoDispatch,
+} from '../lib/dispatch/ingest.js';
 import { buildBatchDispatchCard, buildInitialDispatchCard } from '../lib/lark/card-renderer.js';
 
 const SECRET = 'dispatch-ingest-test-secret';
@@ -51,6 +58,58 @@ function createMemoryIngestStore() {
 test('接入参数强制绑定群聊与业务类型', () => {
   assert.throws(() => normalizeDispatchIngest({ ...localBody, business_type: '千川', target_category: 'qianchuan' }), (error) => error.code === 'BINDING_MISMATCH');
   assert.throws(() => normalizeDispatchIngest({ ...localBody, chat_id: 'oc_unknown' }), (error) => error.code === 'FORBIDDEN_CHAT');
+});
+
+test('仅本地推群过滤指定拒绝理由，团购价值观需求正常派单', () => {
+  const blockedReasons = [
+    '涉及保证产品/服务效果',
+    '投资类:未显著标明“投资有风险”提示语',
+    '【团购】其他有违客观事实的虚假内容',
+  ];
+  for (const reason of blockedReasons) {
+    assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { reject_reason: `前缀 ${reason} 后缀` }), true);
+  }
+  assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { reject_reason: '【团购】有违社会主流价值观的内容' }), false);
+  assert.equal(shouldSkipLocalPromoDispatch('oc_2ecc53a432a03f6f81f6a18babe8cda1', { reject_reason: blockedReasons[0] }), false);
+});
+
+test('本地推批次跳过命中拒绝理由的需求且全部命中时不发卡', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const body = {
+    chat_id: localBody.chat_id,
+    batch_id: 'batch_reject_reason',
+    card_title: '【本地推】E 段自动派单',
+    time_segment: 'E',
+    items: [
+      { ...localBody, request_id: 'blocked_1', reject_reason: '涉及保证产品/服务效果' },
+      { ...localBody, request_id: 'allowed_1', reject_reason: '【团购】有违社会主流价值观的内容' },
+    ],
+  };
+  const sentCards = [];
+  const client = {
+    async sendMessage(payload) {
+      sentCards.push(payload);
+      return { message_id: 'om_filtered_batch' };
+    },
+  };
+  const targetHandler = createDispatchSendHandler({ client, storeFactory: () => createMemoryIngestStore() });
+  const partial = await invoke(body, { targetHandler });
+  assert.equal(partial.status, 200);
+  assert.deepEqual(partial.body.request_ids, ['allowed_1']);
+  assert.deepEqual(partial.body.skipped_request_ids, ['blocked_1']);
+  assert.doesNotMatch(JSON.stringify(sentCards[0].content), /blocked_1/);
+  assert.match(JSON.stringify(sentCards[0].content), /allowed_1/);
+
+  sentCards.length = 0;
+  const allBlocked = await invoke({
+    ...body,
+    batch_id: 'batch_all_rejected',
+    items: [{ ...localBody, request_id: 'blocked_2', reject_reason: '【团购】其他有违客观事实的虚假内容' }],
+  }, { targetHandler });
+  assert.equal(allBlocked.status, 200);
+  assert.equal(allBlocked.body.skipped, true);
+  assert.deepEqual(allBlocked.body.skipped_request_ids, ['blocked_2']);
+  assert.equal(sentCards.length, 0);
 });
 
 test('主监控群允许多业务类型，但必须显式提供工作表', () => {
