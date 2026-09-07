@@ -202,10 +202,10 @@ test('批量点击立即禁用按钮，逐项处理后更新原卡并在单一�
     { dispatch_order: '2', request_id: 'batch_partial_2', request_name: '需求 batch_partial_2', assignee: '-' },
   ]);
   const rosterColumns = reply.card.body.elements.find((element) => element.tag === 'column_set');
-  assert.ok(rosterColumns, '话题卡片必须明确展示两套共享名单视图');
-  assert.match(rosterColumns.columns[0].elements[0].content, /共享名单视图｜正序（从上到下）/);
+  assert.ok(rosterColumns, '话题卡片必须明确展示千川与本地两套名单顺序');
+  assert.match(rosterColumns.columns[0].elements[0].content, /千川正序（从上到下）/);
   assert.match(rosterColumns.columns[0].elements[0].content, /1\. 张三 \*\*← 当前人员\*\*/);
-  assert.match(rosterColumns.columns[1].elements[0].content, /共享名单视图｜本地倒序（从下到上）/);
+  assert.match(rosterColumns.columns[1].elements[0].content, /本地倒序（从下到上）/);
   assert.doesNotMatch(rosterColumns.columns[1].elements[0].content, /当前人员/);
   assert.doesNotMatch(JSON.stringify(reply.card), /本批次负责人/);
   assert.doesNotMatch(JSON.stringify(reply.card), /sensitive write error/);
@@ -607,7 +607,8 @@ test('存量 11 条：第 2 条陈冰清固定为批次锚点，自动游标连�
   assert.ok(!client.calls.some((call) => call.kind === 'write' && call.rowIndex === 11));
   const resultCard = client.calls.find((call) => call.kind === 'replyCard').card;
   assert.match(JSON.stringify(resultCard), /本批业务：存量（本地倒序）/);
-  assert.doesNotMatch(JSON.stringify(resultCard), /千川正序/);
+  assert.match(JSON.stringify(resultCard), /千川正序（从上到下）/);
+  assert.match(JSON.stringify(resultCard), /本地倒序（从下到上）/);
 });
 
 
