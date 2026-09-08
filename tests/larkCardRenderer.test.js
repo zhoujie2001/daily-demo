@@ -106,6 +106,8 @@ test('compact 原卡不可用时可生成包含置灰按钮的替代卡片', () 
     requestId: '706001',
     requestName: '千川测试需求',
     businessType: '千川',
+    createdAt: '2026-08-29 19:00:00',
+    creator: '张三',
     rowIndex: 32,
     cardTitle: '【千川/本地推】新增回扫需求',
   }, { dispatchedAt: '2026-08-29 20:29:04' });
@@ -114,6 +116,8 @@ test('compact 原卡不可用时可生成包含置灰按钮的替代卡片', () 
   assert.equal(card.config.update_multi, true);
   assert.equal(card.header.title.content, '【千川/本地推】新增回扫需求');
   assert.match(card.body.elements[0].content, /千川测试需求/);
+  assert.match(card.body.elements[0].content, /创建时间：2026-08-29 19:00:00/);
+  assert.match(card.body.elements[0].content, /创建人：张三/);
   assert.match(card.body.elements[0].content, /第 32 行/);
   const button = card.body.elements[2];
   assert.equal(button.disabled, true);
@@ -124,13 +128,17 @@ test('compact 原卡不可用时可生成包含置灰按钮的替代卡片', () 
 
 test('话题消息包含需求基本信息', () => {
   const text = buildDispatchThreadText(
-    { requestId: '706001', requestName: '千川测试需求', businessType: '千川', rowIndex: 32, cardTitle: '【千川/本地推】新增回扫需求' },
+    {
+      requestId: '706001', requestName: '千川测试需求', businessType: '千川', createdAt: '2026-08-29 19:00:00', creator: '张三', rowIndex: 32, cardTitle: '【千川/本地推】新增回扫需求',
+    },
     { dispatchedAt: '2026-08-29 19:40:00' },
   );
   assert.match(text, /自动派单话题已创建/);
   assert.match(text, /需求 ID：706001/);
   assert.match(text, /需求名称：千川测试需求/);
   assert.match(text, /业务类型：千川/);
+  assert.match(text, /需求创建时间：2026-08-29 19:00:00/);
+  assert.match(text, /需求创建人：张三/);
   assert.match(text, /台账行号：第 32 行/);
   assert.match(text, /来源卡片：【千川\/本地推】新增回扫需求/);
   assert.match(text, /2026-08-29 19:40:00/);
@@ -153,12 +161,15 @@ test('formatDispatchTime 输出上海时区 yyyy-MM-dd HH:mm:ss', () => {
 
 test('批次状态卡禁用唯一按钮并展示逐项结果', () => {
   const fields = [
-    { requestId: '715430', requestName: '需求一', businessType: '本地推', rowIndex: 89 },
-    { requestId: '715431', requestName: '需求二', businessType: '本地推', rowIndex: 90 },
+    { requestId: '715430', requestName: '需求一', businessType: '本地推', createdAt: '2026-09-01 16:01:00', creator: '张三', rowIndex: 89 },
+    { requestId: '715431', requestName: '需求二', businessType: '本地推', createdAt: '2026-09-01 16:02:00', creator: '李四', rowIndex: 90 },
   ];
   const action = { action: 'bess_batch_auto_dispatch', batch_id: 'batch_renderer', items: [] };
   const ready = buildBatchDispatchCard(fields, action, { cardTitle: 'E 段', batchId: 'batch_renderer' });
+  const readyText = JSON.stringify(ready);
   assert.equal(ready.body.elements.filter((item) => item.tag === 'button').length, 1);
+  assert.match(readyText, /创建时间：2026-09-01 16:01:00/);
+  assert.match(readyText, /创建人：张三/);
 
   const results = [
     { requestId: '715430', requestName: '需求一', status: 'SUCCESS', assignee: '张三' },
