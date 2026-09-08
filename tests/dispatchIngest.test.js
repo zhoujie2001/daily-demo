@@ -17,7 +17,7 @@ const NOW = Math.floor(Date.now() / 1000);
 const localBody = {
   chat_id: 'oc_99cb9239c03701fe263b870cc26a825c',
   request_id: '715430', request_name: '本地新增需求', business_type: '本地推', target_category: 'local_promo',
-  card_title: '【本地推】新增回扫需求', time_segment: 'E', sheet_url: 'https://example.feishu.cn/sheets/token',
+  card_title: '【本地推】新增回扫需求', time_segment: 'E', created_at: '2026-09-01 16:05:00', creator: '张三', sheet_url: 'https://example.feishu.cn/sheets/token',
   sheet_id: 'sheetA', row_index: 89, assignee_field_id: 'J', assignee_field_name: '执行人',
 };
 
@@ -148,6 +148,8 @@ test('外部 ingest 缺省千川本地表字段并在 action.value 携带项目�
   assert.equal(fields.projectFieldName, '项目');
   assert.equal(fields.projectValue, '本地');
   const actionValue = dispatchActionValue(fields);
+  assert.equal(actionValue.created_at, '2026-09-01 16:05:00');
+  assert.equal(actionValue.creator, '张三');
   assert.equal(actionValue.project_field_id, 'C');
   assert.equal(actionValue.project_value, '本地');
   const explicit = normalizeDispatchIngest({
@@ -246,7 +248,11 @@ test('batch dispatch card contains one callback button with batch_id and all ite
   assert.equal(buttons[0].behaviors[0].value.action, 'bess_batch_auto_dispatch');
   assert.equal(buttons[0].behaviors[0].value.batch_id, 'batch_715430');
   assert.equal(buttons[0].behaviors[0].value.items.length, 2);
+  assert.equal(buttons[0].behaviors[0].value.items[0].created_at, '2026-09-01 16:05:00');
+  assert.equal(buttons[0].behaviors[0].value.items[0].creator, '张三');
   assert.match(JSON.stringify(card), /共 \*\*2\*\* 条 E 段需求/);
+  assert.match(JSON.stringify(card), /创建时间：2026-09-01 16:05:00/);
+  assert.match(JSON.stringify(card), /创建人：张三/);
 });
 
 test('batch ingest rejects duplicate request ids', () => {
