@@ -116,6 +116,7 @@ test('compact 原卡不可用时可生成包含置灰按钮的替代卡片', () 
   assert.equal(card.config.update_multi, true);
   assert.equal(card.header.title.content, '【千川/本地推】新增回扫需求');
   assert.match(card.body.elements[0].content, /千川测试需求/);
+  assert.match(card.body.elements[0].content, /需求 ID：706001/);
   assert.match(card.body.elements[0].content, /创建时间：2026-08-29 19:00:00/);
   assert.match(card.body.elements[0].content, /创建人：张三/);
   assert.match(card.body.elements[0].content, /第 32 行/);
@@ -168,6 +169,7 @@ test('批次状态卡禁用唯一按钮并展示逐项结果', () => {
   const ready = buildBatchDispatchCard(fields, action, { cardTitle: 'E 段', batchId: 'batch_renderer' });
   const readyText = JSON.stringify(ready);
   assert.equal(ready.body.elements.filter((item) => item.tag === 'button').length, 1);
+  assert.match(readyText, /需求 ID：715430/);
   assert.match(readyText, /创建时间：2026-09-01 16:01:00/);
   assert.match(readyText, /创建人：张三/);
 
