@@ -159,6 +159,15 @@ test('外部 ingest 缺省千川本地表字段并在 action.value 携带项目�
     [explicit.projectFieldId, explicit.projectFieldName, explicit.projectValue],
     ['E', '业务项目', '本地业务'],
   );
+  const compatibility = normalizeDispatchIngest({
+    ...localBody,
+    created_at: '',
+    created_at_raw: '2026-09-01 16:06:00',
+    creator: '',
+    creator_name: '李四',
+  }).fields;
+  assert.equal(compatibility.createdAt, '2026-09-01 16:06:00');
+  assert.equal(compatibility.creator, '李四');
   const card = buildInitialDispatchCard(fields, actionValue);
   assert.match(JSON.stringify(card), /project_field_id/);
 
