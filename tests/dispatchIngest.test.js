@@ -88,7 +88,7 @@ test('主监控群允许多业务类型，但必须显式提供工作表', () =>
   );
 });
 
-test('附加群仅允许千川、本地推、存量和 EHC 其它', () => {
+test('附加群允许千川、本地推、存量、EHC 其它及 EHC 千川/本地推', () => {
   for (const targetCategory of ['qianchuan', 'local_promo', 'stock', 'ehc_emergency_other']) {
     const businessType = targetCategory === 'qianchuan' ? '千川' : targetCategory === 'stock' ? '存量' : '本地推';
     const normalized = normalizeDispatchIngest({
@@ -101,12 +101,27 @@ test('附加群仅允许千川、本地推、存量和 EHC 其它', () => {
     assert.equal(normalized.fields.targetCategory, targetCategory);
   }
 
-  for (const targetCategory of ['qianchuan_ad', 'ehc_emergency_ad', 'ehc_emergency']) {
+  for (const businessType of ['千川', '本地推']) {
+    const normalized = normalizeDispatchIngest({
+      ...localBody,
+      chat_id: BESS_ADDITIONAL_CHAT_ID,
+      business_type: businessType,
+      target_category: 'ehc_emergency',
+      sheet_id: 'TQuzLA',
+    });
+    assert.equal(normalized.fields.businessType, businessType);
+  }
+
+  for (const [targetCategory, businessType] of [
+    ['qianchuan_ad', 'AD'],
+    ['ehc_emergency_ad', 'AD'],
+    ['ehc_emergency', 'AD'],
+  ]) {
     assert.throws(
       () => normalizeDispatchIngest({
         ...localBody,
         chat_id: BESS_ADDITIONAL_CHAT_ID,
-        business_type: targetCategory.includes('ad') ? 'AD' : '本地推',
+        business_type: businessType,
         target_category: targetCategory,
         sheet_id: 'TQuzLA',
       }),
