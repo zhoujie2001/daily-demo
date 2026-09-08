@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import { createHash, createHmac } from 'node:crypto';
 import test from 'node:test';
 import handler, { createDispatchSendHandler } from '../api/dispatch/send.js';
-import { batchDispatchActionValue, canonicalJson, dispatchActionValue, normalizeBatchDispatchIngest, normalizeDispatchIngest } from '../lib/dispatch/ingest.js';
+import {
+  BESS_ADDITIONAL_CHAT_ID,
+  batchDispatchActionValue,
+  canonicalJson,
+  dispatchActionValue,
+  normalizeBatchDispatchIngest,
+  normalizeDispatchIngest,
+} from '../lib/dispatch/ingest.js';
 import { buildBatchDispatchCard, buildInitialDispatchCard } from '../lib/lark/card-renderer.js';
 
 const SECRET = 'dispatch-ingest-test-secret';
@@ -79,6 +86,33 @@ test('主监控群允许多业务类型，但必须显式提供工作表', () =>
     () => normalizeDispatchIngest({ ...localBody, chat_id: mainChatId, sheet_id: undefined }),
     (error) => error.code === 'INVALID_SHEET_TARGET',
   );
+});
+
+test('附加群仅允许千川、本地推、存量和 EHC 其它', () => {
+  for (const targetCategory of ['qianchuan', 'local_promo', 'stock', 'ehc_emergency_other']) {
+    const businessType = targetCategory === 'qianchuan' ? '千川' : targetCategory === 'stock' ? '存量' : '本地推';
+    const normalized = normalizeDispatchIngest({
+      ...localBody,
+      chat_id: BESS_ADDITIONAL_CHAT_ID,
+      business_type: businessType,
+      target_category: targetCategory,
+      sheet_id: targetCategory === 'stock' ? 'StockSheet' : 'TQuzLA',
+    });
+    assert.equal(normalized.fields.targetCategory, targetCategory);
+  }
+
+  for (const targetCategory of ['qianchuan_ad', 'ehc_emergency_ad', 'ehc_emergency']) {
+    assert.throws(
+      () => normalizeDispatchIngest({
+        ...localBody,
+        chat_id: BESS_ADDITIONAL_CHAT_ID,
+        business_type: targetCategory.includes('ad') ? 'AD' : '本地推',
+        target_category: targetCategory,
+        sheet_id: 'TQuzLA',
+      }),
+      (error) => error.code === 'BINDING_MISMATCH',
+    );
+  }
 });
 
 test('初始派单卡包含可回调按钮和完整写回参数', () => {
