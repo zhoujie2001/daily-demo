@@ -60,15 +60,18 @@ test('接入参数强制绑定群聊与业务类型', () => {
   assert.throws(() => normalizeDispatchIngest({ ...localBody, chat_id: 'oc_unknown' }), (error) => error.code === 'FORBIDDEN_CHAT');
 });
 
-test('仅本地推群过滤指定拒绝理由，团购价值观需求正常派单', () => {
+test('仅本地推群过滤指定拒绝理由，其他需求正常派单', () => {
   const blockedReasons = [
-    '涉及保证产品/服务效果',
-    '投资类:未显著标明“投资有风险”提示语',
+    '【团购】涉及保证产品/服务效果',
+    '投资类：未显著标明“投资有风险”提示语',
     '【团购】其他有违客观事实的虚假内容',
+    '【团购】涉及联系方式',
   ];
   for (const reason of blockedReasons) {
     assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { reject_reason: `前缀 ${reason} 后缀` }), true);
   }
+  assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { reject_reason: '涉及保证产品/服务效果' }), false);
+  assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { reject_reason: '投资类:未显著标明“投资有风险”提示语' }), false);
   assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { reject_reason: '【团购】有违社会主流价值观的内容' }), false);
   assert.equal(shouldSkipLocalPromoDispatch('oc_2ecc53a432a03f6f81f6a18babe8cda1', { reject_reason: blockedReasons[0] }), false);
 });
@@ -81,7 +84,7 @@ test('本地推批次跳过命中拒绝理由的需求且全部命中时不发�
     card_title: '【本地推】E 段自动派单',
     time_segment: 'E',
     items: [
-      { ...localBody, request_id: 'blocked_1', reject_reason: '涉及保证产品/服务效果' },
+      { ...localBody, request_id: 'blocked_1', reject_reason: '【团购】涉及保证产品/服务效果' },
       { ...localBody, request_id: 'allowed_1', reject_reason: '【团购】有违社会主流价值观的内容' },
     ],
   };
