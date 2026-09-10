@@ -15,6 +15,15 @@
     "api/lark/callback.js": {
       "maxDuration": 300
     },
+    "api/dispatch/send.js": {
+      "maxDuration": 30
+    },
+    "api/dispatch/status.js": {
+      "maxDuration": 10
+    },
+    "api/dispatch/revoke.js": {
+      "maxDuration": 10
+    },
     "api/cron/bess-dispatch-cleanup.js": {
       "maxDuration": 10
     }
