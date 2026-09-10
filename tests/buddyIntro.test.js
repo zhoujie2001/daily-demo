@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import test from 'node:test';
-import { buildBuddyIntroCard, createDispatchSendHandler } from '../api/dispatch/send.js';
+import { buildBuddyIntroCard, createDispatchSendHandler } from '../lib/dispatch/api/send.js';
 import { canonicalJson } from '../lib/dispatch/ingest.js';
 
 const SECRET = 'buddy-intro-test-secret';

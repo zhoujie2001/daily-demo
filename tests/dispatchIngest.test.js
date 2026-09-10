@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash, createHmac } from 'node:crypto';
 import test from 'node:test';
-import handler, { createDispatchSendHandler } from '../api/dispatch/send.js';
+import { createDispatchSendHandler } from '../lib/dispatch/api/send.js';
+
+const handler = createDispatchSendHandler();
 import {
   BESS_ADDITIONAL_CHAT_ID,
   batchDispatchActionValue,
