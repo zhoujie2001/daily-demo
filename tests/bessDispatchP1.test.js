@@ -376,20 +376,40 @@ test('表单卡与结果卡包含黄色正序、蓝色倒序 and 完整名单', 
   assert.match(text, /李四/);
 });
 
-test('电子表格按列字母写入后 GET 回读，不一致即失败', async () => {
-  let readValue = '张三';
+test('电子表格按列字母写入后 GET 回读：短暂不一致会重试，持续不一致则失败', async () => {
+  let readValues = ['张三'];
   const calls = [];
   const fetchImpl = async (url, request) => {
     calls.push({ url: String(url), request });
-    if (String(url).includes('tenant_access_token')) return { ok: true, status: 200, text: async () => JSON.stringify({ code: 0, tenant_access_token: 'token', expire: 7200 }) };
+    if (String(url).includes('tenant_access_token')) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ code: 0, tenant_access_token: 'token', expire: 7200 }) };
+    }
     if (request.method === 'PUT') return { ok: true, status: 200, text: async () => JSON.stringify({ code: 0 }) };
-    return { ok: true, status: 200, text: async () => JSON.stringify({ code: 0, data: { valueRange: { values: [[readValue]] } } }) };
+    const value = readValues.length > 1 ? readValues.shift() : readValues[0];
+    return { ok: true, status: 200, text: async () => JSON.stringify({ code: 0, data: { valueRange: { values: [[value]] } } }) };
   };
-  const client = new LarkClient({ appId: 'id', appSecret: 'secret', fetchImpl, baseUrl: 'https://open.feishu.test' });
+  const client = new LarkClient({
+    appId: 'id',
+    appSecret: 'secret',
+    fetchImpl,
+    baseUrl: 'https://open.feishu.test',
+    sleep: async () => {},
+  });
+
+  // First call succeeds.
   await client.writeSheetAssignee({ sheetUrl: fields.sheetUrl, sheetId: 'sheetA', rowIndex: 8, assigneeFieldId: 'D', assignee: '张三' });
   assert.match(calls.find((item) => item.request.method === 'PUT').request.body, /sheetA!D8:D8/);
-  readValue = '李四';
-  await assert.rejects(() => client.writeSheetAssignee({ sheetUrl: fields.sheetUrl, sheetId: 'sheetA', rowIndex: 8, assigneeFieldId: 'D', assignee: '张三' }), (error) => error instanceof LarkApiError && error.code === 'SHEET_READBACK_MISMATCH');
+
+  // Second call: first read is stale, second read matches after retry.
+  readValues = ['李四', '张三'];
+  await client.writeSheetAssignee({ sheetUrl: fields.sheetUrl, sheetId: 'sheetA', rowIndex: 8, assigneeFieldId: 'D', assignee: '张三' });
+
+  // Third call: never matches, must fail.
+  readValues = ['李四'];
+  await assert.rejects(
+    () => client.writeSheetAssignee({ sheetUrl: fields.sheetUrl, sheetId: 'sheetA', rowIndex: 8, assigneeFieldId: 'D', assignee: '张三' }),
+    (error) => error instanceof LarkApiError && error.code === 'SHEET_READBACK_MISMATCH',
+  );
 });
 
 test('知识库表格链接先解析为真实 spreadsheet token，再写入并回读', async () => {
