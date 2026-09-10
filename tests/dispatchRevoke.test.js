@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import test from 'node:test';
-import handler from '../api/dispatch/revoke.js';
+import { createDispatchRevokeHandler } from '../lib/dispatch/api/revoke.js';
+
+const handler = createDispatchRevokeHandler();
 import { canonicalJson } from '../lib/dispatch/ingest.js';
 
 const SECRET = 'dispatch-ingest-test-secret';
