@@ -22,6 +22,7 @@ function setup(payloads) {
       url: 'https://example.supabase.co/',
       serviceRoleKey: 'service-key',
       fetchImpl,
+      logger: {},
     }),
   };
 }
@@ -285,4 +286,58 @@ test('completeIngestBatch 所有权 CAS 丢失时拒绝覆盖新记录', async (
     }),
     (error) => error instanceof DispatchStoreError && error.code === 'INGEST_CLAIM_LOST',
   );
+});
+
+
+test('Supabase 请求输出不含查询值的结构化时延日志', async () => {
+  const entries = [];
+  const logger = {
+    info(message) { entries.push(JSON.parse(message)); },
+    warn(message) { entries.push(JSON.parse(message)); },
+    error(message) { entries.push(JSON.parse(message)); },
+  };
+  const store = createSupabaseDispatchStore({
+    url: 'https://example.supabase.co',
+    serviceRoleKey: 'service-key',
+    fetchImpl: async () => response([]),
+    logger,
+  });
+
+  await store.getIngestBatchStatus({ chatId: 'oc_secret', batchId: 'batch_secret' });
+
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].event, 'dispatch_db_request');
+  assert.equal(entries[0].outcome, 'ok');
+  assert.equal(entries[0].operation, 'GET bess_dispatch_pending_forms');
+  assert.equal(entries[0].http_status, 200);
+  assert.equal(typeof entries[0].duration_ms, 'number');
+  assert.doesNotMatch(JSON.stringify(entries[0]), /oc_secret|batch_secret|service-key/);
+});
+
+test('Supabase 超时错误保留操作和时延诊断字段', async () => {
+  const entries = [];
+  const logger = { error(message) { entries.push(JSON.parse(message)); } };
+  const fetchImpl = async (_url, { signal }) => new Promise((_resolve, reject) => {
+    signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+  });
+  const store = createSupabaseDispatchStore({
+    url: 'https://example.supabase.co',
+    serviceRoleKey: 'service-key',
+    fetchImpl,
+    timeoutMs: 5,
+    logger,
+  });
+
+  await assert.rejects(
+    store.getIngestBatchStatus({ chatId: 'oc_timeout', batchId: 'batch_timeout' }),
+    (error) => error instanceof DispatchStoreError
+      && error.code === 'DISPATCH_DB_TIMEOUT'
+      && error.dbOperation === 'GET bess_dispatch_pending_forms'
+      && error.timeoutMs === 5
+      && error.durationMs >= 5,
+  );
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].outcome, 'timeout');
+  assert.equal(entries[0].timeout_ms, 5);
+  assert.equal(entries[0].http_status, null);
 });
