@@ -515,12 +515,12 @@ test('batch ingest 快速返回 202 并在后台完成发送状态', async () =>
 });
 
 
-test('batch ingest 后台发送失败会持久化 FAILED 状态', async () => {
+test('batch ingest 后台发送失败保留租约状态供到期恢复', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
-  let failed = null;
+  let completed = false;
   const store = {
-    async claimIngestBatch() { return { outcome: 'CLAIMED' }; },
-    async failIngestBatch(value) { failed = value; },
+    async claimIngestBatch() { return { outcome: 'CLAIMED', lease_expires_at: '2026-09-14T22:05:00.000Z' }; },
+    async completeIngestBatch() { completed = true; },
   };
   const deferred = [];
   const targetHandler = createDispatchSendHandler({
@@ -533,6 +533,5 @@ test('batch ingest 后台发送失败会持久化 FAILED 状态', async () => {
   const response = await invoke(body, { targetHandler });
   assert.equal(response.status, 202);
   await deferred[0];
-  assert.equal(failed.batchId, 'batch_failed');
-  assert.equal(failed.errorCode, 'LARK_TIMEOUT');
+  assert.equal(completed, false);
 });
