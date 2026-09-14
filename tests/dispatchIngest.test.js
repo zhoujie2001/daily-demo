@@ -535,3 +535,29 @@ test('batch ingest 后台发送失败保留租约状态供到期恢复', async (
   await deferred[0];
   assert.equal(completed, false);
 });
+
+
+test('batch ingest 对瞬时数据库认领错误做有界重试', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  let claims = 0;
+  const deferred = [];
+  const store = {
+    async claimIngestBatch() {
+      claims += 1;
+      if (claims < 3) throw Object.assign(new Error('temporary database conflict'), { code: 'DISPATCH_DB_ERROR' });
+      return { outcome: 'CLAIMED', lease_expires_at: '2026-09-14T22:30:00.000Z' };
+    },
+    async completeIngestBatch() {},
+  };
+  const targetHandler = createDispatchSendHandler({
+    client: { async sendMessage() { return { message_id: 'om_db_retry' }; } },
+    storeFactory: () => store,
+    defer(promise) { deferred.push(promise); },
+  });
+  const body = { chat_id: localBody.chat_id, batch_id: 'batch_db_retry', items: [localBody] };
+
+  const response = await invoke(body, { targetHandler });
+  assert.equal(response.status, 202);
+  assert.equal(claims, 3);
+  await deferred[0];
+});
