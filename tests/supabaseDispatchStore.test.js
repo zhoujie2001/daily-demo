@@ -192,3 +192,97 @@ test('calibrateCursor 兼容 CAS 遇到并发游标变化时 fail-closed', async
     (error) => error instanceof DispatchStoreError && error.code === 'CURSOR_CALIBRATION_CONFLICT',
   );
 });
+
+
+test('claimIngestBatch 对有效租约返回 IN_FLIGHT，避免并发重复执行', async () => {
+  const existing = {
+    request_context: {
+      kind: 'dispatch_ingest', batchId: 'ingest_1', fingerprint: 'd'.repeat(64),
+      requestIds: ['r1'], status: 'SENDING', leaseExpiresAt: '2026-08-30T11:01:30.000Z',
+    },
+  };
+  const { store, calls } = setup([[], [existing]]);
+  const result = await store.claimIngestBatch({
+    chatId: 'oc_ingest', batchId: 'ingest_1', fingerprint: 'd'.repeat(64), requestIds: ['r1'],
+    now: new Date('2026-08-30T11:00:30.000Z'), expiresAt: '2026-09-06T11:00:00.000Z',
+  });
+  assert.equal(result.outcome, 'IN_FLIGHT');
+  assert.equal(calls.length, 2);
+});
+
+test('claimIngestBatch 接管过期或旧版 SENDING，并用主键加状态 CAS', async () => {
+  const existing = {
+    request_context: {
+      kind: 'dispatch_ingest', batchId: 'ingest_2', fingerprint: 'e'.repeat(64),
+      requestIds: ['r2'], status: 'SENDING',
+    },
+  };
+  const resumed = {
+    ...existing,
+    request_context: { ...existing.request_context, leaseExpiresAt: '2026-08-30T11:02:00.000Z' },
+  };
+  const { store, calls } = setup([[], [existing], [resumed]]);
+  const result = await store.claimIngestBatch({
+    chatId: 'oc_ingest', batchId: 'ingest_2', fingerprint: 'e'.repeat(64), requestIds: ['r2'],
+    now: new Date('2026-08-30T11:00:30.000Z'), expiresAt: '2026-09-06T11:00:00.000Z',
+  });
+  assert.equal(result.outcome, 'RESUMED');
+  assert.equal(calls[2].options.method, 'PATCH');
+  assert.match(calls[2].url, /form_message_id=eq\.bi_[a-f0-9]{48}&/);
+  assert.match(calls[2].url, /request_context-%3E%3Estatus=eq\.SENDING/);
+  assert.match(calls[2].url, /request_context-%3E%3EleaseExpiresAt=is\.null/);
+});
+
+test('claimIngestBatch 接管 CAS 丢失时保留并发完成的 SENT 状态', async () => {
+  const fingerprint = 'a'.repeat(64);
+  const stale = {
+    request_context: {
+      kind: 'dispatch_ingest', batchId: 'ingest_race', fingerprint,
+      requestIds: ['r-race'], status: 'SENDING', leaseExpiresAt: '2026-08-30T10:59:00.000Z',
+    },
+  };
+  const completed = {
+    request_context: {
+      kind: 'dispatch_ingest', batchId: 'ingest_race', fingerprint,
+      requestIds: ['r-race'], status: 'SENT', messageId: 'om_race_done',
+    },
+  };
+  const { store, calls } = setup([[], [stale], [], [completed]]);
+  const result = await store.claimIngestBatch({
+    chatId: 'oc_ingest', batchId: 'ingest_race', fingerprint, requestIds: ['r-race'],
+    now: new Date('2026-08-30T11:00:30.000Z'), expiresAt: '2026-09-06T11:00:00.000Z',
+  });
+  assert.deepEqual(result, { outcome: 'COMPLETE', message_id: 'om_race_done' });
+  assert.equal(calls[2].options.method, 'PATCH');
+  assert.equal(calls[3].options.method, 'GET');
+});
+
+test('completeIngestBatch 以所有权 CAS 更新并保留 requestIds', async () => {
+  const completed = { request_context: { status: 'SENT', messageId: 'om_done' } };
+  const { store, calls } = setup([[completed]]);
+  const lease = '2026-08-30T11:02:00.000Z';
+  await store.completeIngestBatch({
+    chatId: 'oc_ingest', batchId: 'ingest_3', fingerprint: 'f'.repeat(64),
+    requestIds: ['r3'], messageId: 'om_done', expectedLeaseExpiresAt: lease,
+    completedAt: new Date('2026-08-30T11:00:30.000Z'),
+  });
+  assert.equal(calls[0].options.method, 'PATCH');
+  assert.match(calls[0].url, /form_message_id=eq\.bi_[a-f0-9]{48}&/);
+  assert.match(calls[0].url, /request_context-%3E%3Efingerprint=eq\.f{64}/);
+  assert.match(calls[0].url, /request_context-%3E%3Estatus=eq\.SENDING/);
+  assert.ok(calls[0].url.includes(`request_context-%3E%3EleaseExpiresAt=eq.${encodeURIComponent(lease)}`));
+  const body = JSON.parse(calls[0].options.body);
+  assert.deepEqual(body.request_context.requestIds, ['r3']);
+  assert.equal(body.request_context.status, 'SENT');
+});
+
+test('completeIngestBatch 所有权 CAS 丢失时拒绝覆盖新记录', async () => {
+  const { store } = setup([[]]);
+  await assert.rejects(
+    store.completeIngestBatch({
+      chatId: 'oc_ingest', batchId: 'ingest_stale', fingerprint: 'b'.repeat(64),
+      requestIds: ['old'], messageId: 'om_old', expectedLeaseExpiresAt: '2026-08-30T11:02:00.000Z',
+    }),
+    (error) => error instanceof DispatchStoreError && error.code === 'INGEST_CLAIM_LOST',
+  );
+});
