@@ -102,7 +102,8 @@ test('本地推批次跳过命中拒绝理由的需求且全部命中时不发�
   };
   const targetHandler = createDispatchSendHandler({ client, storeFactory: () => createMemoryIngestStore() });
   const partial = await invoke(body, { targetHandler });
-  assert.equal(partial.status, 200);
+  assert.equal(partial.status, 202);
+  assert.equal(partial.body.status, 'SENDING');
   assert.deepEqual(partial.body.request_ids, ['allowed_1']);
   assert.deepEqual(partial.body.skipped_request_ids, ['blocked_1']);
   assert.doesNotMatch(JSON.stringify(sentCards[0].content), /blocked_1/);
@@ -353,10 +354,16 @@ test('batch ingest 发送单按钮卡并返回 batch_id', async () => {
     return new Response(JSON.stringify({ code: 0, data: { message_id: 'om_batch_1' } }), { status: 200 });
   };
   try {
-    const targetHandler = createDispatchSendHandler({ storeFactory: () => createMemoryIngestStore() });
+    const deferred = [];
+    const targetHandler = createDispatchSendHandler({
+      storeFactory: () => createMemoryIngestStore(),
+      defer(promise) { deferred.push(promise); },
+    });
     const result = await invoke(body, { targetHandler });
-    assert.equal(result.status, 200);
+    assert.equal(result.status, 202);
+    assert.equal(result.body.status, 'SENDING');
     assert.equal(result.body.batch_id, 'batch_api_1');
+    await deferred[0];
     const send = calls.find((call) => call.url.includes('/im/v1/messages'));
     const payload = JSON.parse(send.options.body);
     const expectedUuid = `bess-batch-${createHash('sha256')
@@ -426,7 +433,8 @@ test('batch send 持久化门禁阻止并发重复发送并拒绝需求集合冲
   assert.equal(sends, 1);
   resolveSend();
   const first = await firstPromise;
-  assert.equal(first.status, 200);
+  assert.equal(first.status, 202);
+  await new Promise((resolve) => setImmediate(resolve));
 
   const replay = await invoke(body, { targetHandler });
   assert.equal(replay.status, 200);
@@ -463,4 +471,68 @@ test('dedicated business chats reject missing or conflicting time segments', () 
     () => normalizeBatchDispatchIngest(conflicting),
     (error) => error.code === 'TIME_SEGMENT_CONFLICT',
   );
+});
+
+
+test('batch ingest 快速返回 202 并在后台完成发送状态', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const rows = new Map();
+  const store = {
+    async claimIngestBatch({ chatId, batchId, fingerprint }) {
+      rows.set(`${chatId}:${batchId}`, { fingerprint, status: 'SENDING' });
+      return { outcome: 'CLAIMED' };
+    },
+    async completeIngestBatch({ chatId, batchId, requestIds, messageId }) {
+      rows.set(`${chatId}:${batchId}`, { status: 'SENT', requestIds, messageId });
+    },
+  };
+  let releaseSend;
+  const client = {
+    async sendMessage() {
+      await new Promise((resolve) => { releaseSend = resolve; });
+      return { message_id: 'om_background' };
+    },
+  };
+  const deferred = [];
+  const targetHandler = createDispatchSendHandler({
+    client,
+    storeFactory: () => store,
+    defer(promise) { deferred.push(promise); },
+  });
+  const body = { chat_id: localBody.chat_id, batch_id: 'batch_background', items: [localBody] };
+
+  const response = await invoke(body, { targetHandler });
+  assert.equal(response.status, 202);
+  assert.equal(response.body.status, 'SENDING');
+  assert.equal(deferred.length, 1);
+  assert.equal(rows.get(`${body.chat_id}:${body.batch_id}`).status, 'SENDING');
+
+  releaseSend();
+  await deferred[0];
+  assert.deepEqual(rows.get(`${body.chat_id}:${body.batch_id}`), {
+    status: 'SENT', requestIds: ['715430'], messageId: 'om_background',
+  });
+});
+
+
+test('batch ingest 后台发送失败会持久化 FAILED 状态', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  let failed = null;
+  const store = {
+    async claimIngestBatch() { return { outcome: 'CLAIMED' }; },
+    async failIngestBatch(value) { failed = value; },
+  };
+  const deferred = [];
+  const targetHandler = createDispatchSendHandler({
+    client: { async sendMessage() { throw Object.assign(new Error('timeout'), { code: 'LARK_TIMEOUT' }); } },
+    storeFactory: () => store,
+    defer(promise) { deferred.push(promise); },
+  });
+  const body = { chat_id: localBody.chat_id, batch_id: 'batch_failed', items: [localBody] };
+
+  const response = await invoke(body, { targetHandler });
+  assert.equal(response.status, 202);
+  await deferred[0];
+  assert.equal(failed.batchId, 'batch_failed');
+  assert.equal(failed.errorCode, 'LARK_TIMEOUT');
 });
