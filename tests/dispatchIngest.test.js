@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { createHash, createHmac } from 'node:crypto';
 import test from 'node:test';
-import { createDispatchSendHandler, resolveSyncWaitMs as handlerSyncResolve } from '../lib/dispatch/api/send.js';
+import { createDispatchSendHandler as _realHandlerFactory, resolveSyncWaitMs as handlerSyncResolve } from '../lib/dispatch/api/send.js';
 
-const handler = createDispatchSendHandler();
+const handler = _realHandlerFactory();
+// 测试默认注入 no-op 拒绝理由回查，避免误触飞书网络；回查能力单独用真实模块测试。
+const createTestHandler = (opts = {}) => _realHandlerFactory({ enrichRejectReasons: async () => [], ...opts });
 import {
   BESS_ADDITIONAL_CHAT_ID,
   LOCAL_PROMO_BLOCKED_REJECT_REASONS,
@@ -134,7 +136,7 @@ test('本地推批次跳过命中拒绝理由的需求且全部命中时不发�
       return { message_id: 'om_filtered_batch' };
     },
   };
-  const targetHandler = createDispatchSendHandler({ client, storeFactory: () => createMemoryIngestStore() });
+  const targetHandler = createTestHandler({ client, storeFactory: () => createMemoryIngestStore() });
   const partial = await invoke(body, { targetHandler }, { headers: { 'x-bess-wait': 'async' } });
   assert.equal(partial.status, 202);
   assert.equal(partial.body.status, 'SENDING');
@@ -287,7 +289,7 @@ test('单条 ingest 持久化 SENDING 后快速返回 202，并由后台发送�
   };
   try {
     const deferred = [];
-    const targetHandler = createDispatchSendHandler({
+    const targetHandler = createTestHandler({
       storeFactory: () => createMemoryIngestStore(),
       defer(promise) { deferred.push(promise); },
     });
@@ -397,7 +399,7 @@ test('batch ingest 发送单按钮卡并返回 batch_id', async () => {
   };
   try {
     const deferred = [];
-    const targetHandler = createDispatchSendHandler({
+    const targetHandler = createTestHandler({
       storeFactory: () => createMemoryIngestStore(),
       defer(promise) { deferred.push(promise); },
     });
@@ -441,7 +443,7 @@ test('长 batch_id 共享相同前缀时消息 UUID 仍不碰撞', async () => {
   };
   try {
     const store = createMemoryIngestStore();
-    const targetHandler = createDispatchSendHandler({ storeFactory: () => store });
+    const targetHandler = createTestHandler({ storeFactory: () => store });
     await invoke(bodies[0], { targetHandler });
     await invoke(bodies[1], { targetHandler });
     assert.equal(uuids.length, 2);
@@ -463,7 +465,7 @@ test('batch send 持久化门禁阻止并发重复发送并拒绝需求集合冲
       return { message_id: 'om_once' };
     },
   };
-  const targetHandler = createDispatchSendHandler({ client, storeFactory: () => store });
+  const targetHandler = createTestHandler({ client, storeFactory: () => store });
   const body = {
     chat_id: localBody.chat_id, batch_id: 'batch_gate',
     items: [localBody, { ...localBody, request_id: '715499', row_index: 99 }],
@@ -536,7 +538,7 @@ test('batch ingest 快速返回 202 并在后台完成发送状态', async () =>
     },
   };
   const deferred = [];
-  const targetHandler = createDispatchSendHandler({
+  const targetHandler = createTestHandler({
     client,
     storeFactory: () => store,
     defer(promise) { deferred.push(promise); },
@@ -566,7 +568,7 @@ test('batch ingest 后台发送失败持久化 FAILED 供安全重试', async ()
     async failIngestBatch(payload) { failedState = payload; },
   };
   const deferred = [];
-  const targetHandler = createDispatchSendHandler({
+  const targetHandler = createTestHandler({
     client: { async sendMessage() { throw Object.assign(new Error('timeout'), { code: 'LARK_TIMEOUT' }); } },
     storeFactory: () => store,
     defer(promise) { deferred.push(promise); },
@@ -591,7 +593,7 @@ test('同步接单错误不做多次等待，快速失败给调用方重试', as
       throw Object.assign(new Error('database timeout'), { code: 'DISPATCH_DB_TIMEOUT', status: 503 });
     },
   };
-  const targetHandler = createDispatchSendHandler({
+  const targetHandler = createTestHandler({
     client: { async sendMessage() { throw new Error('must not send'); } },
     storeFactory: () => store,
   });
@@ -608,7 +610,7 @@ test('同步接单错误不做多次等待，快速失败给调用方重试', as
 
 test('单条幂等重放 IN_FLIGHT 的 202 响应包含统一 request_id 字段', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
-  const targetHandler = createDispatchSendHandler({
+  const targetHandler = createTestHandler({
     client: { async sendMessage() { throw new Error('must not send'); } },
     storeFactory: () => ({
       async claimIngestBatch() {
@@ -626,7 +628,7 @@ test('单条幂等重放 IN_FLIGHT 的 202 响应包含统一 request_id 字段'
 
 test('有界同步等待 wait=1 在时限内成功返回 200 + message_id', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
-  const targetHandler = createDispatchSendHandler({
+  const targetHandler = createTestHandler({
     client: { async sendMessage() { return { message_id: 'om_sync_success' }; } },
     storeFactory: () => createMemoryIngestStore(),
     defer(p) { p.catch(() => {}); },
@@ -644,7 +646,7 @@ test('有界同步等待超时后回退到 202 SENDING 且不丢卡', async () =
   let resolveSend;
   const sent = new Promise((resolve) => { resolveSend = resolve; });
   const deferred = [];
-  const targetHandler = createDispatchSendHandler({
+  const targetHandler = createTestHandler({
     client: {
       async sendMessage() {
         await sent;
@@ -666,7 +668,7 @@ test('有界同步等待超时后回退到 202 SENDING 且不丢卡', async () =
 
 test('有界同步等待在等待期内确认失败时返回 502', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
-  const targetHandler = createDispatchSendHandler({
+  const targetHandler = createTestHandler({
     client: { async sendMessage() { const e = new Error('boom'); e.code = 'LARK_230001'; throw e; } },
     storeFactory: () => createMemoryIngestStore(),
     defer(p) { p.catch(() => {}); },
@@ -680,7 +682,7 @@ test('有界同步等待在等待期内确认失败时返回 502', async () => {
 
 test('旧客户端无 wait 信号投递本地推群时默认有界同步返回 200', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
-  const targetHandler = createDispatchSendHandler({
+  const targetHandler = createTestHandler({
     client: { async sendMessage() { return { message_id: 'om_legacy_ok' }; } },
     storeFactory: () => createMemoryIngestStore(),
     defer(p) { p.catch(() => {}); },
