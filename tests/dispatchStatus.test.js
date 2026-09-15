@@ -64,3 +64,23 @@ test('持久化批次完成后返回 SENT 和 message_id', async () => {
     message_id: 'om_sent',
   });
 });
+
+
+test('单条 status 使用 request_id 派生稳定批次主键且只查询本地账本', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  let query;
+  const startedAt = Date.now();
+  const result = await invoke(
+    { chat_id: 'oc_test', request_id: '762999' },
+    {
+      async getIngestBatchStatus(value) {
+        query = value;
+        return { found: true, status: 'FAILED', retryable: true, error_code: 'LARK_TIMEOUT' };
+      },
+    },
+  );
+  assert.equal(result.status, 200);
+  assert.deepEqual(query, { chatId: 'oc_test', batchId: 'single:762999' });
+  assert.equal(result.body.status, 'FAILED');
+  assert.ok(Date.now() - startedAt < 100);
+});
