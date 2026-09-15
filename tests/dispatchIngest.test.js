@@ -667,3 +667,27 @@ test('resolveSyncWaitMs 仍解析旧信号供兼容观测，但发送路径始�
   assert.equal(handlerSyncResolve(mkReq('/api/send')), 0);
   assert.ok(handlerSyncResolve(mkReq('/api/send?wait=1')) > 0);
 });
+
+
+test('send 将已有 DEAD outbox 映射为 FAILED 并返回 dead-letter 元数据', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const deferred = [];
+  const targetHandler = createTestHandler({
+    storeFactory: () => ({
+      async enqueueDispatchOutbox() {
+        return {
+          outcome: 'ACCEPTED', status: 'DEAD', operation_id: 'bess-outbox-dead',
+          error_code: 'LARK_REJECTED',
+        };
+      },
+    }),
+    defer(promise) { deferred.push(promise); },
+    async runWorker() { return { ok: true, claimed: 0, results: [] }; },
+  });
+  const response = await invoke(localBody, { targetHandler });
+  assert.equal(response.status, 202);
+  assert.equal(response.body.status, 'FAILED');
+  assert.equal(response.body.dead_letter, true);
+  assert.equal(response.body.terminal_reason, 'LARK_REJECTED');
+  await Promise.all(deferred);
+});

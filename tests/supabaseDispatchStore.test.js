@@ -509,3 +509,25 @@ test('生产未迁移时 retry 和 DEAD 均写回现有 request_context', async 
   assert.equal(context.status, 'DEAD');
   assert.equal(context.workerToken, null);
 });
+
+
+test('status recovery claim 使用目标 batch 的 REST/CAS 而非全局 RPC', async () => {
+  const now = new Date('2026-09-15T10:00:00.000Z');
+  const row = {
+    form_message_id: 'bi_target', chat_id: 'oc_target', created_at: now.toISOString(), completed_at: null,
+    request_context: {
+      kind: 'dispatch_ingest', batchId: 'batch_target', operationId: 'op_target',
+      requestIds: ['r1'], card: { schema: '2.0' }, status: 'RETRY', attempt: 1,
+      nextRetryAt: now.toISOString(), leaseExpiresAt: null, workerToken: null,
+    },
+  };
+  const { store, calls } = setup([[row], [{ ...row, request_context: { ...row.request_context, status: 'PROCESSING' } }]]);
+  const claimed = await store.claimDispatchOutboxBatch({
+    chatId: 'oc_target', batchId: 'batch_target', workerToken: 'worker-target', now,
+  });
+  assert.equal(claimed.length, 1);
+  assert.equal(claimed[0].batch_id, 'batch_target');
+  assert.doesNotMatch(calls[0].url, /\/rpc\//);
+  assert.match(calls[0].url, /form_message_id=eq\./);
+  assert.match(calls[1].url, /request_context-%3E%3Estatus=eq\.RETRY/);
+});
