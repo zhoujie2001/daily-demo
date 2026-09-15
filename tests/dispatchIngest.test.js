@@ -6,9 +6,12 @@ import { createDispatchSendHandler } from '../lib/dispatch/api/send.js';
 const handler = createDispatchSendHandler();
 import {
   BESS_ADDITIONAL_CHAT_ID,
+  LOCAL_PROMO_BLOCKED_REJECT_REASONS,
+  auditLocalPromoRejectReasons,
   batchDispatchActionValue,
   canonicalJson,
   dispatchActionValue,
+  hasLocalPromoRejectReasonField,
   normalizeBatchDispatchIngest,
   normalizeDispatchIngest,
   shouldSkipLocalPromoDispatch,
@@ -82,10 +85,29 @@ test('仅本地推群过滤指定拒绝理由，其他需求正常派单', () =>
   }
   assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { reject_reason: '涉及保证产品/服务效果' }), false);
   assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { reject_reason: '投资类:未显著标明“投资有风险”提示语' }), true);
+  assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { reject_reason: '投资类：未显著标明“投资有风险”提示语' }), true);
+  assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { reject_reason: '【团购】其它有违客观事实的虚假内容' }), true);
   assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { reject_reason: '【团购】有违社会主流价值观的内容' }), false);
   assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { request_name: '大盘监管风险抽样_本地2.0_认领门店（归因）_正式_P2_1001069' }), false);
   assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { rejectReason: '大盘风险抽样_本地_认领门店（归因）' }), false);
   assert.equal(shouldSkipLocalPromoDispatch('oc_2ecc53a432a03f6f81f6a18babe8cda1', { reject_reason: blockedReasons[0] }), false);
+});
+
+test('本地推拒绝理由审计识别跳过项与缺失字段项', () => {
+  const items = [
+    { request_id: '1', reject_reason: '【团购】涉及保证产品/服务效果' },
+    { request_id: '2', rejectReason: '合规内容' },
+    { request_id: '3' },
+    { request_id: '4', reject_reason: '' },
+  ];
+  const audit = auditLocalPromoRejectReasons(localBody.chat_id, items);
+  assert.deepEqual(audit.skipped, ['1']);
+  assert.deepEqual(audit.missingField, ['3']);
+  assert.equal(hasLocalPromoRejectReasonField({ reject_reason: '' }), true);
+  assert.equal(hasLocalPromoRejectReasonField({ rejectReason: null }), true);
+  assert.equal(hasLocalPromoRejectReasonField({}), false);
+  // 非本地推群不审计
+  assert.deepEqual(auditLocalPromoRejectReasons('oc_2ecc53a432a03f6f81f6a18babe8cda1', items), { skipped: [], missingField: [] });
 });
 
 test('本地推批次跳过命中拒绝理由的需求且全部命中时不发卡', async () => {
