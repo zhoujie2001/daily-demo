@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createSupabaseDispatchStore, DispatchStoreError } from '../lib/dispatch/supabase-store.js';
+import { runDispatchOutbox } from '../lib/dispatch/outbox-worker.js';
 
 function response(payload, { ok = true, status = 200 } = {}) {
   return {
@@ -410,4 +411,101 @@ test('enqueueDispatchOutbox 慢数据库受 claim 总预算约束', async () => 
     (error) => error instanceof DispatchStoreError && error.code === 'DISPATCH_DB_TIMEOUT',
   );
   assert.equal(calls, 1);
+});
+
+
+test('outbox RPC 未迁移时 /send 入队自动降级到 pending_forms REST', async () => {
+  const missing = response({ code: 'PGRST202', message: 'Could not find bess_enqueue_dispatch_outbox' }, { ok: false, status: 404 });
+  const inserted = { form_message_id: 'bi_legacy', request_context: { kind: 'dispatch_ingest' } };
+  const calls = [];
+  const payloads = [missing, response([inserted])];
+  const store = createSupabaseDispatchStore({
+    url: 'https://example.supabase.co', serviceRoleKey: 'service-key',
+    fetchImpl: async (url, options) => { calls.push({ url, options }); return payloads.shift(); },
+  });
+  const result = await store.enqueueDispatchOutbox({
+    chatId: 'oc_legacy', batchId: 'batch_legacy', fingerprint: 'a'.repeat(64),
+    requestIds: ['r1'], operationId: 'op_stable', card: { schema: '2.0' }, source: 'test',
+    now: new Date('2026-09-15T10:00:00.000Z'), expiresAt: '2026-09-22T10:00:00.000Z',
+  });
+  assert.equal(result.outcome, 'ACCEPTED');
+  assert.equal(result.operation_id, 'op_stable');
+  assert.match(calls[0].url, /rpc\/bess_enqueue_dispatch_outbox$/);
+  assert.match(calls[1].url, /bess_dispatch_pending_forms\?on_conflict=form_message_id$/);
+  const context = JSON.parse(calls[1].options.body).request_context;
+  assert.equal(context.status, 'QUEUED');
+  assert.equal(context.operationId, 'op_stable');
+});
+
+test('生产未迁移时并发 worker 通过 REST CAS 只发送一次并写回 SENT', async () => {
+  const now = new Date('2026-09-15T10:00:00.000Z');
+  let row = {
+    form_message_id: 'bi_concurrent', request_id: 'batch_concurrent', original_message_id: 'bi_concurrent',
+    chat_id: 'oc_concurrent', created_at: now.toISOString(), completed_at: null,
+    request_context: {
+      kind: 'dispatch_ingest', batchId: 'batch_concurrent', fingerprint: 'b'.repeat(64),
+      requestIds: ['r1'], operationId: 'op_concurrent', card: { schema: '2.0' },
+      status: 'QUEUED', attempt: 0, nextRetryAt: now.toISOString(), leaseExpiresAt: null, workerToken: null,
+    },
+  };
+  const fetchImpl = async (url, options) => {
+    if (url.includes('/rpc/')) {
+      const name = url.split('/rpc/')[1];
+      return response({ code: 'PGRST202', message: `Could not find ${name}` }, { ok: false, status: 404 });
+    }
+    if (options.method === 'GET') return response(row && !row.completed_at ? [structuredClone(row)] : row ? [structuredClone(row)] : []);
+    if (options.method === 'PATCH') {
+      const wantsProcessing = url.includes('status=eq.PROCESSING');
+      const wantsQueued = url.includes('status=eq.QUEUED');
+      const workerMatch = !url.includes('workerToken=eq.')
+        || url.includes(`workerToken=eq.${encodeURIComponent(row.request_context.workerToken)}`);
+      if ((wantsQueued && row.request_context.status !== 'QUEUED')
+        || (wantsProcessing && row.request_context.status !== 'PROCESSING') || !workerMatch) return response([]);
+      const body = JSON.parse(options.body);
+      row = { ...row, ...body };
+      return response([structuredClone(row)]);
+    }
+    throw new Error(`unexpected ${options.method} ${url}`);
+  };
+  const store = createSupabaseDispatchStore({ url: 'https://example.supabase.co', serviceRoleKey: 'service-key', fetchImpl });
+  const sent = [];
+  const client = { async sendMessage(message) { sent.push(message); return { message_id: 'om_deduped' }; } };
+  const [first, second] = await Promise.all([
+    runDispatchOutbox({ store, client, workerToken: 'worker-a', now: () => now }),
+    runDispatchOutbox({ store, client, workerToken: 'worker-b', now: () => now }),
+  ]);
+  assert.equal(first.claimed + second.claimed, 1);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].uuid, 'op_concurrent');
+  assert.equal(row.request_context.status, 'SENT');
+  assert.equal(row.request_context.messageId, 'om_deduped');
+  assert.equal(row.original_message_id, 'om_deduped');
+});
+
+test('生产未迁移时 retry 和 DEAD 均写回现有 request_context', async () => {
+  const now = new Date('2026-09-15T10:00:00.000Z');
+  let context = { kind: 'dispatch_ingest', operationId: 'op_retry', status: 'PROCESSING', workerToken: 'worker-r', leaseExpiresAt: now.toISOString() };
+  const fetchImpl = async (url, options) => {
+    if (url.includes('/rpc/')) return response({ code: 'PGRST202', message: `Could not find ${url.split('/rpc/')[1]}` }, { ok: false, status: 404 });
+    if (options.method === 'GET') return response([{ form_message_id: 'bi_retry', request_context: structuredClone(context) }]);
+    if (options.method === 'PATCH') {
+      context = JSON.parse(options.body).request_context;
+      return response([{ form_message_id: 'bi_retry', request_context: structuredClone(context) }]);
+    }
+    throw new Error('unexpected request');
+  };
+  const store = createSupabaseDispatchStore({ url: 'https://example.supabase.co', serviceRoleKey: 'service-key', fetchImpl });
+  await store.retryDispatchOutbox({
+    formMessageId: 'bi_retry', workerToken: 'worker-r', operationId: 'op_retry',
+    errorCode: 'COMPLETE_TIMEOUT', nextRetryAt: new Date(now.getTime() + 5000), dead: false,
+  });
+  assert.equal(context.status, 'RETRY');
+  assert.equal(context.errorCode, 'COMPLETE_TIMEOUT');
+  context = { ...context, status: 'PROCESSING', workerToken: 'worker-r' };
+  await store.retryDispatchOutbox({
+    formMessageId: 'bi_retry', workerToken: 'worker-r', operationId: 'op_retry',
+    errorCode: 'MAX_ATTEMPTS', nextRetryAt: new Date(now.getTime() + 10000), dead: true,
+  });
+  assert.equal(context.status, 'DEAD');
+  assert.equal(context.workerToken, null);
 });
