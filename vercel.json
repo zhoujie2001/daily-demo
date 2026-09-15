@@ -40,7 +40,7 @@
     },
     {
       "path": "/api/cron/bess-dispatch-outbox",
-      "schedule": "* * * * *"
+      "schedule": "25 16 * * *"
     }
   ],
   "headers": [

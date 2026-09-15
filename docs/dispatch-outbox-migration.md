@@ -24,7 +24,7 @@
    - `bess_complete_dispatch_outbox`
    - `bess_retry_dispatch_outbox`
    - `bess_nudge_dispatch_outbox`
-3. 确认 `/api/cron/bess-dispatch-outbox` 已注册为每分钟 Cron。
+3. 确认 `/api/cron/bess-dispatch-outbox` 已注册为每日兜底 Cron（Hobby 计划不允许分钟级 Cron）；每次 `/send` 都会异步启动 worker，后续发送会顺带恢复旧任务，`/status` 只做 DB nudge。
 4. 用签名的不存在批次调用 `/api/dispatch/status`，确认有界返回 `found=false`。
 5. 用测试群的唯一 `batch_id` 调用 `/send`，确认先返回 `202/SENDING + operation_id`，随后 `/status` 返回 `SENT + operation_id + message_id`。
 
