@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, createHmac } from 'node:crypto';
 import test from 'node:test';
-import { createDispatchSendHandler } from '../lib/dispatch/api/send.js';
+import { createDispatchSendHandler, resolveSyncWaitMs as handlerSyncResolve } from '../lib/dispatch/api/send.js';
 
 const handler = createDispatchSendHandler();
 import {
@@ -135,7 +135,7 @@ test('本地推批次跳过命中拒绝理由的需求且全部命中时不发�
     },
   };
   const targetHandler = createDispatchSendHandler({ client, storeFactory: () => createMemoryIngestStore() });
-  const partial = await invoke(body, { targetHandler });
+  const partial = await invoke(body, { targetHandler }, { headers: { 'x-bess-wait': 'async' } });
   assert.equal(partial.status, 202);
   assert.equal(partial.body.status, 'SENDING');
   assert.deepEqual(partial.body.request_ids, ['allowed_1']);
@@ -291,7 +291,7 @@ test('单条 ingest 持久化 SENDING 后快速返回 202，并由后台发送�
       storeFactory: () => createMemoryIngestStore(),
       defer(promise) { deferred.push(promise); },
     });
-    const result = await invoke(localBody, { targetHandler });
+    const result = await invoke(localBody, { targetHandler }, { headers: { 'x-bess-wait': 'async' } });
     assert.equal(result.status, 202);
     assert.equal(result.body.status, 'SENDING');
     assert.equal(result.body.batch_id, 'single:715430');
@@ -401,7 +401,7 @@ test('batch ingest 发送单按钮卡并返回 batch_id', async () => {
       storeFactory: () => createMemoryIngestStore(),
       defer(promise) { deferred.push(promise); },
     });
-    const result = await invoke(body, { targetHandler });
+    const result = await invoke(body, { targetHandler }, { headers: { 'x-bess-wait': 'async' } });
     assert.equal(result.status, 202);
     assert.equal(result.body.status, 'SENDING');
     assert.equal(result.body.batch_id, 'batch_api_1');
@@ -468,7 +468,7 @@ test('batch send 持久化门禁阻止并发重复发送并拒绝需求集合冲
     chat_id: localBody.chat_id, batch_id: 'batch_gate',
     items: [localBody, { ...localBody, request_id: '715499', row_index: 99 }],
   };
-  const firstPromise = invoke(body, { targetHandler });
+  const firstPromise = invoke(body, { targetHandler }, { headers: { 'x-bess-wait': 'async' } });
   await new Promise((resolve) => setImmediate(resolve));
   const concurrent = await invoke(body, { targetHandler });
   assert.equal(concurrent.status, 202);
@@ -573,7 +573,7 @@ test('batch ingest 后台发送失败持久化 FAILED 供安全重试', async ()
   });
   const body = { chat_id: localBody.chat_id, batch_id: 'batch_failed', items: [localBody] };
 
-  const response = await invoke(body, { targetHandler });
+  const response = await invoke(body, { targetHandler }, { headers: { 'x-bess-wait': 'async' } });
   assert.equal(response.status, 202);
   await deferred[0];
   assert.equal(failedState.batchId, 'batch_failed');
@@ -676,4 +676,28 @@ test('有界同步等待在等待期内确认失败时返回 502', async () => {
 
   assert.equal(response.status, 502);
   assert.equal(response.body.error_code, 'LARK_230001');
+});
+
+test('旧客户端无 wait 信号投递本地推群时默认有界同步返回 200', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const targetHandler = createDispatchSendHandler({
+    client: { async sendMessage() { return { message_id: 'om_legacy_ok' }; } },
+    storeFactory: () => createMemoryIngestStore(),
+    defer(p) { p.catch(() => {}); },
+  });
+
+  // 不带任何 wait 头/参数，模拟已部署的旧大盘 buddy
+  const response = await invoke(localBody, { targetHandler });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.message_id, 'om_legacy_ok');
+  assert.equal(response.body.sync, true);
+});
+
+test('resolveSyncWaitMs 支持显式异步 opt-out', () => {
+  const mkReq = (url, headers = {}) => ({ url, headers });
+  assert.equal(handlerSyncResolve(mkReq('/api/send?wait=0')), -1);
+  assert.equal(handlerSyncResolve(mkReq('/api/send', { 'x-bess-wait': 'async' })), -1);
+  assert.equal(handlerSyncResolve(mkReq('/api/send')), 0);
+  assert.ok(handlerSyncResolve(mkReq('/api/send?wait=1')) > 0);
 });
