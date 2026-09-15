@@ -207,3 +207,26 @@ test('低流量中断任务由重复 status 后台恢复且只发送一次', asy
   assert.equal(final.body.message_id, 'om_low_once');
   assert.equal(final.deferred.length, 0);
 });
+
+
+test('status 将持久化的全量过滤终态返回为 skipped 且不暴露伪 message_id', async () => {
+  const response = await invoke(
+    { chat_id: 'oc_a', batch_id: 'batch_skipped' },
+    {
+      async getIngestBatchStatus() {
+        return {
+          found: true,
+          status: 'SENT',
+          message_id: 'skipped:bess-outbox-abc',
+          request_ids: ['760104'],
+          retryable: false,
+        };
+      },
+    },
+  );
+  assert.equal(response.status, 200);
+  assert.equal(response.body.status, 'SENT');
+  assert.equal(response.body.skipped, true);
+  assert.deepEqual(response.body.skipped_request_ids, ['760104']);
+  assert.equal(Object.hasOwn(response.body, 'message_id'), false);
+});
