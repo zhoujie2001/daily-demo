@@ -366,3 +366,48 @@ test('failIngestBatch 以租约 CAS 持久化 FAILED', async () => {
   assert.equal(body.request_context.status, 'FAILED');
   assert.equal(body.request_context.errorCode, 'LARK_TIMEOUT');
 });
+
+
+test('outbox store 通过 RPC 入队、claim、complete 和 retry', async () => {
+  const { store, calls } = setup([
+    [{ outcome: 'ACCEPTED', status: 'QUEUED', operation_id: 'op_1', message_id: '' }],
+    [{ form_message_id: 'bi_1', chat_id: 'oc_1', batch_id: 'b_1', operation_id: 'op_1', request_ids: ['r1'], card: { schema: '2.0' }, attempt: 1 }],
+    [{ completed: true }],
+    [{ updated: true }],
+  ]);
+  const now = new Date('2026-09-15T10:00:00.000Z');
+  const enqueued = await store.enqueueDispatchOutbox({
+    chatId: 'oc_1', batchId: 'b_1', fingerprint: 'a'.repeat(64), requestIds: ['r1'],
+    operationId: 'op_1', card: { schema: '2.0' }, source: 'test', now,
+    expiresAt: '2026-09-22T10:00:00.000Z',
+  });
+  assert.equal(enqueued.status, 'QUEUED');
+  const claimed = await store.claimDispatchOutbox({ workerToken: 'worker-1', now });
+  assert.equal(claimed[0].operation_id, 'op_1');
+  await store.completeDispatchOutbox({ formMessageId: 'bi_1', workerToken: 'worker-1', operationId: 'op_1', messageId: 'om_1', completedAt: now });
+  await store.retryDispatchOutbox({ formMessageId: 'bi_1', workerToken: 'worker-1', operationId: 'op_1', errorCode: 'TEST', nextRetryAt: now, dead: false });
+  assert.match(calls[0].url, /rpc\/bess_enqueue_dispatch_outbox$/);
+  assert.match(calls[1].url, /rpc\/bess_claim_dispatch_outbox$/);
+  assert.match(calls[2].url, /rpc\/bess_complete_dispatch_outbox$/);
+  assert.match(calls[3].url, /rpc\/bess_retry_dispatch_outbox$/);
+});
+
+test('enqueueDispatchOutbox 慢数据库受 claim 总预算约束', async () => {
+  let calls = 0;
+  const fetchImpl = async (_url, { signal }) => {
+    calls += 1;
+    return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))));
+  };
+  const store = createSupabaseDispatchStore({
+    url: 'https://example.supabase.co', serviceRoleKey: 'service-key', fetchImpl,
+    timeoutMs: 5000, claimTimeoutMs: 20, logger: {},
+  });
+  await assert.rejects(
+    store.enqueueDispatchOutbox({
+      chatId: 'oc_slow', batchId: 'slow', fingerprint: 'a'.repeat(64), requestIds: ['r'], operationId: 'op',
+      card: { schema: '2.0' }, source: 'test', now: new Date(), expiresAt: new Date(Date.now() + 86400000).toISOString(),
+    }),
+    (error) => error instanceof DispatchStoreError && error.code === 'DISPATCH_DB_TIMEOUT',
+  );
+  assert.equal(calls, 1);
+});

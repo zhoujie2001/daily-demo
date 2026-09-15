@@ -84,3 +84,34 @@ test('单条 status 使用 request_id 派生稳定批次主键且只查询本地
   assert.equal(result.body.status, 'FAILED');
   assert.ok(Date.now() - startedAt < 100);
 });
+
+
+test('status 将 outbox 中间态映射为 SENDING 并仅执行数据库 nudge', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  let nudged;
+  const result = await invoke(
+    { chat_id: 'oc_test', batch_id: 'batch_processing' },
+    {
+      async getIngestBatchStatus() { return { found: true, status: 'PROCESSING', operation_id: 'op_1', attempt: 2 }; },
+      async nudgeDispatchOutbox(value) { nudged = value; return true; },
+    },
+  );
+  assert.equal(result.status, 200);
+  assert.equal(result.body.status, 'SENDING');
+  assert.equal(result.body.operation_id, 'op_1');
+  assert.deepEqual(nudged, { chatId: 'oc_test', batchId: 'batch_processing' });
+});
+
+test('status 已读到状态后 nudge 超时仍返回结果', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const result = await invoke(
+    { chat_id: 'oc_test', batch_id: 'batch_retry' },
+    {
+      async getIngestBatchStatus() { return { found: true, status: 'RETRY', error_code: 'LARK_TIMEOUT' }; },
+      async nudgeDispatchOutbox() { throw Object.assign(new Error('slow db'), { code: 'DISPATCH_DB_TIMEOUT' }); },
+    },
+  );
+  assert.equal(result.status, 200);
+  assert.equal(result.body.status, 'SENDING');
+  assert.equal(result.body.error_code, 'LARK_TIMEOUT');
+});

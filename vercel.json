@@ -24,6 +24,9 @@
     },
     "api/cron/bess-dispatch-cleanup.js": {
       "maxDuration": 10
+    },
+    "api/cron/bess-dispatch-outbox.js": {
+      "maxDuration": 30
     }
   },
   "crons": [
@@ -34,6 +37,10 @@
     {
       "path": "/api/cron/bess-dispatch-cleanup",
       "schedule": "10 16 * * *"
+    },
+    {
+      "path": "/api/cron/bess-dispatch-outbox",
+      "schedule": "* * * * *"
     }
   ],
   "headers": [

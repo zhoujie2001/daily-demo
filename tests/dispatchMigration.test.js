@@ -27,3 +27,25 @@ test('原子接单 RPC 遵循最小权限并纳入只读验收', () => {
   assert.match(verification, /缺少原子接单 RPC bess_claim_ingest/);
   assert.match(verification, /PUBLIC 仍可执行 bess_claim_ingest/);
 });
+
+
+const outboxMigration = readFileSync(new URL('../db/migrations/20260915_dispatch_outbox.sql', import.meta.url), 'utf8');
+const outboxRunbook = readFileSync(new URL('../docs/dispatch-outbox-migration.md', import.meta.url), 'utf8');
+
+test('outbox migration 包含原子入队、租约 claim、提交、重试与恢复 RPC', () => {
+  for (const name of [
+    'bess_enqueue_dispatch_outbox', 'bess_claim_dispatch_outbox',
+    'bess_complete_dispatch_outbox', 'bess_retry_dispatch_outbox', 'bess_nudge_dispatch_outbox',
+  ]) assert.match(outboxMigration, new RegExp(`create or replace function public\\.${name}\\(`, 'i'));
+  assert.match(outboxMigration, /for update skip locked/i);
+  assert.match(outboxMigration, /'status', case when p_dead then 'DEAD' else 'RETRY' end/i);
+  assert.match(outboxMigration, /pending\.request_context ->> 'operationId' = p_operation_id/i);
+  assert.match(outboxMigration, /grant execute[\s\S]*?to service_role/i);
+});
+
+test('outbox migration runbook 包含部署顺序、验证及回滚', () => {
+  assert.match(outboxRunbook, /部署顺序/);
+  assert.match(outboxRunbook, /验证/);
+  assert.match(outboxRunbook, /回滚/);
+  assert.match(outboxRunbook, /drop function/i);
+});

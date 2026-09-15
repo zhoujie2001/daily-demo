@@ -12,6 +12,12 @@ const NOW = Math.floor(Date.now() / 1000);
 function baseItem(overrides = {}) {
   return {
     request_id: '760104',
+    request_name: '本地新增需求',
+    business_type: '本地推',
+    target_category: 'local_promo',
+    time_segment: 'E',
+    created_at: '2026-09-15 16:05:00',
+    creator: '测试人',
     sheet_url: 'https://feishu.cn/sheets/tok',
     sheet_id: 'sheetA',
     row_index: 89,
@@ -87,20 +93,20 @@ function signature(body, timestamp = NOW) {
   return createHmac('sha256', SECRET).update(`${timestamp}.${canonicalJson(body)}`).digest('hex');
 }
 
-test('端到端：旧客户端漏传 → 回查命中跳过名单 → 该需求被过滤', async () => {
+test('端到端：旧客户端漏传时 /send 不同步回查 Sheet，直接持久入队', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   const fakeClient = createFakeClient(['前缀 【团购】涉及保证产品/服务效果 后缀']);
-
-  // 用真实 enrichment，但 client 为假
+  let enqueued;
   const targetHandler = createDispatchSendHandler({
     client: fakeClient,
     storeFactory: () => ({
-      async claimIngestBatch() {
-        return { outcome: 'CLAIMED', lease_expires_at: '2026-09-15T20:00:00.000Z' };
+      async enqueueDispatchOutbox(payload) {
+        enqueued = payload;
+        return { outcome: 'ACCEPTED', status: 'QUEUED', operation_id: payload.operationId };
       },
     }),
     defer(p) { p.catch(() => {}); },
-    enrichRejectReasons: (opts) => enrichLocalPromoRejectReasons({ ...opts, client: fakeClient }),
+    runWorker: async () => ({ ok: true, claimed: 0, results: [] }),
   });
 
   const body = {
@@ -122,8 +128,8 @@ test('端到端：旧客户端漏传 → 回查命中跳过名单 → 该需求�
     },
   }, response);
 
-  // 唯一一条被跳过：200 + skipped=true，无 message_id
-  assert.equal(result.status, 200);
-  assert.equal(result.body.skipped, true);
-  assert.deepEqual(result.body.skipped_request_ids, ['760104']);
+  assert.equal(result.status, 202);
+  assert.equal(result.body.status, 'SENDING');
+  assert.equal(fakeClient.calls.getValues, 0);
+  assert.deepEqual(enqueued.requestIds, ['760104']);
 });
