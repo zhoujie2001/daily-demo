@@ -195,67 +195,52 @@ test('calibrateCursor 兼容 CAS 遇到并发游标变化时 fail-closed', async
 });
 
 
-test('claimIngestBatch 对有效租约返回 IN_FLIGHT，避免并发重复执行', async () => {
-  const existing = {
-    request_context: {
-      kind: 'dispatch_ingest', batchId: 'ingest_1', fingerprint: 'd'.repeat(64),
-      requestIds: ['r1'], status: 'SENDING', leaseExpiresAt: '2026-08-30T11:01:30.000Z',
-    },
-  };
-  const { store, calls } = setup([[], [existing]]);
+test('claimIngestBatch 通过单次 RPC 原子持久化 SENDING', async () => {
+  const lease = '2026-08-30T11:02:00.000Z';
+  const { store, calls } = setup([[{ outcome: 'CLAIMED', lease_expires_at: lease, message_id: '' }]]);
   const result = await store.claimIngestBatch({
     chatId: 'oc_ingest', batchId: 'ingest_1', fingerprint: 'd'.repeat(64), requestIds: ['r1'],
     now: new Date('2026-08-30T11:00:30.000Z'), expiresAt: '2026-09-06T11:00:00.000Z',
   });
-  assert.equal(result.outcome, 'IN_FLIGHT');
+  assert.equal(result.outcome, 'CLAIMED');
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /rpc\/bess_claim_ingest$/);
+  assert.equal(calls[0].options.method, 'POST');
+  const body = JSON.parse(calls[0].options.body);
+  assert.match(body.p_form_message_id, /^bi_[a-f0-9]{48}$/);
+  assert.deepEqual(body.p_request_ids, ['r1']);
+});
+
+test('claimIngestBatch 原子 RPC 直接返回幂等重放结果', async () => {
+  const { store, calls } = setup([[{ outcome: 'COMPLETE', lease_expires_at: null, message_id: 'om_done' }]]);
+  const result = await store.claimIngestBatch({
+    chatId: 'oc_ingest', batchId: 'ingest_done', fingerprint: 'e'.repeat(64), requestIds: ['r2'],
+    now: new Date('2026-08-30T11:00:30.000Z'), expiresAt: '2026-09-06T11:00:00.000Z',
+  });
+  assert.deepEqual(result, { outcome: 'COMPLETE', lease_expires_at: '', message_id: 'om_done' });
+  assert.equal(calls.length, 1);
+});
+
+test('claimIngestBatch 在 RPC 缺失时走有总预算的旧 schema 回退', async () => {
+  const missing = { code: 'PGRST202', message: 'Could not find bess_claim_ingest' };
+  const inserted = { request_context: { kind: 'dispatch_ingest', status: 'SENDING' } };
+  const payloads = [
+    response(missing, { ok: false, status: 404 }),
+    response([inserted]),
+  ];
+  const calls = [];
+  const store = createSupabaseDispatchStore({
+    url: 'https://example.supabase.co', serviceRoleKey: 'service-key',
+    fetchImpl: async (url, options) => { calls.push({ url, options }); return payloads.shift(); },
+    claimTimeoutMs: 100,
+  });
+  const result = await store.claimIngestBatch({
+    chatId: 'oc_ingest', batchId: 'legacy', fingerprint: 'f'.repeat(64), requestIds: ['r3'],
+    now: new Date('2026-08-30T11:00:30.000Z'), expiresAt: '2026-09-06T11:00:00.000Z',
+  });
+  assert.equal(result.outcome, 'CLAIMED');
   assert.equal(calls.length, 2);
-});
-
-test('claimIngestBatch 接管过期或旧版 SENDING，并用主键加状态 CAS', async () => {
-  const existing = {
-    request_context: {
-      kind: 'dispatch_ingest', batchId: 'ingest_2', fingerprint: 'e'.repeat(64),
-      requestIds: ['r2'], status: 'SENDING',
-    },
-  };
-  const resumed = {
-    ...existing,
-    request_context: { ...existing.request_context, leaseExpiresAt: '2026-08-30T11:02:00.000Z' },
-  };
-  const { store, calls } = setup([[], [existing], [resumed]]);
-  const result = await store.claimIngestBatch({
-    chatId: 'oc_ingest', batchId: 'ingest_2', fingerprint: 'e'.repeat(64), requestIds: ['r2'],
-    now: new Date('2026-08-30T11:00:30.000Z'), expiresAt: '2026-09-06T11:00:00.000Z',
-  });
-  assert.equal(result.outcome, 'RESUMED');
-  assert.equal(calls[2].options.method, 'PATCH');
-  assert.match(calls[2].url, /form_message_id=eq\.bi_[a-f0-9]{48}&/);
-  assert.match(calls[2].url, /request_context-%3E%3Estatus=eq\.SENDING/);
-  assert.match(calls[2].url, /request_context-%3E%3EleaseExpiresAt=is\.null/);
-});
-
-test('claimIngestBatch 接管 CAS 丢失时保留并发完成的 SENT 状态', async () => {
-  const fingerprint = 'a'.repeat(64);
-  const stale = {
-    request_context: {
-      kind: 'dispatch_ingest', batchId: 'ingest_race', fingerprint,
-      requestIds: ['r-race'], status: 'SENDING', leaseExpiresAt: '2026-08-30T10:59:00.000Z',
-    },
-  };
-  const completed = {
-    request_context: {
-      kind: 'dispatch_ingest', batchId: 'ingest_race', fingerprint,
-      requestIds: ['r-race'], status: 'SENT', messageId: 'om_race_done',
-    },
-  };
-  const { store, calls } = setup([[], [stale], [], [completed]]);
-  const result = await store.claimIngestBatch({
-    chatId: 'oc_ingest', batchId: 'ingest_race', fingerprint, requestIds: ['r-race'],
-    now: new Date('2026-08-30T11:00:30.000Z'), expiresAt: '2026-09-06T11:00:00.000Z',
-  });
-  assert.deepEqual(result, { outcome: 'COMPLETE', message_id: 'om_race_done' });
-  assert.equal(calls[2].options.method, 'PATCH');
-  assert.equal(calls[3].options.method, 'GET');
+  assert.match(calls[1].url, /bess_dispatch_pending_forms\?on_conflict=form_message_id$/);
 });
 
 test('completeIngestBatch 以所有权 CAS 更新并保留 requestIds', async () => {
@@ -340,4 +325,44 @@ test('Supabase 超时错误保留操作和时延诊断字段', async () => {
   assert.equal(entries[0].outcome, 'timeout');
   assert.equal(entries[0].timeout_ms, 5);
   assert.equal(entries[0].http_status, null);
+});
+
+
+test('claimIngestBatch 慢数据库受严格总时限约束且不重试', async () => {
+  let calls = 0;
+  const fetchImpl = async (_url, { signal }) => {
+    calls += 1;
+    return new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+    });
+  };
+  const store = createSupabaseDispatchStore({
+    url: 'https://example.supabase.co', serviceRoleKey: 'service-key', fetchImpl,
+    timeoutMs: 5000, claimTimeoutMs: 25, logger: {},
+  });
+  const startedAt = Date.now();
+  await assert.rejects(
+    store.claimIngestBatch({
+      chatId: 'oc_slow', batchId: 'slow', fingerprint: 'a'.repeat(64), requestIds: ['r'],
+      now: new Date(), expiresAt: new Date(Date.now() + 86400000).toISOString(),
+    }),
+    (error) => error instanceof DispatchStoreError && error.code === 'DISPATCH_DB_TIMEOUT',
+  );
+  assert.equal(calls, 1);
+  assert.ok(Date.now() - startedAt < 250, 'claim must stay well below the HTTP timeout');
+});
+
+test('failIngestBatch 以租约 CAS 持久化 FAILED', async () => {
+  const failed = { request_context: { status: 'FAILED', errorCode: 'LARK_TIMEOUT' } };
+  const { store, calls } = setup([[failed]]);
+  await store.failIngestBatch({
+    chatId: 'oc_ingest', batchId: 'failed', fingerprint: 'c'.repeat(64),
+    requestIds: ['r4'], errorCode: 'LARK_TIMEOUT',
+    expectedLeaseExpiresAt: '2026-08-30T11:02:00.000Z',
+    failedAt: new Date('2026-08-30T11:01:00.000Z'),
+  });
+  assert.equal(calls[0].options.method, 'PATCH');
+  const body = JSON.parse(calls[0].options.body);
+  assert.equal(body.request_context.status, 'FAILED');
+  assert.equal(body.request_context.errorCode, 'LARK_TIMEOUT');
 });

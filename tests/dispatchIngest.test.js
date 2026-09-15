@@ -48,12 +48,19 @@ function createMemoryIngestStore() {
     async claimIngestBatch({ chatId, batchId, fingerprint }) {
       const key = `${chatId}:${batchId}`;
       const row = rows.get(key);
-      if (!row) { rows.set(key, { fingerprint, status: 'SENDING' }); return { outcome: 'CLAIMED' }; }
+      if (!row) {
+        const lease = '2026-09-15T08:00:00.000Z';
+        rows.set(key, { fingerprint, status: 'SENDING', lease });
+        return { outcome: 'CLAIMED', lease_expires_at: lease };
+      }
       if (row.fingerprint !== fingerprint) return { outcome: 'CONFLICT' };
-      return { outcome: row.status === 'SENT' ? 'COMPLETE' : 'IN_FLIGHT', message_id: row.messageId || '' };
+      return { outcome: row.status === 'SENT' ? 'COMPLETE' : 'IN_FLIGHT', message_id: row.messageId || '', lease_expires_at: row.lease };
     },
     async completeIngestBatch({ chatId, batchId, fingerprint, messageId }) {
       rows.set(`${chatId}:${batchId}`, { fingerprint, status: 'SENT', messageId });
+    },
+    async failIngestBatch({ chatId, batchId, fingerprint, errorCode }) {
+      rows.set(`${chatId}:${batchId}`, { fingerprint, status: 'FAILED', errorCode });
     },
   };
 }
@@ -240,7 +247,7 @@ test('外部 ingest 缺省千川本地表字段并在 action.value 携带项目�
   assert.equal(explicitSheetId.projectValue, '本地');
 });
 
-test('有效签名由排单buddy发送卡片并携带幂等 uuid', async () => {
+test('单条 ingest 持久化 SENDING 后快速返回 202，并由后台发送幂等卡片', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   process.env.LARK_APP_ID = 'cli_dispatch';
   process.env.LARK_APP_SECRET = 'secret';
@@ -252,10 +259,18 @@ test('有效签名由排单buddy发送卡片并携带幂等 uuid', async () => {
     return new Response(JSON.stringify({ code: 0, data: { message_id: 'om_ingest_1' } }), { status: 200 });
   };
   try {
-    const result = await invoke(localBody);
-    assert.equal(result.status, 200);
-    assert.equal(result.body.message_id, 'om_ingest_1');
-    const sendBody = JSON.parse(calls[1].options.body);
+    const deferred = [];
+    const targetHandler = createDispatchSendHandler({
+      storeFactory: () => createMemoryIngestStore(),
+      defer(promise) { deferred.push(promise); },
+    });
+    const result = await invoke(localBody, { targetHandler });
+    assert.equal(result.status, 202);
+    assert.equal(result.body.status, 'SENDING');
+    assert.equal(result.body.batch_id, 'single:715430');
+    await deferred[0];
+    const sendCall = calls.find((call) => call.url.includes('/im/v1/messages'));
+    const sendBody = JSON.parse(sendCall.options.body);
     assert.equal(sendBody.receive_id, localBody.chat_id);
     assert.equal(sendBody.uuid, 'bess-ingest-715430');
     assert.match(sendBody.content, /🎯 自动派单/);
@@ -515,12 +530,13 @@ test('batch ingest 快速返回 202 并在后台完成发送状态', async () =>
 });
 
 
-test('batch ingest 后台发送失败保留租约状态供到期恢复', async () => {
+test('batch ingest 后台发送失败持久化 FAILED 供安全重试', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
-  let completed = false;
+  let failedState;
   const store = {
     async claimIngestBatch() { return { outcome: 'CLAIMED', lease_expires_at: '2026-09-14T22:05:00.000Z' }; },
-    async completeIngestBatch() { completed = true; },
+    async completeIngestBatch() { throw new Error('must not complete'); },
+    async failIngestBatch(payload) { failedState = payload; },
   };
   const deferred = [];
   const targetHandler = createDispatchSendHandler({
@@ -533,31 +549,50 @@ test('batch ingest 后台发送失败保留租约状态供到期恢复', async (
   const response = await invoke(body, { targetHandler });
   assert.equal(response.status, 202);
   await deferred[0];
-  assert.equal(completed, false);
+  assert.equal(failedState.batchId, 'batch_failed');
+  assert.equal(failedState.errorCode, 'LARK_TIMEOUT');
+  assert.deepEqual(failedState.requestIds, ['715430']);
 });
 
 
-test('batch ingest 对瞬时数据库认领错误做有界重试', async () => {
+test('同步接单错误不做多次等待，快速失败给调用方重试', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   let claims = 0;
-  const deferred = [];
   const store = {
     async claimIngestBatch() {
       claims += 1;
-      if (claims < 3) throw Object.assign(new Error('temporary database conflict'), { code: 'DISPATCH_DB_ERROR' });
-      return { outcome: 'CLAIMED', lease_expires_at: '2026-09-14T22:30:00.000Z' };
+      throw Object.assign(new Error('database timeout'), { code: 'DISPATCH_DB_TIMEOUT', status: 503 });
     },
-    async completeIngestBatch() {},
   };
   const targetHandler = createDispatchSendHandler({
-    client: { async sendMessage() { return { message_id: 'om_db_retry' }; } },
+    client: { async sendMessage() { throw new Error('must not send'); } },
     storeFactory: () => store,
-    defer(promise) { deferred.push(promise); },
   });
-  const body = { chat_id: localBody.chat_id, batch_id: 'batch_db_retry', items: [localBody] };
+  const body = { chat_id: localBody.chat_id, batch_id: 'batch_db_timeout', items: [localBody] };
 
+  const startedAt = Date.now();
   const response = await invoke(body, { targetHandler });
-  assert.equal(response.status, 202);
-  assert.equal(claims, 3);
-  await deferred[0];
+  assert.equal(response.status, 503);
+  assert.equal(response.body.error_code, 'DISPATCH_DB_TIMEOUT');
+  assert.equal(claims, 1);
+  assert.ok(Date.now() - startedAt < 200, 'handler must not retry synchronous claims');
+});
+
+
+test('单条幂等重放 IN_FLIGHT 的 202 响应包含统一 request_id 字段', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const targetHandler = createDispatchSendHandler({
+    client: { async sendMessage() { throw new Error('must not send'); } },
+    storeFactory: () => ({
+      async claimIngestBatch() {
+        return { outcome: 'IN_FLIGHT', lease_expires_at: '2026-09-15T08:00:00.000Z' };
+      },
+    }),
+  });
+  const result = await invoke(localBody, { targetHandler });
+  assert.equal(result.status, 202);
+  assert.equal(result.body.batch_id, 'single:715430');
+  assert.equal(result.body.request_id, '715430');
+  assert.deepEqual(result.body.request_ids, ['715430']);
+  assert.equal(result.body.status, 'SENDING');
 });
