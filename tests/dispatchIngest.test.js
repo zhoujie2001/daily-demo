@@ -31,7 +31,7 @@ function signature(body, timestamp = NOW) {
   return createHmac('sha256', SECRET).update(`${timestamp}.${canonicalJson(body)}`).digest('hex');
 }
 
-async function invoke(body, { timestamp = NOW, signed = true, targetHandler = handler } = {}) {
+async function invoke(body, { timestamp = NOW, signed = true, targetHandler = handler } = {}, reqExtras = {}) {
   const result = { headers: {} };
   const response = {
     setHeader(name, value) { result.headers[name] = value; },
@@ -40,7 +40,12 @@ async function invoke(body, { timestamp = NOW, signed = true, targetHandler = ha
   };
   await targetHandler({
     method: 'POST', body,
-    headers: { 'x-bess-timestamp': String(timestamp), 'x-bess-signature': signed ? `sha256=${signature(body, timestamp)}` : 'bad' },
+    url: reqExtras.url || '/api/dispatch/send',
+    headers: {
+      'x-bess-timestamp': String(timestamp),
+      'x-bess-signature': signed ? `sha256=${signature(body, timestamp)}` : 'bad',
+      ...(reqExtras.headers || {}),
+    },
   }, response);
   return result;
 }
@@ -617,4 +622,58 @@ test('单条幂等重放 IN_FLIGHT 的 202 响应包含统一 request_id 字段'
   assert.equal(result.body.request_id, '715430');
   assert.deepEqual(result.body.request_ids, ['715430']);
   assert.equal(result.body.status, 'SENDING');
+});
+
+test('有界同步等待 wait=1 在时限内成功返回 200 + message_id', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const targetHandler = createDispatchSendHandler({
+    client: { async sendMessage() { return { message_id: 'om_sync_success' }; } },
+    storeFactory: () => createMemoryIngestStore(),
+    defer(p) { p.catch(() => {}); },
+  });
+
+  const response = await invoke(localBody, { targetHandler }, { url: 'https://api/send?wait=1' });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.message_id, 'om_sync_success');
+  assert.equal(response.body.sync, true);
+});
+
+test('有界同步等待超时后回退到 202 SENDING 且不丢卡', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  let resolveSend;
+  const sent = new Promise((resolve) => { resolveSend = resolve; });
+  const deferred = [];
+  const targetHandler = createDispatchSendHandler({
+    client: {
+      async sendMessage() {
+        await sent;
+        return { message_id: 'om_too_late' };
+      },
+    },
+    storeFactory: () => createMemoryIngestStore(),
+    defer(p) { deferred.push(p); p.catch(() => {}); },
+  });
+
+  const response = await invoke(localBody, { targetHandler }, { url: 'https://api/send?wait=1&wait_ms=10' });
+
+  assert.equal(response.status, 202);
+  assert.equal(response.body.status, 'SENDING');
+  assert.ok(!response.body.message_id);
+  resolveSend();
+  await Promise.all(deferred);
+});
+
+test('有界同步等待在等待期内确认失败时返回 502', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const targetHandler = createDispatchSendHandler({
+    client: { async sendMessage() { const e = new Error('boom'); e.code = 'LARK_230001'; throw e; } },
+    storeFactory: () => createMemoryIngestStore(),
+    defer(p) { p.catch(() => {}); },
+  });
+
+  const response = await invoke(localBody, { targetHandler }, { headers: { 'x-bess-wait': 'sync' } });
+
+  assert.equal(response.status, 502);
+  assert.equal(response.body.error_code, 'LARK_230001');
 });
