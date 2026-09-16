@@ -1,10 +1,12 @@
 import { createDispatchSendHandler } from '../../lib/dispatch/api/send.js';
 import { createDispatchStatusHandler } from '../../lib/dispatch/api/status.js';
+import { createDispatchStatusBatchHandler } from '../../lib/dispatch/api/status-batch.js';
 import { createDispatchRevokeHandler } from '../../lib/dispatch/api/revoke.js';
 
 const HANDLERS = Object.freeze({
   send: createDispatchSendHandler,
   status: createDispatchStatusHandler,
+  'status-batch': createDispatchStatusBatchHandler,
   revoke: createDispatchRevokeHandler,
 });
 

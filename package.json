@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "test": "node --test",
     "test:blackbox": "node --test tests/blackbox/dispatch-blackbox.test.js",
+    "diagnose:dispatch-network": "node tools/dispatch-network-diagnostic.mjs",
     "deploy": "gh-pages -d dist",
     "preview": "vite preview"
   },
