@@ -470,6 +470,48 @@ test('send 只等待队列接受，不调用 Supabase 或 Lark', async () => {
   assert.equal(publishes, 1);
   assert.equal(larkSends, 0);
   assert.ok(Date.now() - startedAt < 200);
+  assert.match(response.headers['Server-Timing'], /queue;dur=/);
+  assert.match(response.headers['Server-Timing'], /cache;dur=/);
+  assert.match(response.headers['Server-Timing'], /total;dur=/);
+});
+
+test('send 首次入队写入 QUEUED 热状态，幂等重放不覆盖既有终态', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const writes = [];
+  let publishes = 0;
+  const targetHandler = createTestHandler({
+    async publishDispatch() {
+      publishes += 1;
+      return publishes === 1
+        ? { message_id: 'q_cache_once', deduplicated: false }
+        : { message_id: '', deduplicated: true };
+    },
+    statusCache: {
+      async set(payload) { writes.push(payload); return true; },
+    },
+  });
+
+  const first = await invoke(localBody, { targetHandler });
+  const replay = await invoke(localBody, { targetHandler });
+
+  assert.equal(first.status, 202);
+  assert.equal(replay.body.reused, true);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].value.status, 'QUEUED');
+  assert.equal(writes[0].value.found, false);
+  assert.deepEqual(writes[0].value.request_ids, ['715430']);
+});
+
+test('Queue 已接受后缓存写失败仍返回 202', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const targetHandler = createTestHandler({
+    async publishDispatch() { return { message_id: 'q_cache_fail', deduplicated: false }; },
+    statusCache: { async set() { throw new Error('cache down'); } },
+  });
+
+  const response = await invoke(localBody, { targetHandler });
+  assert.equal(response.status, 202);
+  assert.equal(response.body.queue_message_id, 'q_cache_fail');
 });
 
 test('同批次队列重放返回相同 operation_id', async () => {

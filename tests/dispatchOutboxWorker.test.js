@@ -95,6 +95,24 @@ test('空 claim 保证重复 worker 不会重复发送', async () => {
   assert.equal(sends, 0);
 });
 
+test('Supabase 已提交 SENT 后缓存写失败不回滚投递结果', async () => {
+  let retries = 0;
+  const store = {
+    async claimDispatchOutbox() { return [task()]; },
+    async completeDispatchOutbox() { return { completed: true }; },
+    async retryDispatchOutbox() { retries += 1; },
+  };
+  const result = await runDispatchOutbox({
+    store,
+    client: { async sendMessage() { return { message_id: 'om_cache_fail' }; } },
+    statusCache: { async set() { throw new Error('cache down'); } },
+  });
+
+  assert.equal(result.results[0].ok, true);
+  assert.equal(result.results[0].message_id, 'om_cache_fail');
+  assert.equal(retries, 0);
+});
+
 test('队列消费者先持久化 outbox，再用稳定 uuid 发卡并落账', async () => {
   const calls = [];
   const store = {
