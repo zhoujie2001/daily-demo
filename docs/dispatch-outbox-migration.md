@@ -38,6 +38,37 @@
 - `/status` 返回 `503/STATUS_TEMPORARILY_UNAVAILABLE` 只代表 Supabase 状态链路短暂不可用，不代表发卡失败，不允许触发冗余直发；
 - Vercel Queue 提供 at-least-once 投递，Supabase Outbox CAS 和 Lark 稳定 `uuid=operation_id` 共同承担幂等防重。
 
+## 延迟快路径与可观测性
+
+`/status` 使用 Vercel Runtime Cache 作为可丢失的区域热状态层，Supabase 仍是唯一持久事实源：
+
+- `/send` 在 Queue 接受后缓存 `QUEUED` 15 秒；幂等重放不会用 `QUEUED` 覆盖既有终态；
+- consumer 只有在 Supabase 成功提交状态后才缓存 `SENT`、`RETRY` 或 `DEAD`；
+- `SENT` 缓存 24 小时，失败终态缓存 5 分钟，中间态缓存 15 秒；
+- Cache miss、超时或错误均 fail-open 到 Supabase，不会改变幂等与最终一致性；
+- 缓存中的中间态只负责快速响应，不会在每次轮询时触发数据库恢复；缓存过期并读到 Supabase 中间态后才会用 `waitUntil` 唤醒恢复，避免轮询风暴。
+
+生产函数和 Queue 固定在 `hnd1`，与东京 Supabase (`ap-northeast-1`) 保持邻近。除非生产数据库迁区，否则不要单独修改函数区域。
+
+响应诊断字段：
+
+- `/send` 的 `Server-Timing` 包含 `auth`、`enrich`、`queue`、`cache` 和 `total`；
+- `/status` 的 `Server-Timing` 包含 `auth`、`cache`，缓存未命中时另含 `database`；
+- `/status` 的 `X-Bess-Status-Source` 为 `runtime-cache` 或 `supabase`；
+- worker 日志包含 `claim_duration_ms`、`lark_duration_ms`、`completion_duration_ms`，数据库请求日志继续包含 `operation`、`duration_ms`、`timeout_ms` 和脱敏 request id。
+
+上线验收建议连续采样至少 30 次，冷热请求各占一半：
+
+| 指标 | 目标 | 失败判定 |
+| --- | --- | --- |
+| `/send` Queue 接受 P95 | `< 3s` | P95 `>= 5s` 或出现同步 Lark/Supabase 调用 |
+| `/status` Cache hit P95 | `< 300ms` | P95 `>= 1s` 或仍出现数据库日志 |
+| `/status` Cache miss 总时长 | `< 1.8s` | 超过约 1.8 秒仍未返回可重试结果 |
+| `QUEUED → SENT` P95 | `< 15s` | 长期停留中间态或产生重复卡片 |
+| 幂等重放 | 同一 `operation_id/message_id` | 群内出现第二张卡或终态被回退 |
+
+Runtime Cache 命中率和错误应在 Vercel **Observability → Runtime Cache** 查看。缓存不是持久队列，禁止用它替代 Vercel Queue 或 Supabase Outbox。
+
 迁移继续复用 `bess_dispatch_pending_forms`，不会删除、重命名或覆盖现有表列。旧的 `SENDING` 行在同一批次再次入队时会通过带旧状态及 fingerprint 的条件 PATCH 原位升级为 Outbox 上下文。
 
 ## 回滚

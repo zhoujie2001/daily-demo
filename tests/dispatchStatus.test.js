@@ -149,6 +149,102 @@ test('status 已读到状态后 nudge 超时仍返回结果', async () => {
   assert.equal(result.body.error_code, 'LARK_TIMEOUT');
 });
 
+test('status 优先命中 Runtime Cache 且完全不访问 Supabase', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  let storeCreated = 0;
+  const result = await invoke(
+    { chat_id: 'oc_test', batch_id: 'batch_cached_sent' },
+    {},
+    {
+      storeFactory() { storeCreated += 1; throw new Error('must not create store'); },
+      statusCache: {
+        async get({ chatId, batchId }) {
+          assert.equal(chatId, 'oc_test');
+          assert.equal(batchId, 'batch_cached_sent');
+          return { found: true, status: 'SENT', message_id: 'om_cached', operation_id: 'op_cached' };
+        },
+        async set() { throw new Error('must not rewrite a cache hit'); },
+      },
+    },
+  );
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.message_id, 'om_cached');
+  assert.equal(result.headers['X-Bess-Status-Source'], 'runtime-cache');
+  assert.match(result.headers['Server-Timing'], /cache;dur=/);
+  assert.match(result.headers['Server-Timing'], /total;dur=/);
+  assert.equal(storeCreated, 0);
+});
+
+test('缓存中的 QUEUED 直接返回且不触发 Supabase 恢复风暴', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  let storeCreated = 0;
+  const result = await invoke(
+    { chat_id: 'oc_test', batch_id: 'batch_cached_queued' },
+    {},
+    {
+      storeFactory() { storeCreated += 1; throw new Error('must not create store'); },
+      statusCache: {
+        async get() {
+          return { found: false, status: 'QUEUED', transient: true, operation_id: 'op_cached_queued' };
+        },
+      },
+    },
+  );
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.status, 'QUEUED');
+  assert.equal(result.headers['X-Bess-Status-Source'], 'runtime-cache');
+  assert.equal(storeCreated, 0);
+  assert.equal(result.deferred.length, 0);
+});
+
+test('status 缓存未命中才读取 Supabase 并回填终态', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const writes = [];
+  let reads = 0;
+  const result = await invoke(
+    { chat_id: 'oc_test', batch_id: 'batch_cache_miss' },
+    {
+      async getIngestBatchStatus() {
+        reads += 1;
+        return { found: true, status: 'SENT', message_id: 'om_database', operation_id: 'op_database' };
+      },
+    },
+    {
+      statusCache: {
+        async get() { return null; },
+        async set(payload) { writes.push(payload); return true; },
+      },
+    },
+  );
+
+  assert.equal(result.status, 200);
+  assert.equal(result.headers['X-Bess-Status-Source'], 'supabase');
+  assert.match(result.headers['Server-Timing'], /database;dur=/);
+  assert.equal(reads, 1);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].value.message_id, 'om_database');
+});
+
+test('Runtime Cache 读取异常时安全回退 Supabase', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const result = await invoke(
+    { chat_id: 'oc_test', batch_id: 'batch_cache_error' },
+    { async getIngestBatchStatus() { return { found: true, status: 'SENT', message_id: 'om_fallback' }; } },
+    {
+      statusCache: {
+        async get() { throw new Error('cache down'); },
+        async set() { throw new Error('cache still down'); },
+      },
+    },
+  );
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.message_id, 'om_fallback');
+  assert.equal(result.headers['X-Bess-Status-Source'], 'supabase');
+});
+
 test('status 保持有效的同步 SENDING 租约且不误触 outbox', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   const result = await invoke(
