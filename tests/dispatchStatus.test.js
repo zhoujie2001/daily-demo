@@ -38,7 +38,7 @@ async function invoke(body, store, handlerOptions = {}) {
   return result;
 }
 
-test('不存在的持久化批次以 HTTP 200 返回 found=false', async () => {
+test('队列已接受但账本尚未物化时返回短轮询提示', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   const result = await invoke(
     { chat_id: 'oc_test', batch_id: 'batch_missing' },
@@ -46,7 +46,33 @@ test('不存在的持久化批次以 HTTP 200 返回 found=false', async () => {
   );
 
   assert.equal(result.status, 200);
-  assert.deepEqual(result.body, { ok: true, found: false });
+  assert.equal(result.body.ok, true);
+  assert.equal(result.body.found, false);
+  assert.equal(result.body.status, 'QUEUED');
+  assert.equal(result.body.transient, true);
+  assert.equal(result.body.retry_after_ms, 2_000);
+  assert.match(result.body.operation_id, /^bess-outbox-/);
+});
+
+test('Supabase 状态查询超时返回可重试 503，不误报业务失败', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const result = await invoke(
+    { chat_id: 'oc_test', batch_id: 'batch_db_timeout' },
+    {
+      async getIngestBatchStatus() {
+        throw Object.assign(new Error('slow Supabase'), { code: 'DISPATCH_DB_TIMEOUT' });
+      },
+    },
+  );
+
+  assert.equal(result.status, 503);
+  assert.deepEqual(result.body, {
+    ok: false,
+    status: 'UNAVAILABLE',
+    transient: true,
+    error_code: 'STATUS_TEMPORARILY_UNAVAILABLE',
+    retry_after_ms: 2_000,
+  });
 });
 
 test('持久化批次完成后返回 SENT 和 message_id', async () => {

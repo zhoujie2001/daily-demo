@@ -1,25 +1,46 @@
-import { timingSafeEqual } from 'node:crypto';
-import { runDispatchOutbox } from '../../lib/dispatch/outbox-worker.js';
+import { createDispatchQueueNodeHandler } from '../../lib/dispatch/queue.js';
+import { processDispatchQueueMessage } from '../../lib/dispatch/outbox-worker.js';
 
-function matches(actual, expected) {
-  const a = Buffer.from(String(actual || ''));
-  const b = Buffer.from(String(expected || ''));
-  return a.length === b.length && timingSafeEqual(a, b);
+export function createDispatchOutboxQueueHandler({
+  processMessage = processDispatchQueueMessage,
+  createHandler = createDispatchQueueNodeHandler,
+} = {}) {
+  return createHandler(
+    async (message, metadata) => {
+      const startedAt = Date.now();
+      try {
+        const result = await processMessage(message);
+        console.info(JSON.stringify({
+          module: 'bess-dispatch-queue', stage: 'processed',
+          queue_message_id: metadata.messageId,
+          delivery_count: metadata.deliveryCount,
+          operation_id: String(message?.operation_id || ''),
+          duration_ms: Date.now() - startedAt,
+        }));
+        return result;
+      } catch (error) {
+        console.error(JSON.stringify({
+          module: 'bess-dispatch-queue', stage: 'failed',
+          queue_message_id: metadata.messageId,
+          delivery_count: metadata.deliveryCount,
+          operation_id: String(message?.operation_id || ''),
+          error_code: error?.code || 'DISPATCH_QUEUE_CONSUMER_FAILED',
+          duration_ms: Date.now() - startedAt,
+        }));
+        throw error;
+      }
+    },
+    {
+      visibilityTimeoutSeconds: 60,
+      retry(error, metadata) {
+        if (error?.acknowledge || metadata.deliveryCount >= 12) return { acknowledge: true };
+        return { afterSeconds: Math.min(300, 5 * (2 ** Math.max(0, metadata.deliveryCount - 1))) };
+      },
+    },
+  );
 }
 
-export default async function handler(req, res) {
-  res.setHeader('Cache-Control', 'no-store');
-  if (!['GET', 'POST'].includes(req.method)) {
-    res.setHeader('Allow', 'GET, POST');
-    return res.status(405).json({ ok: false, error_code: 'METHOD_NOT_ALLOWED' });
-  }
-  const expected = process.env.CRON_SECRET;
-  const actual = String(req.headers?.authorization || '').replace(/^Bearer\s+/i, '');
-  if (!expected || !matches(actual, expected)) return res.status(401).json({ ok: false, error_code: 'UNAUTHORIZED' });
-  try {
-    const result = await runDispatchOutbox();
-    return res.status(200).json(result);
-  } catch (error) {
-    return res.status(error?.status || 503).json({ ok: false, error_code: error?.code || 'OUTBOX_WORKER_UNAVAILABLE' });
-  }
-}
+// A queue trigger makes this function private on Vercel. It is deliberately
+// not shared with the public Cron endpoint; queue callbacks are authenticated
+// and invoked exclusively by Vercel's queue infrastructure.
+export default createDispatchOutboxQueueHandler();
