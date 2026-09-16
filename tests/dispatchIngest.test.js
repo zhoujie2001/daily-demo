@@ -739,8 +739,10 @@ test('外部拒绝理由由缺失变为显式值不会改变同批次幂等指�
 test('Lark 已成功但完成状态持续写入失败时仍返回 message_id 并标记待收敛', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   let completeAttempts = 0;
+  const deferred = [];
   const targetHandler = createTestHandler({
     client: { async sendMessage() { return { message_id: 'om_state_pending' }; } },
+    defer(promise) { deferred.push(promise); },
     storeFactory: () => ({
       async claimIngestBatch() {
         return { outcome: 'CLAIMED', lease_expires_at: new Date(Date.now() + 60_000).toISOString() };
@@ -757,7 +759,46 @@ test('Lark 已成功但完成状态持续写入失败时仍返回 message_id 并
   assert.equal(response.status, 200);
   assert.equal(response.body.message_id, 'om_state_pending');
   assert.equal(response.body.state_pending, true);
+  assert.equal(completeAttempts, 1, 'response must not wait for background reconciliation');
+  assert.equal(deferred.length, 1);
+  await Promise.all(deferred);
   assert.equal(completeAttempts, 3);
+});
+
+test('后台收敛遇到 CAS 丢失时回读同一 message_id 并视为已完成', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const deferred = [];
+  let completeAttempts = 0;
+  let statusReads = 0;
+  const targetHandler = createTestHandler({
+    client: { async sendMessage() { return { message_id: 'om_committed_despite_timeout' }; } },
+    defer(promise) { deferred.push(promise); },
+    storeFactory: () => ({
+      async claimIngestBatch() {
+        return { outcome: 'CLAIMED', lease_expires_at: new Date(Date.now() + 60_000).toISOString() };
+      },
+      async completeIngestBatch() {
+        completeAttempts += 1;
+        if (completeAttempts === 1) {
+          throw Object.assign(new Error('response timeout after commit'), { code: 'DISPATCH_DB_TIMEOUT' });
+        }
+        throw Object.assign(new Error('already committed'), { code: 'INGEST_CLAIM_LOST' });
+      },
+      async getIngestBatchStatus() {
+        statusReads += 1;
+        return { found: true, status: 'SENT', message_id: 'om_committed_despite_timeout' };
+      },
+      async failIngestBatch() { throw new Error('must not mark successful delivery failed'); },
+    }),
+  });
+
+  const response = await invoke(localBody, { targetHandler });
+  assert.equal(response.status, 200);
+  assert.equal(response.body.message_id, 'om_committed_despite_timeout');
+  assert.equal(response.body.state_pending, true);
+  await Promise.all(deferred);
+  assert.equal(completeAttempts, 2);
+  assert.equal(statusReads, 1);
 });
 
 

@@ -123,6 +123,49 @@ test('status 已读到状态后 nudge 超时仍返回结果', async () => {
   assert.equal(result.body.error_code, 'LARK_TIMEOUT');
 });
 
+test('status 保持有效的同步 SENDING 租约且不误触 outbox', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const result = await invoke(
+    { chat_id: 'oc_test', batch_id: 'batch_active_sending' },
+    {
+      async getIngestBatchStatus() {
+        return {
+          found: true, status: 'SENDING', retryable: false,
+          lease_expires_at: new Date(Date.now() + 60_000).toISOString(),
+        };
+      },
+      async nudgeDispatchOutbox() { throw new Error('must not nudge synchronous SENDING'); },
+    },
+  );
+  assert.equal(result.status, 200);
+  assert.equal(result.body.status, 'SENDING');
+  assert.equal(result.body.retryable, false);
+  assert.equal(result.deferred.length, 0);
+});
+
+test('status 将过期的同步 SENDING 映射为可安全补偿的 FAILED', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const result = await invoke(
+    { chat_id: 'oc_test', batch_id: 'batch_expired_sending' },
+    {
+      async getIngestBatchStatus() {
+        return {
+          found: true, status: 'SENDING', retryable: true,
+          lease_expires_at: new Date(Date.now() - 60_000).toISOString(),
+          request_ids: ['r1'],
+        };
+      },
+      async nudgeDispatchOutbox() { throw new Error('must not nudge synchronous SENDING'); },
+    },
+  );
+  assert.equal(result.status, 200);
+  assert.equal(result.body.status, 'FAILED');
+  assert.equal(result.body.retryable, true);
+  assert.equal(result.body.error_code, 'INGEST_LEASE_EXPIRED');
+  assert.deepEqual(result.body.request_ids, ['r1']);
+  assert.equal(result.deferred.length, 0);
+});
+
 
 test('status 将 DEAD 映射为旧契约 FAILED 并保留 dead-letter 原因', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
