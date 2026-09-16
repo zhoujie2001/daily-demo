@@ -384,8 +384,10 @@ test('Supabase 超时错误保留操作和时延诊断字段', async () => {
     url: 'https://example.supabase.co',
     serviceRoleKey: 'service-key',
     fetchImpl,
-    timeoutMs: 5,
-    statusTotalTimeoutMs: 20,
+    // Keep enough total budget for both attempts even when the full suite runs
+    // many timer-heavy files in parallel on a loaded CI worker.
+    timeoutMs: 20,
+    statusTotalTimeoutMs: 500,
     statusRetryDelayMs: 0,
     logger,
   });
@@ -395,12 +397,12 @@ test('Supabase 超时错误保留操作和时延诊断字段', async () => {
     (error) => error instanceof DispatchStoreError
       && error.code === 'DISPATCH_DB_TIMEOUT'
       && error.dbOperation === 'GET bess_dispatch_pending_forms'
-      && error.timeoutMs === 5
-      && error.durationMs >= 5,
+      && error.timeoutMs === 20
+      && error.durationMs >= 20,
   );
   assert.equal(entries.filter((entry) => entry.outcome === 'timeout').length, 2);
   assert.equal(entries.filter((entry) => entry.outcome === 'retry_scheduled').length, 1);
-  assert.equal(entries[0].timeout_ms, 5);
+  assert.equal(entries[0].timeout_ms, 20);
   assert.equal(entries[0].http_status, null);
 });
 

@@ -2,6 +2,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "fluid": true,
   "regions": ["hnd1"],
   "env": {
     "SUPABASE_REGION": "ap-northeast-1"
@@ -23,10 +24,18 @@
       "maxDuration": 30
     },
     "api/cron/bess-dispatch-cleanup.js": {
-      "maxDuration": 10
+      "maxDuration": 60
     },
     "api/cron/bess-dispatch-outbox.js": {
-      "maxDuration": 30
+      "maxDuration": 60,
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "bess-dispatch-v2",
+          "retryAfterSeconds": 5,
+          "initialDelaySeconds": 0
+        }
+      ]
     }
   },
   "crons": [
@@ -37,10 +46,6 @@
     {
       "path": "/api/cron/bess-dispatch-cleanup",
       "schedule": "10 16 * * *"
-    },
-    {
-      "path": "/api/cron/bess-dispatch-outbox",
-      "schedule": "25 16 * * *"
     }
   ],
   "headers": [

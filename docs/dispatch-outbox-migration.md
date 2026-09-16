@@ -2,7 +2,9 @@
 
 ## 兼容性与部署顺序
 
-应用可以先于数据库迁移部署。所有 Outbox 操作会优先调用 RPC；PostgREST 返回函数不存在（HTTP 404 / `PGRST202`）时，自动降级到现有 `bess_dispatch_pending_forms` 表的 REST/CAS 路径：
+应用可以先于数据库迁移部署。`/send` 先将任务持久发布到 Vercel Queue，私有 consumer 再将任务写入 Supabase Outbox 并发送 Lark 卡片。Supabase 慢查询和 Lark 发卡不再位于 `/send` 请求链路中。
+
+所有 Outbox 操作会优先调用 RPC；PostgREST 返回函数不存在（HTTP 404 / `PGRST202`）时，自动降级到现有 `bess_dispatch_pending_forms` 表的 REST/CAS 路径：
 
 - `/send` 仍可幂等入队，不因 RPC 缺失失败；
 - worker 使用 `status + operationId + workerToken + leaseExpiresAt` 条件 PATCH 抢租约；
@@ -11,22 +13,30 @@
 
 因此 `db/migrations/20260915_dispatch_outbox.sql` **不是部署前硬依赖**。它只增加表达式索引和原子 RPC，用于提高扫描性能、减少 REST 往返并强化数据库侧原子性。推荐顺序：
 
-1. 部署应用并确认 REST fallback 正常；
+1. 部署应用，确认 Vercel Queue consumer 已注册且 REST fallback 正常；
 2. 有生产 Supabase 权限时执行 migration；
 3. 无需再次发版，应用会自动使用 RPC 快路径。
 
 ## 验证
 
-1. 未执行 migration 的环境：让五个 RPC 返回 404/`PGRST202`，用唯一 `batch_id` 调用 `/send`，确认返回 `202/SENDING + operation_id`，并确认并发 worker 只有一个获得同一租约。
+1. 未执行 migration 的环境：让五个 RPC 返回 404/`PGRST202`，用唯一 `batch_id` 调用 `/send`，确认快速返回 `202/QUEUED + operation_id`，并确认并发 consumer 只有一个获得同一 Supabase 租约。
 2. 执行 migration 后，确认五个 RPC 均存在且只有 `service_role` 可执行：
    - `bess_enqueue_dispatch_outbox`
    - `bess_claim_dispatch_outbox`
    - `bess_complete_dispatch_outbox`
    - `bess_retry_dispatch_outbox`
    - `bess_nudge_dispatch_outbox`
-3. 确认 `/api/cron/bess-dispatch-outbox` 已注册为每日兜底 Cron（Hobby 计划不允许分钟级 Cron）；每次 `/send` 都会异步启动 worker，后续发送会顺带恢复旧任务，`/status` 只做 DB nudge。
-4. 用签名的不存在批次调用 `/api/dispatch/status`，确认有界返回 `found=false`。
-5. 用测试群的唯一 `batch_id` 调用 `/send`，确认先返回 `202/SENDING + operation_id`，随后 `/status` 返回 `SENT + operation_id + message_id`。
+3. 确认 `api/cron/bess-dispatch-outbox.js` 在 Vercel 中显示为 `bess-dispatch-v2` 的私有 Queue consumer。它没有公网 URL，不要将该路径当作 Cron 手工调用。`bess-dispatch-cleanup` 每日 Cron 会额外尝试恢复 1 条已持久化的 Outbox 任务。
+4. 用签名的尚未物化批次调用 `/api/dispatch/status`，确认有界返回 `200/QUEUED + found=false + transient=true`。
+5. 用测试群的唯一 `batch_id` 调用 `/send`，确认先返回 `202/QUEUED + operation_id`，随后 `/status` 返回 `SENT + operation_id + message_id`。
+6. 重放同一 `chat_id + batch_id`，确认 `operation_id` 和最终 `message_id` 不变，群内只有一张卡。
+
+## 调用方契约
+
+- `/send` 返回 `202/QUEUED` 表示队列已持久接受，调用方应轮询 `/status`；
+- `/send` 返回 `503/DISPATCH_QUEUE_TIMEOUT` 且 `accepted_unknown=true` 时，仍使用原 `batch_id` 查询或重试，禁止换新批次或直接发卡；
+- `/status` 返回 `503/STATUS_TEMPORARILY_UNAVAILABLE` 只代表 Supabase 状态链路短暂不可用，不代表发卡失败，不允许触发冗余直发；
+- Vercel Queue 提供 at-least-once 投递，Supabase Outbox CAS 和 Lark 稳定 `uuid=operation_id` 共同承担幂等防重。
 
 迁移继续复用 `bess_dispatch_pending_forms`，不会删除、重命名或覆盖现有表列。旧的 `SENDING` 行在同一批次再次入队时会通过带旧状态及 fingerprint 的条件 PATCH 原位升级为 Outbox 上下文。
 

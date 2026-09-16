@@ -93,22 +93,13 @@ function signature(body, timestamp = NOW) {
   return createHmac('sha256', SECRET).update(`${timestamp}.${canonicalJson(body)}`).digest('hex');
 }
 
-test('端到端：旧客户端漏传时 /send 同步回查 Sheet 并在命中后跳过发卡', async () => {
+test('端到端：旧客户端漏传时 /send 有界回查 Sheet 并将跳过终态入队', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   const fakeClient = createFakeClient(['前缀 【团购】涉及保证产品/服务效果 后缀']);
-  let claimed = false;
-  let completed = false;
+  let queued;
   const targetHandler = createDispatchSendHandler({
     client: fakeClient,
-    storeFactory: () => ({
-      async claimIngestBatch() {
-        claimed = true;
-        return { outcome: 'CLAIMED', lease_expires_at: new Date(Date.now() + 60_000).toISOString() };
-      },
-      async completeIngestBatch({ messageId }) {
-        completed = messageId.startsWith('skipped:bess-outbox-');
-      },
-    }),
+    async publishDispatch(message) { queued = message; return { message_id: 'q_skip' }; },
   });
 
   const body = {
@@ -130,35 +121,24 @@ test('端到端：旧客户端漏传时 /send 同步回查 Sheet 并在命中后
     },
   }, response);
 
-  assert.equal(result.status, 200);
-  assert.equal(result.body.skipped, true);
+  assert.equal(result.status, 202);
+  assert.equal(result.body.status, 'QUEUED');
   assert.deepEqual(result.body.skipped_request_ids, ['760104']);
   assert.equal(fakeClient.calls.getValues, 1);
-  assert.equal(claimed, true);
-  assert.equal(completed, true);
+  assert.equal(queued.kind, 'skip');
+  assert.equal(queued.card, null);
 });
 
 
-test('全量过滤结果持久化后，回查失败的重放仍复用跳过终态', async () => {
+test('全量过滤首次入队后，回查失败的重放仍命中同一 operation', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
-  let state;
   let enrichCalls = 0;
-  let sends = 0;
-  const store = {
-    async claimIngestBatch({ fingerprint }) {
-      if (state?.fingerprint !== undefined && state.fingerprint !== fingerprint) return { outcome: 'CONFLICT' };
-      if (state?.status === 'SENT') return { outcome: 'COMPLETE', message_id: state.messageId };
-      state = { fingerprint, status: 'SENDING' };
-      return { outcome: 'CLAIMED', lease_expires_at: new Date(Date.now() + 60_000).toISOString() };
-    },
-    async completeIngestBatch({ messageId }) {
-      state.status = 'SENT';
-      state.messageId = messageId;
-    },
-  };
+  const queued = [];
   const targetHandler = createDispatchSendHandler({
-    client: { async sendMessage() { sends += 1; return { message_id: 'must_not_send' }; } },
-    storeFactory: () => store,
+    async publishDispatch(message) {
+      queued.push(message);
+      return { message_id: queued.length === 1 ? 'q_skip_once' : '', deduplicated: queued.length > 1 };
+    },
     async enrichRejectReasons({ items }) {
       enrichCalls += 1;
       if (enrichCalls === 1) {
@@ -188,36 +168,24 @@ test('全量过滤结果持久化后，回查失败的重放仍复用跳过终�
 
   const first = await invokeHandler();
   const replay = await invokeHandler();
-  assert.equal(first.status, 200);
-  assert.equal(first.body.skipped, true);
-  assert.equal(replay.status, 200);
-  assert.equal(replay.body.skipped, true);
+  assert.equal(first.status, 202);
+  assert.equal(replay.status, 202);
   assert.equal(replay.body.reused, true);
-  assert.equal(sends, 0);
+  assert.equal(queued[0].kind, 'skip');
+  assert.equal(queued[1].kind, 'dispatch');
+  assert.equal(queued[0].operation_id, queued[1].operation_id);
 });
 
 
-test('首次 fail-open 已发卡后，重放回查命中过滤仍返回原 message_id', async () => {
+test('首次 fail-open 已入队后，重放回查命中过滤仍复用原 operation', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
-  let state;
   let enrichCalls = 0;
-  let sends = 0;
-  const store = {
-    async claimIngestBatch({ fingerprint }) {
-      if (state?.fingerprint !== undefined && state.fingerprint !== fingerprint) return { outcome: 'CONFLICT' };
-      if (state?.status === 'SENT') return { outcome: 'COMPLETE', message_id: state.messageId };
-      state = { fingerprint, status: 'SENDING' };
-      return { outcome: 'CLAIMED', lease_expires_at: new Date(Date.now() + 60_000).toISOString() };
-    },
-    async completeIngestBatch({ messageId }) {
-      state.status = 'SENT';
-      state.messageId = messageId;
-    },
-    async failIngestBatch() {},
-  };
+  const queued = [];
   const targetHandler = createDispatchSendHandler({
-    client: { async sendMessage() { sends += 1; return { message_id: 'om_fail_open_sent' }; } },
-    storeFactory: () => store,
+    async publishDispatch(message) {
+      queued.push(message);
+      return { message_id: queued.length === 1 ? 'q_dispatch_once' : '', deduplicated: queued.length > 1 };
+    },
     async enrichRejectReasons({ items }) {
       enrichCalls += 1;
       if (enrichCalls === 2) {
@@ -247,10 +215,10 @@ test('首次 fail-open 已发卡后，重放回查命中过滤仍返回原 messa
 
   const first = await invokeHandler();
   const replay = await invokeHandler();
-  assert.equal(first.body.message_id, 'om_fail_open_sent');
-  assert.equal(replay.status, 200);
-  assert.equal(replay.body.message_id, 'om_fail_open_sent');
+  assert.equal(first.status, 202);
+  assert.equal(replay.status, 202);
   assert.equal(replay.body.reused, true);
-  assert.equal(replay.body.skipped, undefined);
-  assert.equal(sends, 1);
+  assert.equal(queued[0].kind, 'dispatch');
+  assert.equal(queued[1].kind, 'skip');
+  assert.equal(queued[0].operation_id, queued[1].operation_id);
 });
