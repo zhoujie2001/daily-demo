@@ -197,13 +197,14 @@ test('calibrateCursor 兼容 CAS 遇到并发游标变化时 fail-closed', async
 
 
 test('claimIngestBatch 通过单次 RPC 原子持久化 SENDING', async () => {
-  const lease = '2026-08-30T11:02:00.000Z';
-  const { store, calls } = setup([[{ outcome: 'CLAIMED', lease_expires_at: lease, message_id: '' }]]);
+  const rpcLease = '2026-08-30T11:02:00+00:00';
+  const { store, calls } = setup([[{ outcome: 'CLAIMED', lease_expires_at: rpcLease, message_id: '' }]]);
   const result = await store.claimIngestBatch({
     chatId: 'oc_ingest', batchId: 'ingest_1', fingerprint: 'd'.repeat(64), requestIds: ['r1'],
     now: new Date('2026-08-30T11:00:30.000Z'), expiresAt: '2026-09-06T11:00:00.000Z',
   });
   assert.equal(result.outcome, 'CLAIMED');
+  assert.equal(result.lease_expires_at, '2026-08-30T11:02:00.000Z');
   assert.equal(calls.length, 1);
   assert.match(calls[0].url, /rpc\/bess_claim_ingest$/);
   assert.equal(calls[0].options.method, 'POST');
