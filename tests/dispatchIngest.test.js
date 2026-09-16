@@ -464,12 +464,20 @@ test('send 只等待队列接受，不调用 Supabase 或 Lark', async () => {
     async publishDispatch() { publishes += 1; return { message_id: 'q_fast' }; },
   });
   const startedAt = Date.now();
-  const response = await invoke({ chat_id: localBody.chat_id, batch_id: 'batch_fast', items: [localBody] }, { targetHandler });
+  const response = await invoke(
+    { chat_id: localBody.chat_id, batch_id: 'batch_fast', items: [localBody] },
+    { targetHandler },
+    { headers: { 'x-bess-request-id': 'send-request-1' } },
+  );
   assert.equal(response.status, 202);
   assert.equal(response.body.status, 'QUEUED');
   assert.equal(publishes, 1);
   assert.equal(larkSends, 0);
   assert.ok(Date.now() - startedAt < 200);
+  assert.equal(response.headers['X-Bess-Request-Id'], 'send-request-1');
+  assert.equal(response.headers['X-Bess-Status-Source'], 'queue');
+  assert.match(response.headers['Server-Timing'], /auth;dur=/);
+  assert.match(response.headers['Server-Timing'], /database;dur=/);
   assert.match(response.headers['Server-Timing'], /queue;dur=/);
   assert.match(response.headers['Server-Timing'], /cache;dur=/);
   assert.match(response.headers['Server-Timing'], /total;dur=/);

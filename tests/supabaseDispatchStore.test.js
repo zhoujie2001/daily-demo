@@ -609,3 +609,35 @@ test('status recovery claim 使用目标 batch 的 REST/CAS 而非全局 RPC', a
   assert.match(calls[0].url, /form_message_id=eq\./);
   assert.match(calls[1].url, /request_context-%3E%3Estatus=eq\.RETRY/);
 });
+
+
+test('getIngestBatchStatuses 用一次 Supabase 请求返回逐项状态', async () => {
+  const calls = [];
+  const fetchImpl = async (url, options) => {
+    calls.push({ url, options });
+    const match = String(url).match(/form_message_id=in\.\(([^)]+)\)/);
+    assert.ok(match);
+    const ids = match[1].split(',');
+    return response([
+      {
+        form_message_id: ids[0],
+        request_context: {
+          kind: 'dispatch_ingest', status: 'SENT', operationId: 'op_a', messageId: 'om_a', requestIds: ['r1'],
+        },
+      },
+    ]);
+  };
+  const store = createSupabaseDispatchStore({
+    url: 'https://example.supabase.co', serviceRoleKey: 'service-key', fetchImpl, logger: {},
+  });
+
+  const statuses = await store.getIngestBatchStatuses([
+    { chatId: 'oc_a', batchId: 'batch_a' },
+    { chatId: 'oc_b', batchId: 'batch_b' },
+  ]);
+
+  assert.equal(calls.length, 1);
+  assert.equal(statuses[0].status, 'SENT');
+  assert.equal(statuses[0].message_id, 'om_a');
+  assert.deepEqual(statuses[1], { chat_id: 'oc_b', batch_id: 'batch_b', found: false });
+});

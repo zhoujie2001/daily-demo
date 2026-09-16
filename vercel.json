@@ -48,6 +48,12 @@
       "schedule": "10 16 * * *"
     }
   ],
+  "rewrites": [
+    {
+      "source": "/api/dispatch/status/batch",
+      "destination": "/api/dispatch/status-batch"
+    }
+  ],
   "headers": [
     {
       "source": "/",
