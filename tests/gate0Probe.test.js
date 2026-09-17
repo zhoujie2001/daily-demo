@@ -13,7 +13,8 @@ const BODY = Object.freeze({
 
 async function invoke({ method = 'POST', token = SECRET, body = BODY, secret = SECRET } = {}) {
   const result = { headers: {} };
-  const req = { method, headers: { 'x-gate0-token': token }, body };
+  const headers = token === undefined ? {} : { 'x-gate0-token': token };
+  const req = { method, headers, body };
   const res = {
     setHeader(name, value) { result.headers[name] = value; },
     status(code) { result.status = code; return this; },
@@ -47,6 +48,16 @@ test('returns the same acknowledgement identity for an identical retry', async (
   assert.equal(first.body.ack_id, second.body.ack_id);
   assert.equal(first.body.probe_id, second.body.probe_id);
   assert.equal(first.body.source_record_id, second.body.source_record_id);
+});
+
+test('accepts authentication in the JSON body for clients that cannot send custom headers', async () => {
+  const result = await invoke({
+    token: undefined,
+    body: { ...BODY, automation_token: SECRET },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.status, 'ACKNOWLEDGED');
+  assert.equal(result.body.probe_id, BODY.probe_id);
 });
 
 test('rejects missing or incorrect authentication', async () => {
