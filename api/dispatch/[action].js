@@ -12,6 +12,21 @@ const HANDLERS = Object.freeze({
   'automation-probe': createGate0ProbeHandler,
   'automation-send': createAutomationSendHandler,
   revoke: createDispatchRevokeHandler,
+  // Temporary debug echo endpoint — remove after Gate 1 verification
+  'automation-echo': () => (req, res) => {
+    const raw = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    return res.status(200).json({
+      ok: true,
+      echo: true,
+      body_type: typeof req.body,
+      body_keys: req.body && typeof req.body === 'object' ? Object.keys(req.body) : null,
+      dispatch_payload_type: typeof req.body?.dispatch_payload,
+      dry_run_type: typeof req.body?.dry_run,
+      dry_run_value: req.body?.dry_run,
+      raw_length: raw?.length,
+      raw_preview: raw?.slice(0, 1000),
+    });
+  },
 });
 
 export default async function handler(req, res) {
