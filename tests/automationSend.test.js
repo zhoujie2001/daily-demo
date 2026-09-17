@@ -80,12 +80,12 @@ describe('automation-send', () => {
     assert.equal(data.body.error_code, 'METHOD_NOT_ALLOWED');
   });
 
-  it('rejects missing secret config', async () => {
+  it('rejects wrong token when secret not configured (hash fallback)', async () => {
     const handler = createAutomationSendHandler({ secret: '' });
     const { res, data } = mockRes();
-    await handler(mockReq({ automation_token: 'x' }), res);
-    assert.equal(data.statusCode, 503);
-    assert.equal(data.body.error_code, 'AUTOMATION_DISPATCH_NOT_CONFIGURED');
+    await handler(mockReq({ automation_token: 'x', dispatch_payload: VALID_DISPATCH_PAYLOAD }), res);
+    assert.equal(data.statusCode, 401);
+    assert.equal(data.body.error_code, 'INVALID_AUTOMATION_TOKEN');
   });
 
   it('rejects wrong token', async () => {
