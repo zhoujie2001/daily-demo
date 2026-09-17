@@ -23,6 +23,9 @@
     "api/dispatch/[action].js": {
       "maxDuration": 30
     },
+    "api/gate0/probe.js": {
+      "maxDuration": 10
+    },
     "api/cron/bess-dispatch-cleanup.js": {
       "maxDuration": 60
     },
