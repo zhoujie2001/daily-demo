@@ -1,6 +1,7 @@
-import { apiUrl, authHeaders } from './client';
-import { prepareUploadFile } from '../utils/prepareUploadFile';
-import { assertUploadRequestSize, formatFileSize } from '../utils/uploadLimits';
+import { apiUrl, authHeaders } from './client.js';
+import { prepareUploadFile } from '../utils/prepareUploadFile.js';
+import { assertUploadRequestSize, formatFileSize } from '../utils/uploadLimits.js';
+import { uploadErrorMessage } from '../utils/uploadErrors.js';
 
 /**
  * 上传单个/多个文件到后端 /api/upload 接口。
@@ -66,7 +67,7 @@ export async function uploadFiles(files, token, { timeoutMs = DEFAULT_UPLOAD_TIM
   const data = parseJson(responseText);
   if (!res.ok) {
     const detail = data?.message || data?.error || responseText.slice(0, 160);
-    const err = new Error(detail || `文件上传失败（HTTP ${res.status}）`);
+    const err = new Error(uploadErrorMessage(res.status, detail));
     err.status = res.status;
     throw err;
   }

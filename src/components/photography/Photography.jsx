@@ -33,8 +33,8 @@ export default function Photography({
     try {
       await onUpload(file);
       toast.success('照片上传成功');
-    } catch {
-      toast.error('照片上传失败，请稍后重试');
+    } catch (error) {
+      toast.error(error?.message || '照片上传失败，请稍后重试');
     }
   };
 
