@@ -38,7 +38,7 @@ async function invoke(body, store, handlerOptions = {}) {
   return result;
 }
 
-test('队列已接受但账本尚未物化时返回短轮询提示', async () => {
+test('持久账本不存在时返回明确且非瞬态的 NOT_FOUND', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   const result = await invoke(
     { chat_id: 'oc_test', batch_id: 'batch_missing' },
@@ -48,9 +48,10 @@ test('队列已接受但账本尚未物化时返回短轮询提示', async () =>
   assert.equal(result.status, 200);
   assert.equal(result.body.ok, true);
   assert.equal(result.body.found, false);
-  assert.equal(result.body.status, 'QUEUED');
-  assert.equal(result.body.transient, true);
-  assert.equal(result.body.retry_after_ms, 2_000);
+  assert.equal(result.body.status, 'NOT_FOUND');
+  assert.equal(result.body.transient, false);
+  assert.equal(result.body.retryable, false);
+  assert.equal(Object.hasOwn(result.body, 'retry_after_ms'), false);
   assert.match(result.body.operation_id, /^bess-outbox-/);
 });
 
@@ -176,7 +177,7 @@ test('status 优先命中 Runtime Cache 且完全不访问 Supabase', async () =
   assert.equal(storeCreated, 0);
 });
 
-test('缓存中的 QUEUED 直接返回且不触发 Supabase 恢复风暴', async () => {
+test('缓存中的旧 QUEUED 缺失快照被降级为 NOT_FOUND 且不触发 Supabase 恢复风暴', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   let storeCreated = 0;
   const result = await invoke(
@@ -193,7 +194,9 @@ test('缓存中的 QUEUED 直接返回且不触发 Supabase 恢复风暴', async
   );
 
   assert.equal(result.status, 200);
-  assert.equal(result.body.status, 'QUEUED');
+  assert.equal(result.body.status, 'NOT_FOUND');
+  assert.equal(result.body.found, false);
+  assert.equal(result.body.transient, false);
   assert.equal(result.headers['X-Bess-Status-Source'], 'runtime-cache');
   assert.equal(storeCreated, 0);
   assert.equal(result.deferred.length, 0);
