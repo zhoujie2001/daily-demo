@@ -597,10 +597,10 @@ test('外部拒绝理由由缺失变为显式值不会改变同批次幂等指�
   assert.equal(published[0].operation_id, published[1].operation_id);
 });
 
-test('拒绝理由回查被严格截止，迟到结果不会篡改已入队请求', async () => {
+test('拒绝理由回查超时会阻断入队并返回可重试错误', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   const body = { ...localBody, batch_id: undefined };
-  let queued;
+  let queued = false;
   const targetHandler = createTestHandler({
     enrichmentTimeoutMs: 5,
     async enrichRejectReasons({ items }) {
@@ -608,13 +608,13 @@ test('拒绝理由回查被严格截止，迟到结果不会篡改已入队请�
       items[0].reject_reason = '【团购】涉及保证产品/服务效果';
       return [items[0].request_id];
     },
-    async publishDispatch(message) { queued = message; return { message_id: 'q_lookup_timeout' }; },
+    async publishDispatch() { queued = true; return { message_id: 'q_lookup_timeout' }; },
   });
 
   const response = await invoke(body, { targetHandler });
-  assert.equal(response.status, 202);
-  assert.equal(response.body.status, 'QUEUED');
-  assert.equal(queued.kind, 'dispatch');
+  assert.equal(response.status, 503);
+  assert.equal(response.body.error_code, 'REJECT_REASON_LOOKUP_TIMEOUT');
+  assert.equal(queued, false);
   assert.equal(Object.hasOwn(body, 'reject_reason'), false);
   await new Promise((resolve) => setTimeout(resolve, 25));
   assert.equal(Object.hasOwn(body, 'reject_reason'), false);
