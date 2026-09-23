@@ -52,15 +52,24 @@ test('漏传字段时回查台账并补写 reject_reason', async () => {
   assert.equal(client.calls.range, 'sheetA!J89:J89');
 });
 
-test('已有字段（含空串）不回查', async () => {
+test('已有非空字段不回查，空串会回查并覆盖', async () => {
   const items = [
     baseItem({ request_id: 'a', reject_reason: '已有' }),
     baseItem({ request_id: 'b', reject_reason: '' }),
   ];
-  const client = createFakeClient(['x']);
+  const client = createFakeClient(['【团购】其它有违客观事实的虚假内容']);
   const enriched = await enrichLocalPromoRejectReasons({ chatId: LOCAL_CHAT, items, client });
-  assert.deepEqual(enriched, []);
-  assert.equal(client.calls.getValues, 0);
+  assert.deepEqual(enriched, ['b']);
+  assert.equal(client.calls.getValues, 1);
+  assert.equal(items[1].reject_reason, '【团购】其它有违客观事实的虚假内容');
+});
+
+test('飞书富文本对象数组会被规范化为拒绝理由文本', async () => {
+  const item = baseItem();
+  const client = createFakeClient([{ type: 'text', text: '【团购】涉及保证产品/服务效果' }]);
+  const enriched = await enrichLocalPromoRejectReasons({ chatId: LOCAL_CHAT, items: [item], client });
+  assert.deepEqual(enriched, ['760104']);
+  assert.equal(item.reject_reason, '【团购】涉及保证产品/服务效果');
 });
 
 test('非本地推群不回查', async () => {
@@ -71,21 +80,23 @@ test('非本地推群不回查', async () => {
   assert.equal(item.reject_reason, undefined);
 });
 
-test('回查失败 fail-open，不阻断且不写字段', async () => {
+test('回查失败 fail-closed，阻断派单并返回可重试错误', async () => {
   const item = baseItem();
   const client = {
     async getTenantAccessToken() { return 't'; },
     async resolveSheetColumn() { throw Object.assign(new Error('api'), { code: 'LARK_999' }); },
   };
-  const warnings = [];
-  const enriched = await enrichLocalPromoRejectReasons({
-    chatId: LOCAL_CHAT, items: [item], client,
-    log: (level, stage, fields) => warnings.push({ level, stage, fields }),
-  });
-  assert.deepEqual(enriched, []);
+  const logs = [];
+  await assert.rejects(
+    enrichLocalPromoRejectReasons({
+      chatId: LOCAL_CHAT, items: [item], client,
+      log: (level, stage, fields) => logs.push({ level, stage, fields }),
+    }),
+    (error) => error.code === 'REJECT_REASON_LOOKUP_FAILED' && error.status === 503,
+  );
   assert.equal(item.reject_reason, undefined);
-  assert.equal(warnings[0].level, 'warn');
-  assert.equal(warnings[0].stage, 'local_promo_reject_reason_lookup_failed');
+  assert.equal(logs[0].level, 'error');
+  assert.equal(logs[0].stage, 'local_promo_reject_reason_lookup_failed');
 });
 
 // ── 端到端：回查补写后，跳过逻辑生效，命中需求不发卡 ─────────────────────
