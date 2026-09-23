@@ -61,77 +61,53 @@ test('接入参数强制绑定群聊与业务类型', () => {
   assert.throws(() => normalizeDispatchIngest({ ...localBody, chat_id: 'oc_unknown' }), (error) => error.code === 'FORBIDDEN_CHAT');
 });
 
-test('仅本地推群过滤指定拒绝理由，其他需求正常派单', () => {
-  const blockedReasons = [
+test('本地推不再按拒绝理由过滤', () => {
+  const reasons = [
     '【团购】涉及保证产品/服务效果',
     '投资类：未显著标明“投资有风险”提示语',
     '【团购】其他有违客观事实的虚假内容',
     '【团购】涉及联系方式',
   ];
-  for (const reason of blockedReasons) {
-    assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { reject_reason: `前缀 ${reason} 后缀` }), true);
+  for (const reason of reasons) {
+    assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { reject_reason: reason }), false);
   }
-  assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { reject_reason: '涉及保证产品/服务效果' }), false);
-  assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { reject_reason: '投资类:未显著标明“投资有风险”提示语' }), true);
-  assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { reject_reason: '投资类：未显著标明“投资有风险”提示语' }), true);
-  assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { reject_reason: '【团购】其它有违客观事实的虚假内容' }), true);
-  assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { reject_reason: '【团购】有违社会主流价值观的内容' }), false);
-  assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { request_name: '大盘监管风险抽样_本地2.0_认领门店（归因）_正式_P2_1001069' }), false);
-  assert.equal(shouldSkipLocalPromoDispatch(localBody.chat_id, { rejectReason: '大盘风险抽样_本地_认领门店（归因）' }), false);
-  assert.equal(shouldSkipLocalPromoDispatch('oc_2ecc53a432a03f6f81f6a18babe8cda1', { reject_reason: blockedReasons[0] }), false);
 });
 
-test('本地推拒绝理由审计识别跳过项与缺失字段项', () => {
+test('拒绝理由审计兼容接口不再产生跳过或缺失项', () => {
   const items = [
     { request_id: '1', reject_reason: '【团购】涉及保证产品/服务效果' },
     { request_id: '2', rejectReason: '合规内容' },
     { request_id: '3' },
     { request_id: '4', reject_reason: '' },
   ];
-  const audit = auditLocalPromoRejectReasons(localBody.chat_id, items);
-  assert.deepEqual(audit.skipped, ['1']);
-  assert.deepEqual(audit.missingField, ['3']);
+  assert.deepEqual(auditLocalPromoRejectReasons(localBody.chat_id, items), { skipped: [], missingField: [] });
   assert.equal(hasLocalPromoRejectReasonField({ reject_reason: '' }), true);
   assert.equal(hasLocalPromoRejectReasonField({ rejectReason: null }), true);
   assert.equal(hasLocalPromoRejectReasonField({}), false);
-  // 非本地推群不审计
-  assert.deepEqual(auditLocalPromoRejectReasons('oc_2ecc53a432a03f6f81f6a18babe8cda1', items), { skipped: [], missingField: [] });
 });
 
-test('本地推批次跳过命中拒绝理由的需求且全部命中时不发卡', async () => {
+test('本地推批次保留全部需求及原始顺序', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   const body = {
     chat_id: localBody.chat_id,
-    batch_id: 'batch_reject_reason',
+    batch_id: 'batch_reject_reason_disabled',
     card_title: '【本地推】E 段自动派单',
     time_segment: 'E',
     items: [
-      { ...localBody, request_id: 'blocked_1', reject_reason: '【团购】涉及保证产品/服务效果' },
-      { ...localBody, request_id: 'allowed_1', reject_reason: '【团购】有违社会主流价值观的内容' },
+      { ...localBody, request_id: 'first', reject_reason: '【团购】涉及保证产品/服务效果' },
+      { ...localBody, request_id: 'second', reject_reason: '【团购】有违社会主流价值观的内容' },
+      { ...localBody, request_id: 'third' },
     ],
   };
   const published = [];
   const targetHandler = createTestHandler({
-    async publishDispatch(message) { published.push(message); return { message_id: `q_${published.length}` }; },
+    async publishDispatch(message) { published.push(message); return { message_id: 'q_all' }; },
   });
-  const partial = await invoke(body, { targetHandler }, { headers: { 'x-bess-wait': 'async' } });
-  assert.equal(partial.status, 202);
-  assert.equal(partial.body.status, 'QUEUED');
-  assert.deepEqual(partial.body.request_ids, ['allowed_1']);
-  assert.deepEqual(partial.body.skipped_request_ids, ['blocked_1']);
-  assert.doesNotMatch(JSON.stringify(published[0].card), /blocked_1/);
-  assert.match(JSON.stringify(published[0].card), /allowed_1/);
-
-  const allBlocked = await invoke({
-    ...body,
-    batch_id: 'batch_all_rejected',
-    items: [{ ...localBody, request_id: 'blocked_2', reject_reason: '【团购】其他有违客观事实的虚假内容' }],
-  }, { targetHandler });
-  assert.equal(allBlocked.status, 202);
-  assert.equal(allBlocked.body.status, 'QUEUED');
-  assert.deepEqual(allBlocked.body.skipped_request_ids, ['blocked_2']);
-  assert.equal(published[1].kind, 'skip');
-  assert.equal(published[1].card, null);
+  const response = await invoke(body, { targetHandler }, { headers: { 'x-bess-wait': 'async' } });
+  assert.equal(response.status, 202);
+  assert.deepEqual(response.body.request_ids, ['first', 'second', 'third']);
+  assert.deepEqual(response.body.skipped_request_ids, []);
+  assert.deepEqual(published[0].request_ids, ['first', 'second', 'third']);
 });
 
 test('主监控群允许多业务类型，但必须显式提供工作表', () => {
@@ -561,7 +537,7 @@ test('resolveSyncWaitMs 仍解析旧信号供兼容观测，但不改变同步�
 });
 
 
-test('外部拒绝理由由缺失变为显式值不会改变同批次幂等指纹', async () => {
+test('拒绝理由变化不会改变同批次幂等指纹或过滤需求', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   const published = [];
   const targetHandler = createTestHandler({
@@ -589,7 +565,7 @@ test('外部拒绝理由由缺失变为显式值不会改变同批次幂等指�
   const first = await invoke(structuredClone(baseBody), { targetHandler });
   const replay = await invoke(explicitBody, { targetHandler });
   assert.equal(first.status, 202);
-  assert.deepEqual(first.body.skipped_request_ids, ['blocked_stable']);
+  assert.deepEqual(first.body.skipped_request_ids, []);
   assert.equal(replay.status, 202);
   assert.equal(replay.body.reused, true);
   assert.equal(published.length, 2);
@@ -597,27 +573,25 @@ test('外部拒绝理由由缺失变为显式值不会改变同批次幂等指�
   assert.equal(published[0].operation_id, published[1].operation_id);
 });
 
-test('拒绝理由回查超时会阻断入队并返回可重试错误', async () => {
+test('派单入口不再调用拒绝理由回查', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   const body = { ...localBody, batch_id: undefined };
+  let enrichmentCalled = false;
   let queued = false;
   const targetHandler = createTestHandler({
     enrichmentTimeoutMs: 5,
-    async enrichRejectReasons({ items }) {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      items[0].reject_reason = '【团购】涉及保证产品/服务效果';
-      return [items[0].request_id];
+    async enrichRejectReasons() {
+      enrichmentCalled = true;
+      throw new Error('不应调用');
     },
-    async publishDispatch() { queued = true; return { message_id: 'q_lookup_timeout' }; },
+    async publishDispatch() { queued = true; return { message_id: 'q_no_lookup' }; },
   });
 
   const response = await invoke(body, { targetHandler });
-  assert.equal(response.status, 503);
-  assert.equal(response.body.error_code, 'REJECT_REASON_LOOKUP_TIMEOUT');
-  assert.equal(queued, false);
-  assert.equal(Object.hasOwn(body, 'reject_reason'), false);
-  await new Promise((resolve) => setTimeout(resolve, 25));
-  assert.equal(Object.hasOwn(body, 'reject_reason'), false);
+  assert.equal(response.status, 202);
+  assert.equal(response.body.status, 'QUEUED');
+  assert.equal(enrichmentCalled, false);
+  assert.equal(queued, true);
 });
 
 test('队列发布超时时返回可安全重试的未知接受状态', async () => {
@@ -657,7 +631,7 @@ test('队列发布明确失败时返回 503 且不谎报已接受', async () => 
   assert.equal(response.body.accepted_unknown, undefined);
 });
 
-test('部分过滤批次入队时保留 skipped_request_ids', async () => {
+test('原部分过滤批次现在按原顺序全部入队', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   const body = {
     chat_id: localBody.chat_id,
@@ -673,7 +647,7 @@ test('部分过滤批次入队时保留 skipped_request_ids', async () => {
   const response = await invoke(body, { targetHandler });
   assert.equal(response.status, 202);
   assert.equal(response.body.status, 'QUEUED');
-  assert.deepEqual(response.body.request_ids, ['allowed_inflight']);
-  assert.deepEqual(response.body.skipped_request_ids, ['blocked_inflight']);
-  assert.deepEqual(queued.request_ids, ['allowed_inflight']);
+  assert.deepEqual(response.body.request_ids, ['blocked_inflight', 'allowed_inflight']);
+  assert.deepEqual(response.body.skipped_request_ids, []);
+  assert.deepEqual(queued.request_ids, ['blocked_inflight', 'allowed_inflight']);
 });
