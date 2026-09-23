@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createAutomationSendHandler } from '../lib/dispatch/api/automation-send.js';
+import { createAutomationLarkClient, createAutomationSendHandler } from '../lib/dispatch/api/automation-send.js';
 
 /* ------------------------------------------------------------------ */
 /*  Fixtures                                                           */
@@ -72,6 +72,38 @@ function createHandler(opts = {}) {
 /* ------------------------------------------------------------------ */
 
 describe('automation-send', () => {
+  it('默认飞书客户端会延迟读取生产环境凭证', async () => {
+    const originalFetch = globalThis.fetch;
+    const originalAppId = process.env.LARK_APP_ID;
+    const originalAppSecret = process.env.LARK_APP_SECRET;
+    const requests = [];
+    try {
+      process.env.LARK_APP_ID = 'cli_runtime_app';
+      process.env.LARK_APP_SECRET = 'runtime_secret';
+      globalThis.fetch = async (url, options) => {
+        requests.push({ url: String(url), body: JSON.parse(options.body) });
+        return {
+          ok: true,
+          async text() {
+            return JSON.stringify({ code: 0, tenant_access_token: 'tenant_token', expire: 7200 });
+          },
+        };
+      };
+
+      const client = createAutomationLarkClient();
+      assert.equal(await client.getTenantAccessToken(), 'tenant_token');
+      assert.equal(requests.length, 1);
+      assert.equal(requests[0].body.app_id, 'cli_runtime_app');
+      assert.equal(requests[0].body.app_secret, 'runtime_secret');
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalAppId === undefined) delete process.env.LARK_APP_ID;
+      else process.env.LARK_APP_ID = originalAppId;
+      if (originalAppSecret === undefined) delete process.env.LARK_APP_SECRET;
+      else process.env.LARK_APP_SECRET = originalAppSecret;
+    }
+  });
+
   it('rejects GET', async () => {
     const handler = createHandler();
     const { res, data } = mockRes();
