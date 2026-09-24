@@ -102,6 +102,28 @@ function deadline(timeoutMs, { isForm = false } = {}) {
   });
 }
 
+export async function finalizeDelayedDispatch({ finalResult, isForm, formMessageId, body, client = larkClient }) {
+  if (typeof finalResult.afterResponse === 'function') await finalResult.afterResponse();
+  if (isForm && formMessageId && finalResult.errorCode) {
+    const message = finalResult.body?.toast?.content || '请求处理未完成，请重试';
+    await client.updateMessageCard(formMessageId, buildRosterRetryCard(message));
+  } else if (isForm && formMessageId && finalResult.updatedCard && !finalResult.afterResponse) {
+    // The callback deadline replaces the submitted form with a processing card.
+    // Successful form flows without their own background finalizer must replace
+    // that temporary card once the durable work has completed.
+    await client.updateMessageCard(formMessageId, finalResult.updatedCard);
+  } else if (!isForm && formMessageId && finalResult.errorCode) {
+    const message = finalResult.body?.toast?.content || '派单未完成，请稍后重试';
+    const eventId = String(body?.header?.event_id || '').trim();
+    await client.replyInteractiveCard({
+      messageId: formMessageId,
+      card: buildDispatchFailureCard(message),
+      uuid: `dispatch-failure-${eventId || createHash('sha256').update(formMessageId).digest('hex').slice(0, 24)}`,
+      replyInThread: true,
+    });
+  }
+}
+
 async function handleCardAction(body) {
   const isForm = Boolean(body?.event?.action?.form_value);
   const formMessageId = String(body?.event?.context?.open_message_id || body?.event?.context?.message_id || '').trim();
@@ -123,20 +145,7 @@ async function handleCardAction(body) {
     // same Vercel background lifetime instead of losing it with the race.
     scheduleAfterResponse(async () => {
       const finalResult = await dispatchTask;
-      if (typeof finalResult.afterResponse === 'function') await finalResult.afterResponse();
-      if (isForm && formMessageId && finalResult.errorCode) {
-        const message = finalResult.body?.toast?.content || '请求处理未完成，请重试';
-        await larkClient.updateMessageCard(formMessageId, buildRosterRetryCard(message));
-      } else if (!isForm && formMessageId && finalResult.errorCode) {
-        const message = finalResult.body?.toast?.content || '派单未完成，请稍后重试';
-        const eventId = String(body?.header?.event_id || '').trim();
-        await larkClient.replyInteractiveCard({
-          messageId: formMessageId,
-          card: buildDispatchFailureCard(message),
-          uuid: `dispatch-failure-${eventId || createHash('sha256').update(formMessageId).digest('hex').slice(0, 24)}`,
-          replyInThread: true,
-        });
-      }
+      await finalizeDelayedDispatch({ finalResult, isForm, formMessageId, body });
     });
   }
   return result;
