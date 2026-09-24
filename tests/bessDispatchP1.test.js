@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { parseRoster, secureShuffle, shanghaiDay, nextShanghaiMidnight, dispatchDirection, RosterValidationError } from '../lib/dispatch/roster.js';
+import { parseRoster, secureShuffle, shanghaiDay, nextShanghaiMidnight, dispatchDirection, dispatchScope, RosterValidationError } from '../lib/dispatch/roster.js';
 import { buildRosterFormCard, buildRosterProcessingCard, buildRosterCompletedCard, buildRosterRetryCard, buildDispatchResultCard } from '../lib/lark/card-renderer.js';
 import { handleDispatchEvent } from '../lib/dispatch/dispatch-service.js';
 import { LarkApiError, LarkClient } from '../lib/lark/client.js';
@@ -125,7 +125,9 @@ test('上海日界线和次日零点正确，业务方向符合规则', () => {
   assert.equal(nextShanghaiMidnight(now), '2026-08-30T16:00:00.000Z');
   assert.equal(shanghaiDay(new Date('2026-08-30T16:00:00Z')), '2026-08-31');
   for (const type of ['千川', 'qianchuan', 'QIANCHUAN']) assert.equal(dispatchDirection(type), 'forward');
-  for (const type of ['本地推', '本地', '存量', '其它', 'EHC']) assert.equal(dispatchDirection(type), 'reverse');
+  for (const type of ['本地推', '本地', '存量', '其它', 'EHC', 'AD']) assert.equal(dispatchDirection(type), 'reverse');
+  for (const type of ['AD', 'ad', '广告']) assert.equal(dispatchScope(type), 'ad');
+  for (const type of ['千川', '本地推', '存量']) assert.equal(dispatchScope(type), 'default');
 });
 
 test('首次点击无名单：创建话题 Card 2.0 表单并保存 pending 映射，不提前派单', async () => {

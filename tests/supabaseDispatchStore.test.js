@@ -39,6 +39,26 @@ test('getAssignment 按 day_key 和 request_id 查询已有派单', async () => 
   assert.match(calls[0].url, /request_id=eq\.request%201/);
 });
 
+test('AD 派单状态与分配查询使用独立 scope', async () => {
+  const { store, calls } = setup([[{ day_key: '2026-09-24', scope: 'ad' }], []]);
+  await store.getDailyState('2026-09-24', 'ad', new Date('2026-09-24T00:00:00Z'));
+  await store.getDailyAssignments('2026-09-24', 'ad');
+  assert.match(calls[0].url, /scope=eq\.ad/);
+  assert.match(calls[1].url, /scope=eq\.ad/);
+});
+
+test('assignSpecific 使用 scope 原子预留指定负责人', async () => {
+  const { store, calls } = setup([[{ assignee: '周杰', replayed: false }]]);
+  const result = await store.assignSpecific({
+    dayKey: '2026-09-24', scope: 'ad', requestId: '9001', assignee: '周杰', context: { sheetId: '288afd' },
+  });
+  assert.equal(result.assignee, '周杰');
+  assert.match(calls[0].url, /rpc\/bess_assign_specific$/);
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    p_day_key: '2026-09-24', p_scope: 'ad', p_request_id: '9001', p_assignee: '周杰', p_context: { sheetId: '288afd' },
+  });
+});
+
 test('calibrateCursor 通过事务 RPC 按负责人原子校准双向游标', async () => {
   const state = { forward_cursor: 2, reverse_cursor: 2 };
   const { store, calls } = setup([[state]]);
@@ -50,7 +70,7 @@ test('calibrateCursor 通过事务 RPC 按负责人原子校准双向游标', as
   assert.equal(calls[0].options.method, 'POST');
   assert.match(calls[0].url, /rpc\/bess_calibrate_cursor$/);
   assert.deepEqual(JSON.parse(calls[0].options.body), {
-    p_day_key: '2026-08-30', p_assignee: '周杰', p_roster: ['张三', '周杰', '罗世坤'],
+    p_day_key: '2026-08-30', p_scope: 'default', p_assignee: '周杰', p_roster: ['张三', '周杰', '罗世坤'],
   });
 });
 
