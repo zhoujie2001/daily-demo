@@ -23,7 +23,7 @@ function serialized(card) {
   return JSON.stringify(card);
 }
 
-test('AD 批量结果卡只展示 AD 独立名单，不串入千川本地双名单', () => {
+test('AD 批量结果卡只展示 AD业态在班名单，不串入方向或千川本地文案', () => {
   const card = buildBatchDispatchResultCard([adFields], {
     batchId: 'ad_batch_1',
     status: 'FAILED',
@@ -33,12 +33,13 @@ test('AD 批量结果卡只展示 AD 独立名单，不串入千川本地双名�
     dispatchedAt: '2026-09-24T12:00:00.000Z',
   });
   const text = serialized(card);
-  assert.match(text, /AD 独立名单（倒序（从下到上））/);
+  assert.match(text, /AD业态在班名单/);
+  assert.doesNotMatch(text, /AD 独立名单/);
   assert.doesNotMatch(text, /千川正序/);
   assert.doesNotMatch(text, /本地倒序/);
 });
 
-test('AD 单条结果与名单完成卡使用 AD 独立名单文案', () => {
+test('AD 单条结果与名单完成卡使用 AD业态在班名单文案', () => {
   const resultCard = buildDispatchResultCard(adFields, {
     assignee: '李四',
     direction: 'reverse',
@@ -52,7 +53,8 @@ test('AD 单条结果与名单完成卡使用 AD 独立名单文案', () => {
   });
   for (const card of [resultCard, completedCard]) {
     const text = serialized(card);
-    assert.match(text, /AD 独立名单/);
+    assert.match(text, /AD业态在班名单/);
+    assert.doesNotMatch(text, /AD 独立名单/);
     assert.doesNotMatch(text, /千川正序/);
     assert.doesNotMatch(text, /本地倒序/);
   }
