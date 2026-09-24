@@ -1,7 +1,7 @@
 import { createDecipheriv, createHash, timingSafeEqual } from 'node:crypto';
 import { waitUntil } from '@vercel/functions';
 import { LarkClient } from '../../lib/lark/client.js';
-import { buildRosterProcessingCard, buildRosterRetryCard } from '../../lib/lark/card-renderer.js';
+import { buildDispatchFailureCard, buildRosterProcessingCard, buildRosterRetryCard } from '../../lib/lark/card-renderer.js';
 import { handleDispatchEvent } from '../../lib/dispatch/dispatch-service.js';
 
 // Feishu requires card.action.trigger callbacks to answer within ~3s; leave
@@ -127,6 +127,15 @@ async function handleCardAction(body) {
       if (isForm && formMessageId && finalResult.errorCode) {
         const message = finalResult.body?.toast?.content || '请求处理未完成，请重试';
         await larkClient.updateMessageCard(formMessageId, buildRosterRetryCard(message));
+      } else if (!isForm && formMessageId && finalResult.errorCode) {
+        const message = finalResult.body?.toast?.content || '派单未完成，请稍后重试';
+        const eventId = String(body?.header?.event_id || '').trim();
+        await larkClient.replyInteractiveCard({
+          messageId: formMessageId,
+          card: buildDispatchFailureCard(message),
+          uuid: `dispatch-failure-${eventId || createHash('sha256').update(formMessageId).digest('hex').slice(0, 24)}`,
+          replyInThread: true,
+        });
       }
     });
   }
