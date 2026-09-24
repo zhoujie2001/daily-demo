@@ -616,6 +616,107 @@ test('批量派单回归测试：人工填写行作为锚点推顺序且自身�
   assert.ok(writes.some(w => w.rowIndex === 12 && w.assignee === '张三'));
 });
 
+test('千川与本地推混合批次分别沿用各自锚点，并在结果卡同时标记双锚点', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['张三', '李四', '王五'] };
+  const sheetRows = new Array(20).fill(null).map(() => ['', '', '']);
+  sheetRows[9] = ['2026-08-30', '李四', '千川'];
+  sheetRows[11] = ['2026-08-30', '王五', '本地'];
+  const client = new BatchClient({ sheetRows });
+  const qianchuan = (requestId, rowIndex) => item(requestId, rowIndex);
+  const localPromo = (requestId, rowIndex) => ({
+    ...item(requestId, rowIndex),
+    business_type: '本地推',
+    target_category: 'local_promo',
+    project_value: '本地',
+  });
+  const items = [
+    qianchuan('mixed_q_anchor', 10),
+    qianchuan('mixed_q_auto', 11),
+    localPromo('mixed_l_anchor', 12),
+    localPromo('mixed_l_auto', 13),
+  ];
+
+  const result = await handleDispatchEvent(batchBody('batch_mixed_direction_anchors', items), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'batch_mixed_direction_anchors');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.equal(batch.results.find(({ requestId }) => requestId === 'mixed_q_anchor').assignee, '李四');
+  assert.equal(batch.results.find(({ requestId }) => requestId === 'mixed_q_auto').assignee, '王五');
+  assert.equal(batch.results.find(({ requestId }) => requestId === 'mixed_l_anchor').assignee, '王五');
+  assert.equal(batch.results.find(({ requestId }) => requestId === 'mixed_l_auto').assignee, '李四');
+  assert.equal(store.calibrations.length, 0, '混合方向不能用单一校准覆盖另一方向的锚点');
+
+  const resultCard = client.calls.find((call) => call.kind === 'replyCard').card;
+  const rosterColumns = resultCard.body.elements.find((element) => element.tag === 'column_set');
+  assert.match(rosterColumns.columns[0].elements[0].content, /3\. 王五 \*\*← 当前人员\*\*/);
+  assert.match(rosterColumns.columns[1].elements[0].content, /2\. 李四 \*\*← 当前人员\*\*/);
+});
+
+test('混合批次仅千川有锚点时不污染本地推原有倒序游标', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['张三', '李四', '王五'] };
+  const sheetRows = new Array(20).fill(null).map(() => ['', '', '']);
+  sheetRows[9] = ['2026-08-30', '李四', '千川'];
+  const client = new BatchClient({ sheetRows });
+  const localItem = {
+    ...item('mixed_only_q_anchor_local_auto', 12),
+    business_type: '本地推',
+    target_category: 'local_promo',
+    project_value: '本地',
+  };
+  const items = [
+    item('mixed_only_q_anchor', 10),
+    item('mixed_only_q_anchor_q_auto', 11),
+    localItem,
+  ];
+
+  const result = await handleDispatchEvent(batchBody('batch_mixed_only_q_anchor', items), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'batch_mixed_only_q_anchor');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.equal(batch.results.find(({ requestId }) => requestId === 'mixed_only_q_anchor_q_auto').assignee, '王五');
+  assert.equal(batch.results.find(({ requestId }) => requestId === 'mixed_only_q_anchor_local_auto').assignee, '王五');
+  assert.equal(store.calibrations.length, 0);
+});
+
+test('混合批次首个锚定分配在持久化前失败时，下一项继续消费该方向锚点', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['张三', '李四', '王五'] };
+  const originalAssign = store.assign.bind(store);
+  store.assign = async (args) => {
+    if (args.requestId === 'mixed_anchor_fail') throw new Error('temporary store failure');
+    return originalAssign(args);
+  };
+  const sheetRows = new Array(20).fill(null).map(() => ['', '', '']);
+  sheetRows[9] = ['2026-08-30', '李四', '千川'];
+  sheetRows[12] = ['2026-08-30', '王五', '本地'];
+  const client = new BatchClient({ sheetRows });
+  const localPromo = (requestId, rowIndex) => ({
+    ...item(requestId, rowIndex),
+    business_type: '本地推',
+    target_category: 'local_promo',
+    project_value: '本地',
+  });
+  const items = [
+    item('mixed_anchor_prefilled', 10),
+    item('mixed_anchor_fail', 11),
+    item('mixed_anchor_next', 12),
+    localPromo('mixed_local_prefilled', 13),
+    localPromo('mixed_local_auto', 14),
+  ];
+
+  const result = await handleDispatchEvent(batchBody('batch_mixed_anchor_failure', items), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'batch_mixed_anchor_failure');
+  assert.equal(batch.status, 'PARTIAL');
+  assert.equal(batch.results.find(({ requestId }) => requestId === 'mixed_anchor_fail').status, 'FAILED');
+  assert.equal(batch.results.find(({ requestId }) => requestId === 'mixed_anchor_next').assignee, '王五');
+});
+
 test('存量 11 条：第 2 条陈冰清固定为批次锚点，自动游标连续得到黄鲜/陈冰清/罗理', async () => {
   const store = new BatchStore();
   store.state = { roster: ['周杰', '马莲', '赵刘霞', '罗世坤', '罗理', '黄鲜', '陈冰清', '陈思宇'] };
