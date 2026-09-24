@@ -99,24 +99,28 @@ test('回查失败 fail-closed，阻断派单并返回可重试错误', async ()
   assert.equal(logs[0].stage, 'local_promo_reject_reason_lookup_failed');
 });
 
-// ── 端到端：回查补写后，跳过逻辑生效，命中需求不发卡 ─────────────────────
+// ── 端到端：生产派单不再执行拒绝理由回查或过滤 ─────────────────────────
 function signature(body, timestamp = NOW) {
   return createHmac('sha256', SECRET).update(`${timestamp}.${canonicalJson(body)}`).digest('hex');
 }
 
-test('端到端：旧客户端漏传时 /send 有界回查 Sheet 并将跳过终态入队', async () => {
+test('端到端：/send 保留全部需求并跳过拒绝理由回查', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
-  const fakeClient = createFakeClient(['前缀 【团购】涉及保证产品/服务效果 后缀']);
+  const fakeClient = createFakeClient(['【团购】涉及保证产品/服务效果']);
   let queued;
   const targetHandler = createDispatchSendHandler({
     client: fakeClient,
-    async publishDispatch(message) { queued = message; return { message_id: 'q_skip' }; },
+    async publishDispatch(message) { queued = message; return { message_id: 'q_dispatch' }; },
   });
-
   const body = {
-    chat_id: LOCAL_CHAT, batch_id: 'batch_enrich',
-    card_title: '批量派单', time_segment: 'E',
-    items: [baseItem()],
+    chat_id: LOCAL_CHAT,
+    batch_id: 'batch_no_reject_filter',
+    card_title: '批量派单',
+    time_segment: 'E',
+    items: [
+      baseItem({ request_id: '760104', reject_reason: '【团购】涉及保证产品/服务效果' }),
+      baseItem({ request_id: '760105', reject_reason: '' }),
+    ],
   };
   const result = { headers: {} };
   const response = {
@@ -125,7 +129,7 @@ test('端到端：旧客户端漏传时 /send 有界回查 Sheet 并将跳过终
     json(value) { result.body = value; return response; },
   };
   await targetHandler({
-    method: 'POST', body, url: '/api/send?wait=1',
+    method: 'POST', body, url: '/api/send',
     headers: {
       'x-bess-timestamp': String(NOW),
       'x-bess-signature': `sha256=${signature(body)}`,
@@ -133,103 +137,9 @@ test('端到端：旧客户端漏传时 /send 有界回查 Sheet 并将跳过终
   }, response);
 
   assert.equal(result.status, 202);
-  assert.equal(result.body.status, 'QUEUED');
-  assert.deepEqual(result.body.skipped_request_ids, ['760104']);
-  assert.equal(fakeClient.calls.getValues, 1);
-  assert.equal(queued.kind, 'skip');
-  assert.equal(queued.card, null);
-});
-
-
-test('全量过滤首次入队后，回查失败的重放仍命中同一 operation', async () => {
-  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
-  let enrichCalls = 0;
-  const queued = [];
-  const targetHandler = createDispatchSendHandler({
-    async publishDispatch(message) {
-      queued.push(message);
-      return { message_id: queued.length === 1 ? 'q_skip_once' : '', deduplicated: queued.length > 1 };
-    },
-    async enrichRejectReasons({ items }) {
-      enrichCalls += 1;
-      if (enrichCalls === 1) {
-        items[0].reject_reason = '【团购】涉及保证产品/服务效果';
-        return [items[0].request_id];
-      }
-      return [];
-    },
-  });
-  const body = { chat_id: LOCAL_CHAT, batch_id: 'batch_all_skipped', items: [baseItem()] };
-  async function invokeHandler() {
-    const result = { headers: {} };
-    const response = {
-      setHeader() {},
-      status(code) { result.status = code; return response; },
-      json(value) { result.body = value; return response; },
-    };
-    await targetHandler({
-      method: 'POST', body: structuredClone(body), url: '/api/send',
-      headers: {
-        'x-bess-timestamp': String(NOW),
-        'x-bess-signature': `sha256=${signature(body)}`,
-      },
-    }, response);
-    return result;
-  }
-
-  const first = await invokeHandler();
-  const replay = await invokeHandler();
-  assert.equal(first.status, 202);
-  assert.equal(replay.status, 202);
-  assert.equal(replay.body.reused, true);
-  assert.equal(queued[0].kind, 'skip');
-  assert.equal(queued[1].kind, 'dispatch');
-  assert.equal(queued[0].operation_id, queued[1].operation_id);
-});
-
-
-test('首次 fail-open 已入队后，重放回查命中过滤仍复用原 operation', async () => {
-  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
-  let enrichCalls = 0;
-  const queued = [];
-  const targetHandler = createDispatchSendHandler({
-    async publishDispatch(message) {
-      queued.push(message);
-      return { message_id: queued.length === 1 ? 'q_dispatch_once' : '', deduplicated: queued.length > 1 };
-    },
-    async enrichRejectReasons({ items }) {
-      enrichCalls += 1;
-      if (enrichCalls === 2) {
-        items[0].reject_reason = '【团购】涉及保证产品/服务效果';
-        return [items[0].request_id];
-      }
-      return [];
-    },
-  });
-  const body = { chat_id: LOCAL_CHAT, batch_id: 'batch_fail_open_then_skip', items: [baseItem()] };
-  async function invokeHandler() {
-    const result = { headers: {} };
-    const response = {
-      setHeader() {},
-      status(code) { result.status = code; return response; },
-      json(value) { result.body = value; return response; },
-    };
-    await targetHandler({
-      method: 'POST', body: structuredClone(body), url: '/api/send',
-      headers: {
-        'x-bess-timestamp': String(NOW),
-        'x-bess-signature': `sha256=${signature(body)}`,
-      },
-    }, response);
-    return result;
-  }
-
-  const first = await invokeHandler();
-  const replay = await invokeHandler();
-  assert.equal(first.status, 202);
-  assert.equal(replay.status, 202);
-  assert.equal(replay.body.reused, true);
-  assert.equal(queued[0].kind, 'dispatch');
-  assert.equal(queued[1].kind, 'skip');
-  assert.equal(queued[0].operation_id, queued[1].operation_id);
+  assert.deepEqual(result.body.request_ids, ['760104', '760105']);
+  assert.deepEqual(result.body.skipped_request_ids, []);
+  assert.equal(fakeClient.calls.getValues, 0);
+  assert.equal(queued.kind, 'dispatch');
+  assert.deepEqual(queued.request_ids, ['760104', '760105']);
 });
