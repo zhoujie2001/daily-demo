@@ -71,10 +71,11 @@ function createAttachmentId(type, file) {
 }
 
 async function createPhotoAttachment(file, type = 'image') {
-  const [preparedFile, extractedMetadata] = await Promise.all([
-    compressImage(file),
-    extractPhotoMetadata(file).catch(() => ({})),
-  ]);
+  // Reading EXIF and decoding a full-resolution phone photo concurrently can
+  // exceed Safari's memory budget. Finish the lightweight metadata pass first,
+  // then decode/compress the image.
+  const extractedMetadata = await extractPhotoMetadata(file).catch(() => ({}));
+  const preparedFile = await compressImage(file);
   const previewUrl = await readFileAsDataUrl(preparedFile);
 
   return {
@@ -416,7 +417,13 @@ export default function Daily({ isAdmin, posts, loading = false, activeDate, onA
 
     try {
       if (type === 'image' || type === 'live-photo') {
-        const newAttachments = await Promise.all(files.map((file) => createPhotoAttachment(file, type)));
+        // Mobile photos decode to a much larger bitmap than their file size.
+        // Process sequentially to avoid several full-resolution canvases and
+        // data URLs existing in memory at the same time on iOS/Android.
+        const newAttachments = [];
+        for (const file of files) {
+          newAttachments.push(await createPhotoAttachment(file, type));
+        }
         setAttachments((prev) => [...prev, ...newAttachments]);
         return;
       }

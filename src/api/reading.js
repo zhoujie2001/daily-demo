@@ -14,6 +14,28 @@ function resolveCoverUrl(rawUrl, baseUrl) {
   }
 }
 
+/**
+ * 历史书籍记录可能保存了已经下线的 Vercel 封面代理绝对地址。
+ * 代理路径和查询参数仍然有效时，将它迁移到当前站点的封面服务；
+ * 普通外链和本地静态资源保持原样。
+ */
+export function normalizeStoredBookCoverUrl(rawUrl, apiBase = BOOK_COVER_API_BASE) {
+  const value = String(rawUrl || '').trim();
+  if (!value) return '';
+
+  try {
+    const currentBase = new URL(`${String(apiBase || BOOK_COVER_API_BASE).replace(/\/+$/, '')}/`);
+    const parsed = new URL(value, currentBase);
+    if (parsed.pathname !== '/api/book-cover') return value;
+
+    const migrated = new URL('/api/book-cover', currentBase);
+    migrated.search = parsed.search;
+    return migrated.toString();
+  } catch {
+    return value;
+  }
+}
+
 export async function searchServerBookCovers(
   { title = '', author = '', isbn = '' },
   options = {}

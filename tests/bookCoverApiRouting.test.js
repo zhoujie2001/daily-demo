@@ -4,6 +4,7 @@ import {
   canAutomaticallyReplaceBookCover,
   isKnownUnavailableBookCoverUrl,
   isManagedBookCoverUrl,
+  normalizeStoredBookCoverUrl,
   searchBookCovers,
   searchServerBookCovers,
 } from '../src/api/reading.js';
@@ -145,4 +146,17 @@ test('自动封面可以替换绝对代理地址和已知占位图', () => {
   assert.equal(canAutomaticallyReplaceBookCover(managed), true);
   assert.equal(canAutomaticallyReplaceBookCover(unavailable), true);
   assert.equal(canAutomaticallyReplaceBookCover('https://example.com/manual-cover.jpg'), false);
+});
+
+test('历史 Vercel 封面代理地址会迁移到当前封面域名', () => {
+  const legacy = 'https://daily-demo-roan.vercel.app/api/book-cover?url=https%3A%2F%2Fcovers.openlibrary.org%2Fcover.jpg';
+
+  assert.equal(
+    normalizeStoredBookCoverUrl(legacy, 'https://www.littlearisa88.com'),
+    'https://www.littlearisa88.com/api/book-cover?url=https%3A%2F%2Fcovers.openlibrary.org%2Fcover.jpg'
+  );
+  assert.equal(
+    normalizeStoredBookCoverUrl('https://images.example.com/cover.jpg', 'https://www.littlearisa88.com'),
+    'https://images.example.com/cover.jpg'
+  );
 });

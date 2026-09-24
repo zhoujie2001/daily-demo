@@ -6,7 +6,7 @@ const JPEG_QUALITIES = [0.84, 0.76, 0.68, 0.6];
 const IMAGE_EXTENSION = /\.(?:avif|bmp|gif|heic|heif|jpe?g|png|tiff?|webp)$/i;
 const HEIC_EXTENSION = /\.(?:heic|heif)$/i;
 
-function isImageFile(file) {
+export function isImageFile(file) {
   return Boolean(file?.type?.startsWith('image/') || IMAGE_EXTENSION.test(file?.name || ''));
 }
 

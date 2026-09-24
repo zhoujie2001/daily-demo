@@ -38,7 +38,7 @@ async function invoke(body, store, handlerOptions = {}) {
   return result;
 }
 
-test('不存在的持久化批次以 HTTP 200 返回 found=false', async () => {
+test('持久账本不存在时返回明确且非瞬态的 NOT_FOUND', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   const result = await invoke(
     { chat_id: 'oc_test', batch_id: 'batch_missing' },
@@ -46,7 +46,34 @@ test('不存在的持久化批次以 HTTP 200 返回 found=false', async () => {
   );
 
   assert.equal(result.status, 200);
-  assert.deepEqual(result.body, { ok: true, found: false });
+  assert.equal(result.body.ok, true);
+  assert.equal(result.body.found, false);
+  assert.equal(result.body.status, 'NOT_FOUND');
+  assert.equal(result.body.transient, false);
+  assert.equal(result.body.retryable, false);
+  assert.equal(Object.hasOwn(result.body, 'retry_after_ms'), false);
+  assert.match(result.body.operation_id, /^bess-outbox-/);
+});
+
+test('Supabase 状态查询超时返回可重试 503，不误报业务失败', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const result = await invoke(
+    { chat_id: 'oc_test', batch_id: 'batch_db_timeout' },
+    {
+      async getIngestBatchStatus() {
+        throw Object.assign(new Error('slow Supabase'), { code: 'DISPATCH_DB_TIMEOUT' });
+      },
+    },
+  );
+
+  assert.equal(result.status, 503);
+  assert.deepEqual(result.body, {
+    ok: false,
+    status: 'UNAVAILABLE',
+    transient: true,
+    error_code: 'STATUS_TEMPORARILY_UNAVAILABLE',
+    retry_after_ms: 2_000,
+  });
 });
 
 test('持久化批次完成后返回 SENT 和 message_id', async () => {
@@ -121,6 +148,147 @@ test('status 已读到状态后 nudge 超时仍返回结果', async () => {
   assert.equal(result.status, 200);
   assert.equal(result.body.status, 'SENDING');
   assert.equal(result.body.error_code, 'LARK_TIMEOUT');
+});
+
+test('status 优先命中 Runtime Cache 且完全不访问 Supabase', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  let storeCreated = 0;
+  const result = await invoke(
+    { chat_id: 'oc_test', batch_id: 'batch_cached_sent' },
+    {},
+    {
+      storeFactory() { storeCreated += 1; throw new Error('must not create store'); },
+      statusCache: {
+        async get({ chatId, batchId }) {
+          assert.equal(chatId, 'oc_test');
+          assert.equal(batchId, 'batch_cached_sent');
+          return { found: true, status: 'SENT', message_id: 'om_cached', operation_id: 'op_cached' };
+        },
+        async set() { throw new Error('must not rewrite a cache hit'); },
+      },
+    },
+  );
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.message_id, 'om_cached');
+  assert.equal(result.headers['X-Bess-Status-Source'], 'runtime-cache');
+  assert.match(result.headers['Server-Timing'], /cache;dur=/);
+  assert.match(result.headers['Server-Timing'], /total;dur=/);
+  assert.equal(storeCreated, 0);
+});
+
+test('缓存中的旧 QUEUED 缺失快照被降级为 NOT_FOUND 且不触发 Supabase 恢复风暴', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  let storeCreated = 0;
+  const result = await invoke(
+    { chat_id: 'oc_test', batch_id: 'batch_cached_queued' },
+    {},
+    {
+      storeFactory() { storeCreated += 1; throw new Error('must not create store'); },
+      statusCache: {
+        async get() {
+          return { found: false, status: 'QUEUED', transient: true, operation_id: 'op_cached_queued' };
+        },
+      },
+    },
+  );
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.status, 'NOT_FOUND');
+  assert.equal(result.body.found, false);
+  assert.equal(result.body.transient, false);
+  assert.equal(result.headers['X-Bess-Status-Source'], 'runtime-cache');
+  assert.equal(storeCreated, 0);
+  assert.equal(result.deferred.length, 0);
+});
+
+test('status 缓存未命中才读取 Supabase 并回填终态', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const writes = [];
+  let reads = 0;
+  const result = await invoke(
+    { chat_id: 'oc_test', batch_id: 'batch_cache_miss' },
+    {
+      async getIngestBatchStatus() {
+        reads += 1;
+        return { found: true, status: 'SENT', message_id: 'om_database', operation_id: 'op_database' };
+      },
+    },
+    {
+      statusCache: {
+        async get() { return null; },
+        async set(payload) { writes.push(payload); return true; },
+      },
+    },
+  );
+
+  assert.equal(result.status, 200);
+  assert.equal(result.headers['X-Bess-Status-Source'], 'supabase');
+  assert.match(result.headers['Server-Timing'], /database;dur=/);
+  assert.equal(reads, 1);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].value.message_id, 'om_database');
+});
+
+test('Runtime Cache 读取异常时安全回退 Supabase', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const result = await invoke(
+    { chat_id: 'oc_test', batch_id: 'batch_cache_error' },
+    { async getIngestBatchStatus() { return { found: true, status: 'SENT', message_id: 'om_fallback' }; } },
+    {
+      statusCache: {
+        async get() { throw new Error('cache down'); },
+        async set() { throw new Error('cache still down'); },
+      },
+    },
+  );
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.message_id, 'om_fallback');
+  assert.equal(result.headers['X-Bess-Status-Source'], 'supabase');
+});
+
+test('status 保持有效的同步 SENDING 租约且不误触 outbox', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const result = await invoke(
+    { chat_id: 'oc_test', batch_id: 'batch_active_sending' },
+    {
+      async getIngestBatchStatus() {
+        return {
+          found: true, status: 'SENDING', retryable: false,
+          lease_expires_at: new Date(Date.now() + 60_000).toISOString(),
+        };
+      },
+      async nudgeDispatchOutbox() { throw new Error('must not nudge synchronous SENDING'); },
+    },
+  );
+  assert.equal(result.status, 200);
+  assert.equal(result.body.status, 'SENDING');
+  assert.equal(result.body.retryable, false);
+  assert.equal(result.deferred.length, 0);
+});
+
+test('status 将过期的同步 SENDING 映射为可安全补偿的 FAILED', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const result = await invoke(
+    { chat_id: 'oc_test', batch_id: 'batch_expired_sending' },
+    {
+      async getIngestBatchStatus() {
+        return {
+          found: true, status: 'SENDING', retryable: true,
+          lease_expires_at: new Date(Date.now() - 60_000).toISOString(),
+          request_ids: ['r1'],
+        };
+      },
+      async nudgeDispatchOutbox() { throw new Error('must not nudge synchronous SENDING'); },
+    },
+  );
+  assert.equal(result.status, 200);
+  assert.equal(result.body.status, 'FAILED');
+  assert.equal(result.body.retryable, true);
+  assert.equal(result.body.error_code, 'INGEST_LEASE_EXPIRED');
+  assert.deepEqual(result.body.request_ids, ['r1']);
+  assert.equal(result.deferred.length, 0);
 });
 
 
@@ -206,4 +374,27 @@ test('低流量中断任务由重复 status 后台恢复且只发送一次', asy
   assert.equal(final.body.status, 'SENT');
   assert.equal(final.body.message_id, 'om_low_once');
   assert.equal(final.deferred.length, 0);
+});
+
+
+test('status 将持久化的全量过滤终态返回为 skipped 且不暴露伪 message_id', async () => {
+  const response = await invoke(
+    { chat_id: 'oc_a', batch_id: 'batch_skipped' },
+    {
+      async getIngestBatchStatus() {
+        return {
+          found: true,
+          status: 'SENT',
+          message_id: 'skipped:bess-outbox-abc',
+          request_ids: ['760104'],
+          retryable: false,
+        };
+      },
+    },
+  );
+  assert.equal(response.status, 200);
+  assert.equal(response.body.status, 'SENT');
+  assert.equal(response.body.skipped, true);
+  assert.deepEqual(response.body.skipped_request_ids, ['760104']);
+  assert.equal(Object.hasOwn(response.body, 'message_id'), false);
 });

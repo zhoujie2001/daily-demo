@@ -13,7 +13,9 @@ function normalize(item) {
     rating: item.rating != null ? Number(item.rating) : 0,
     status: item.status || 'read',
     note: item.note || '',
-    cover_url: localMetadata.coverUrl || item.cover_url || item.coverUrl || '',
+    cover_url:
+      localMetadata.coverUrl
+      || readingApi.normalizeStoredBookCoverUrl(item.cover_url || item.coverUrl || ''),
   };
 }
 

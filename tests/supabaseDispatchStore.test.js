@@ -235,13 +235,14 @@ test('calibrateCursor 兼容 CAS 遇到并发游标变化时 fail-closed', async
 
 
 test('claimIngestBatch 通过单次 RPC 原子持久化 SENDING', async () => {
-  const lease = '2026-08-30T11:02:00.000Z';
-  const { store, calls } = setup([[{ outcome: 'CLAIMED', lease_expires_at: lease, message_id: '' }]]);
+  const rpcLease = '2026-08-30T11:02:00+00:00';
+  const { store, calls } = setup([[{ outcome: 'CLAIMED', lease_expires_at: rpcLease, message_id: '' }]]);
   const result = await store.claimIngestBatch({
     chatId: 'oc_ingest', batchId: 'ingest_1', fingerprint: 'd'.repeat(64), requestIds: ['r1'],
     now: new Date('2026-08-30T11:00:30.000Z'), expiresAt: '2026-09-06T11:00:00.000Z',
   });
   assert.equal(result.outcome, 'CLAIMED');
+  assert.equal(result.lease_expires_at, '2026-08-30T11:02:00.000Z');
   assert.equal(calls.length, 1);
   assert.match(calls[0].url, /rpc\/bess_claim_ingest$/);
   assert.equal(calls[0].options.method, 'POST');
@@ -312,6 +313,32 @@ test('completeIngestBatch 所有权 CAS 丢失时拒绝覆盖新记录', async (
   );
 });
 
+test('completeIngestBatch 写回受独立短超时约束且 store 内不盲重试', async () => {
+  let calls = 0;
+  const fetchImpl = async (_url, { signal }) => {
+    calls += 1;
+    return new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+    });
+  };
+  const store = createSupabaseDispatchStore({
+    url: 'https://example.supabase.co', serviceRoleKey: 'service-key', fetchImpl,
+    timeoutMs: 5000, completionTimeoutMs: 8, logger: {},
+  });
+
+  await assert.rejects(
+    store.completeIngestBatch({
+      chatId: 'oc_ingest', batchId: 'ingest_timeout', fingerprint: 'a'.repeat(64),
+      requestIds: ['r1'], messageId: 'om_delivered',
+      expectedLeaseExpiresAt: '2026-08-30T11:02:00.000Z',
+    }),
+    (error) => error instanceof DispatchStoreError
+      && error.code === 'DISPATCH_DB_TIMEOUT'
+      && error.timeoutMs === 8,
+  );
+  assert.equal(calls, 1);
+});
+
 
 test('Supabase 请求输出不含查询值的结构化时延日志', async () => {
   const entries = [];
@@ -338,9 +365,56 @@ test('Supabase 请求输出不含查询值的结构化时延日志', async () =>
   assert.doesNotMatch(JSON.stringify(entries[0]), /oc_secret|batch_secret|service-key/);
 });
 
+test('status 只读查询遇到瞬时网络错误时在总预算内重试一次', async () => {
+  let calls = 0;
+  const store = createSupabaseDispatchStore({
+    url: 'https://example.supabase.co',
+    serviceRoleKey: 'service-key',
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls === 1) throw Object.assign(new Error('socket reset'), { name: 'TypeError' });
+      return response([{
+        request_context: {
+          kind: 'dispatch_ingest', status: 'SENT', messageId: 'om_recovered', requestIds: ['r1'],
+        },
+      }]);
+    },
+    statusRetryDelayMs: 0,
+    logger: {},
+  });
+
+  const status = await store.getIngestBatchStatus({ chatId: 'oc_retry', batchId: 'batch_retry' });
+  assert.equal(calls, 2);
+  assert.equal(status.status, 'SENT');
+  assert.equal(status.message_id, 'om_recovered');
+});
+
+test('status 只读查询遇到确定性 4xx 时不重试', async () => {
+  let calls = 0;
+  const store = createSupabaseDispatchStore({
+    url: 'https://example.supabase.co',
+    serviceRoleKey: 'service-key',
+    fetchImpl: async () => {
+      calls += 1;
+      return response({ code: '42501', message: 'forbidden' }, { ok: false, status: 403 });
+    },
+    statusRetryDelayMs: 0,
+    logger: {},
+  });
+
+  await assert.rejects(
+    store.getIngestBatchStatus({ chatId: 'oc_forbidden', batchId: 'batch_forbidden' }),
+    (error) => error instanceof DispatchStoreError && error.httpStatus === 403,
+  );
+  assert.equal(calls, 1);
+});
+
 test('Supabase 超时错误保留操作和时延诊断字段', async () => {
   const entries = [];
-  const logger = { error(message) { entries.push(JSON.parse(message)); } };
+  const logger = {
+    warn(message) { entries.push(JSON.parse(message)); },
+    error(message) { entries.push(JSON.parse(message)); },
+  };
   const fetchImpl = async (_url, { signal }) => new Promise((_resolve, reject) => {
     signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
   });
@@ -348,7 +422,11 @@ test('Supabase 超时错误保留操作和时延诊断字段', async () => {
     url: 'https://example.supabase.co',
     serviceRoleKey: 'service-key',
     fetchImpl,
-    timeoutMs: 5,
+    // Keep enough total budget for both attempts even when the full suite runs
+    // many timer-heavy files in parallel on a loaded CI worker.
+    timeoutMs: 20,
+    statusTotalTimeoutMs: 500,
+    statusRetryDelayMs: 0,
     logger,
   });
 
@@ -357,12 +435,12 @@ test('Supabase 超时错误保留操作和时延诊断字段', async () => {
     (error) => error instanceof DispatchStoreError
       && error.code === 'DISPATCH_DB_TIMEOUT'
       && error.dbOperation === 'GET bess_dispatch_pending_forms'
-      && error.timeoutMs === 5
-      && error.durationMs >= 5,
+      && error.timeoutMs === 20
+      && error.durationMs >= 20,
   );
-  assert.equal(entries.length, 1);
-  assert.equal(entries[0].outcome, 'timeout');
-  assert.equal(entries[0].timeout_ms, 5);
+  assert.equal(entries.filter((entry) => entry.outcome === 'timeout').length, 2);
+  assert.equal(entries.filter((entry) => entry.outcome === 'retry_scheduled').length, 1);
+  assert.equal(entries[0].timeout_ms, 20);
   assert.equal(entries[0].http_status, null);
 });
 
@@ -568,4 +646,36 @@ test('status recovery claim 使用目标 batch 的 REST/CAS 而非全局 RPC', a
   assert.doesNotMatch(calls[0].url, /\/rpc\//);
   assert.match(calls[0].url, /form_message_id=eq\./);
   assert.match(calls[1].url, /request_context-%3E%3Estatus=eq\.RETRY/);
+});
+
+
+test('getIngestBatchStatuses 用一次 Supabase 请求返回逐项状态', async () => {
+  const calls = [];
+  const fetchImpl = async (url, options) => {
+    calls.push({ url, options });
+    const match = String(url).match(/form_message_id=in\.\(([^)]+)\)/);
+    assert.ok(match);
+    const ids = match[1].split(',');
+    return response([
+      {
+        form_message_id: ids[0],
+        request_context: {
+          kind: 'dispatch_ingest', status: 'SENT', operationId: 'op_a', messageId: 'om_a', requestIds: ['r1'],
+        },
+      },
+    ]);
+  };
+  const store = createSupabaseDispatchStore({
+    url: 'https://example.supabase.co', serviceRoleKey: 'service-key', fetchImpl, logger: {},
+  });
+
+  const statuses = await store.getIngestBatchStatuses([
+    { chatId: 'oc_a', batchId: 'batch_a' },
+    { chatId: 'oc_b', batchId: 'batch_b' },
+  ]);
+
+  assert.equal(calls.length, 1);
+  assert.equal(statuses[0].status, 'SENT');
+  assert.equal(statuses[0].message_id, 'om_a');
+  assert.deepEqual(statuses[1], { chat_id: 'oc_b', batch_id: 'batch_b', found: false });
 });

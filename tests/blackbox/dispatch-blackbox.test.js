@@ -31,7 +31,7 @@ const cases = [
 
 for (const [id, file, pattern] of cases) {
   test(`${id} 黑盒验收`, () => {
-    const result = spawnSync(process.execPath, ['--test', `--test-name-pattern=${pattern}`, file], {
+    const result = spawnSync(process.execPath, ['--test', '--test-reporter=tap', `--test-name-pattern=${pattern}`, file], {
       cwd: process.cwd(),
       encoding: 'utf8',
       env: {
