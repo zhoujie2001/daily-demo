@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createCipheriv, createHash, randomBytes } from 'node:crypto';
 import test from 'node:test';
-import handler from '../api/lark/callback.js';
+import handler, { finalizeDelayedDispatch } from '../api/lark/callback.js';
 
 const VERIFICATION_TOKEN = 'verification-token';
 const APP_ID = 'cli_test_app';
@@ -423,4 +423,51 @@ test('派单回调：回复接口失败时返回错误 Toast', async () => {
   } finally {
     globalThis.fetch = original;
   }
+});
+
+
+test('延时表单成功：将临时处理中卡更新为最终结果卡', async () => {
+  const calls = [];
+  const finalCard = { schema: '2.0', header: { title: { tag: 'plain_text', content: '✅ 已完成' } } };
+  const client = {
+    async updateMessageCard(messageId, card) {
+      calls.push({ messageId, card });
+    },
+  };
+
+  await finalizeDelayedDispatch({
+    finalResult: { httpStatus: 200, body: { toast: { type: 'success', content: '完成' } }, updatedCard: finalCard },
+    isForm: true,
+    formMessageId: 'om_form_success',
+    body: {},
+    client,
+  });
+
+  assert.deepEqual(calls, [{ messageId: 'om_form_success', card: finalCard }]);
+});
+
+test('延时批量表单：已有 afterResponse 终态更新时不回写旧处理中卡', async () => {
+  const calls = [];
+  let finalized = false;
+  const client = {
+    async updateMessageCard(messageId, card) {
+      calls.push({ messageId, card });
+    },
+  };
+
+  await finalizeDelayedDispatch({
+    finalResult: {
+      httpStatus: 200,
+      body: { toast: { type: 'info', content: '处理中' } },
+      updatedCard: { schema: '2.0', marker: 'processing' },
+      async afterResponse() { finalized = true; },
+    },
+    isForm: true,
+    formMessageId: 'om_batch_form',
+    body: {},
+    client,
+  });
+
+  assert.equal(finalized, true);
+  assert.deepEqual(calls, []);
 });
