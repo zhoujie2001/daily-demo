@@ -10,7 +10,7 @@ const actionValue = {
   request_name: 'AD 指定负责人测试',
   business_type: 'AD',
   target_category: 'qianchuan_ad',
-  sheet_url: 'https://example.feishu.cn/sheets/token123',
+  sheet_url: 'https://bytedance.larkoffice.com/wiki/QKfAwxRAaiRRfvkb73ZchrIBnQb?sheet=288afd',
   sheet_id: '288afd',
   row_index: 12,
   date_field_id: 'A',
@@ -107,6 +107,7 @@ test('指定人员按钮复用派单字段校验并保留 AD 的 A/F 列绑定',
   const fields = validateSpecifyAssigneeValue(actionValue);
   assert.equal(fields.businessType, 'AD');
   assert.equal(fields.sheetId, '288afd');
+  assert.equal(fields.sheetUrl, 'https://bytedance.larkoffice.com/sheets/CeBAsJgwnh5mwCtAbgocpVCsnib');
   assert.equal(fields.dateFieldId, 'A');
   assert.equal(fields.assigneeFieldId, 'F');
 });
