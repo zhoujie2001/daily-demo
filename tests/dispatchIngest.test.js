@@ -12,6 +12,7 @@ const createTestHandler = (opts = {}) => _realHandlerFactory({
 });
 import {
   BESS_ADDITIONAL_CHAT_ID,
+  BESS_AD_ADDITIONAL_CHAT_ID,
   LOCAL_PROMO_BLOCKED_REJECT_REASONS,
   auditLocalPromoRejectReasons,
   batchDispatchActionValue,
@@ -180,6 +181,49 @@ test('附加群允许千川、本地推、存量、EHC 其它及 EHC 千川/本�
   }
 });
 
+test('AD 附加群只允许 AD 分类写入 AD 应急表', () => {
+  for (const targetCategory of ['qianchuan_ad', 'ehc_emergency_ad']) {
+    const normalized = normalizeDispatchIngest({
+      ...localBody,
+      chat_id: BESS_AD_ADDITIONAL_CHAT_ID,
+      business_type: 'AD',
+      target_category: targetCategory,
+      sheet_id: '288afd',
+      date_field_id: 'A',
+      date_field_name: '需求创建时间',
+      assignee_field_id: 'F',
+      assignee_field_name: '回扫人',
+    });
+    assert.equal(normalized.fields.targetCategory, targetCategory);
+    assert.equal(normalized.fields.businessType, 'AD');
+    assert.equal(normalized.fields.sheetId, '288afd');
+    assert.equal(normalized.fields.dateFieldId, 'A');
+    assert.equal(normalized.fields.assigneeFieldId, 'F');
+  }
+
+  for (const [targetCategory, businessType, sheetId, dateFieldId, assigneeFieldId] of [
+    ['qianchuan', '千川', 'TQuzLA'],
+    ['qianchuan_ad', '千川', '288afd'],
+    ['ehc_emergency_ad', 'AD', 'TQuzLA', 'A', 'F'],
+    ['qianchuan_ad', 'AD', '288afd', 'H', 'F'],
+    ['ehc_emergency_ad', 'AD', '288afd', 'A', 'J'],
+  ]) {
+    assert.throws(
+      () => normalizeDispatchIngest({
+        ...localBody,
+        chat_id: BESS_AD_ADDITIONAL_CHAT_ID,
+        business_type: businessType,
+        target_category: targetCategory,
+        sheet_id: sheetId,
+        date_field_id: dateFieldId,
+        assignee_field_id: assigneeFieldId,
+        assignee_field_name: '回扫人',
+      }),
+      (error) => error.code === 'BINDING_MISMATCH',
+    );
+  }
+});
+
 test('初始派单卡包含可回调按钮和完整写回参数', () => {
   const { fields } = normalizeDispatchIngest(localBody);
   const card = buildInitialDispatchCard(fields, { action: 'bess_auto_dispatch', request_id: fields.requestId });
@@ -187,6 +231,8 @@ test('初始派单卡包含可回调按钮和完整写回参数', () => {
   assert.match(text, /🎯 自动派单/);
   assert.match(text, /715430/);
   assert.match(text, /bess_auto_dispatch/);
+  assert.match(text, /指定人员/);
+  assert.match(text, /bess_specify_assignee/);
 });
 
 test('外部 ingest 缺省千川本地表字段并在 action.value 携带项目过滤配置', () => {
@@ -296,13 +342,16 @@ test('batch dispatch card contains one callback button with batch_id and all ite
   const card = buildBatchDispatchCard(fieldsList, batchDispatchActionValue(batchId, fieldsList), { cardTitle, batchId, period });
   assert.equal(card.header.title.content, '【本地推】E 段新增 2 条｜批量自动派单（2026-09-01 16:00:00 ~ 2026-09-01 17:00:00 CST）');
   const buttons = card.body.elements.filter((element) => element.tag === 'button');
-  assert.equal(buttons.length, 1);
-  assert.equal(buttons[0].element_id, 'batch_batch_715430');
-  assert.equal(buttons[0].behaviors[0].value.action, 'bess_batch_auto_dispatch');
-  assert.equal(buttons[0].behaviors[0].value.batch_id, 'batch_715430');
-  assert.equal(buttons[0].behaviors[0].value.items.length, 2);
-  assert.equal(buttons[0].behaviors[0].value.items[0].created_at, '2026-09-01 16:05:00');
-  assert.equal(buttons[0].behaviors[0].value.items[0].creator, '张三');
+  assert.equal(buttons.length, 3);
+  const specifyButtons = buttons.filter((button) => button.element_id.startsWith('spec_'));
+  assert.equal(specifyButtons.length, 2);
+  assert.ok(specifyButtons.every((button) => button.behaviors[0].value.action === 'bess_specify_assignee'));
+  const batchButton = buttons.find((button) => button.element_id === 'batch_batch_715430');
+  assert.equal(batchButton.behaviors[0].value.action, 'bess_batch_auto_dispatch');
+  assert.equal(batchButton.behaviors[0].value.batch_id, 'batch_715430');
+  assert.equal(batchButton.behaviors[0].value.items.length, 2);
+  assert.equal(batchButton.behaviors[0].value.items[0].created_at, '2026-09-01 16:05:00');
+  assert.equal(batchButton.behaviors[0].value.items[0].creator, '张三');
   assert.match(JSON.stringify(card), /共 \*\*2\*\* 条 E 段需求/);
   assert.match(JSON.stringify(card), /创建时间：2026-09-01 16:05:00/);
   assert.match(JSON.stringify(card), /创建人：张三/);
@@ -343,7 +392,9 @@ test('batch ingest 将单按钮卡写入队列并返回 batch_id', async () => {
     .slice(0, 32)}`;
   assert.equal(queued.operation_id, expectedUuid);
   assert.equal(queued.operation_id.length, 44);
-  assert.equal(queued.card.body.elements.filter((element) => element.tag === 'button').length, 1);
+  const buttons = queued.card.body.elements.filter((element) => element.tag === 'button');
+  assert.equal(buttons.filter((button) => button.element_id.startsWith('spec_')).length, 2);
+  assert.equal(buttons.filter((button) => button.element_id.startsWith('batch_')).length, 1);
 });
 
 

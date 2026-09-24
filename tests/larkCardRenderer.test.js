@@ -160,7 +160,7 @@ test('formatDispatchTime 输出上海时区 yyyy-MM-dd HH:mm:ss', () => {
 });
 
 
-test('批次状态卡禁用唯一按钮并展示逐项结果', () => {
+test('批次初始卡提供逐条指定按钮，状态卡禁用批量按钮并展示逐项结果', () => {
   const fields = [
     { requestId: '715430', requestName: '需求一', businessType: '本地推', createdAt: '2026-09-01 16:01:00', creator: '张三', rowIndex: 89 },
     { requestId: '715431', requestName: '需求二', businessType: '本地推', createdAt: '2026-09-01 16:02:00', creator: '李四', rowIndex: 90 },
@@ -168,7 +168,9 @@ test('批次状态卡禁用唯一按钮并展示逐项结果', () => {
   const action = { action: 'bess_batch_auto_dispatch', batch_id: 'batch_renderer', items: [] };
   const ready = buildBatchDispatchCard(fields, action, { cardTitle: 'E 段', batchId: 'batch_renderer' });
   const readyText = JSON.stringify(ready);
-  assert.equal(ready.body.elements.filter((item) => item.tag === 'button').length, 1);
+  const readyButtons = ready.body.elements.filter((item) => item.tag === 'button');
+  assert.equal(readyButtons.filter((button) => button.element_id.startsWith('spec_')).length, 2);
+  assert.equal(readyButtons.filter((button) => button.element_id.startsWith('batch_')).length, 1);
   assert.match(readyText, /需求 ID：715430/);
   assert.match(readyText, /创建时间：2026-09-01 16:01:00/);
   assert.match(readyText, /创建人：张三/);
