@@ -47,6 +47,24 @@ test('AD 派单状态与分配查询使用独立 scope', async () => {
   assert.match(calls[1].url, /scope=eq\.ad/);
 });
 
+test('首次指定派单按 scope 原子初始化名单且不覆盖并发先写状态', async () => {
+  const state = { day_key: '2026-09-24', scope: 'ad', roster: ['周杰', '张三'] };
+  const { store, calls } = setup([null, [state]]);
+  const result = await store.initializeRoster({
+    dayKey: '2026-09-24', scope: 'ad', roster: ['周杰', '张三'],
+    expiresAt: '2026-09-25T16:00:00.000Z', current: new Date('2026-09-24T08:00:00Z'),
+  });
+  assert.deepEqual(result, state);
+  assert.match(calls[0].url, /bess_dispatch_daily_state\?on_conflict=day_key,scope$/);
+  assert.equal(calls[0].options.headers.Prefer, 'resolution=ignore-duplicates,return=minimal');
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    day_key: '2026-09-24', scope: 'ad', roster: ['周杰', '张三'],
+    forward_cursor: 0, reverse_cursor: 0, off_duty: [], version: 1,
+    expires_at: '2026-09-25T16:00:00.000Z',
+  });
+  assert.match(calls[1].url, /scope=eq\.ad/);
+});
+
 test('assignSpecific 使用 scope 原子预留指定负责人', async () => {
   const { store, calls } = setup([[{ assignee: '周杰', replayed: false }]]);
   const result = await store.assignSpecific({

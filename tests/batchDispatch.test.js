@@ -46,6 +46,22 @@ function batchBody(batchId, items = [item(`${batchId}_1`, 10), item(`${batchId}_
   };
 }
 
+function specifyBody(fields, { submit = false, assignee = '周杰' } = {}) {
+  return {
+    header: { event_id: submit ? `evt_spec_submit_${fields.request_id}` : `evt_spec_open_${fields.request_id}` },
+    event: {
+      operator: { open_id: 'ou_operator' },
+      action: submit
+        ? { tag: 'button', value: {}, form_value: { assignee_name: assignee } }
+        : { tag: 'button', value: { ...fields, action: 'bess_specify_assignee' } },
+      context: {
+        open_chat_id: 'oc_allowed',
+        open_message_id: submit ? 'om_thread' : 'om_batch',
+      },
+    },
+  };
+}
+
 class BatchStore {
   constructor({ now = () => new Date('2026-08-30T11:00:00Z') } = {}) {
     this.state = { roster: ['张三', '李四'] };
@@ -87,6 +103,16 @@ class BatchStore {
   async getPending(id) { return this.pending.get(id) || null; }
   async markPendingCompleted(id) {
     if (this.pending.has(id)) this.pending.get(id).completed_at = new Date().toISOString();
+  }
+  async assignSpecific({ requestId, assignee, context = {} }) {
+    if (this.assignments.has(requestId)) return { ...this.assignments.get(requestId), replayed: true };
+    const assignment = {
+      id: this.assignments.size + 1,
+      assignee,
+      request_context: context,
+    };
+    this.assignments.set(requestId, assignment);
+    return { ...assignment, replayed: false };
   }
   async assign({ requestId, direction = 'forward', roster, context = {} }) {
     if (roster) this.state = { roster };
@@ -134,10 +160,19 @@ class BatchClient {
     }
     return this.sheetRows.length > 0 ? this.sheetRows : null;
   }
+  async getSheetValues({ range, ...args }) {
+    this.calls.push({ kind: 'readCell', range, ...args });
+    const match = String(range).match(/!([A-Z]+)(\d+):/);
+    const rowIndex = Number(match?.[2] || 0);
+    return [[this.sheetRows[rowIndex - 1]?.[1] || '']];
+  }
+  async getMessage() { return null; }
   async writeSheetAssignee(args) {
     this.calls.push({ kind: 'write', ...args });
     this.onWrite?.(args);
     if (args.rowIndex === this.failRow || this.failRows.has(args.rowIndex)) throw new Error('sensitive write error');
+    this.sheetRows[args.rowIndex - 1] ||= ['', '', ''];
+    this.sheetRows[args.rowIndex - 1][1] = args.assignee;
   }
   async updateMessageCard(messageId, card) {
     this.calls.push({ kind: 'update', messageId, card });
@@ -691,6 +726,61 @@ test('batch：目标行已有周杰时不写表并校准，下一需求分配罗
   assert.ok(!client.calls.some((call) => call.kind === 'write' && call.rowIndex === 10));
   assert.ok(client.calls.some((call) => call.kind === 'write' && call.rowIndex === 11 && call.assignee === '罗世坤'));
   assert.equal(store.calibrations[0].assignee, '周杰');
+});
+
+test('专项集成：先指定一条再批量派单，剩余需求从指定人员下一位开始', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['张三', '周杰', '罗世坤'], off_duty: [] };
+  const rows = new Array(12).fill(null).map(() => ['', '', '']);
+  rows[9] = ['2026-08-30', '', '千川'];
+  rows[10] = ['2026-08-30', '', '千川'];
+  const client = new BatchClient({ sheetRows: rows });
+  const first = item('specified_then_batch', 10);
+  const second = item('after_specified', 11);
+
+  const opened = await handleDispatchEvent(specifyBody(first), options(store, client));
+  assert.equal(opened.body.toast.type, 'success');
+  const specified = await handleDispatchEvent(
+    specifyBody(first, { submit: true, assignee: '周杰' }), options(store, client),
+  );
+  assert.equal(specified.body.toast.type, 'success');
+
+  const batchResult = await handleDispatchEvent(
+    batchBody('batch_after_specific_assignment', [first, second]), options(store, client),
+  );
+  await batchResult.afterResponse();
+  const batch = store.getBatch('oc_allowed', 'batch_after_specific_assignment');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.equal(batch.results[0].assignee, '周杰');
+  assert.equal(batch.results[0].replayed, true);
+  assert.equal(batch.results[1].assignee, '罗世坤');
+  assert.ok(client.calls.some((call) => call.kind === 'write' && call.rowIndex === 11 && call.assignee === '罗世坤'));
+});
+
+test('专项集成：多条提前指定时沿用最高行最新有效锚点', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['张三', '李四', '周杰'], off_duty: [] };
+  store.assignments.set('specified_old', {
+    id: 1, assignee: '周杰', request_context: { ...item('specified_old', 10), rowIndex: 10 },
+  });
+  store.assignments.set('specified_latest', {
+    id: 2, assignee: '张三', request_context: { ...item('specified_latest', 12), rowIndex: 12 },
+  });
+  const rows = new Array(14).fill(null).map(() => ['', '', '']);
+  rows[9] = ['2026-08-30', '周杰', '千川'];
+  rows[11] = ['2026-08-30', '张三', '千川'];
+  rows[12] = ['2026-08-30', '', '千川'];
+  const client = new BatchClient({ sheetRows: rows });
+
+  const result = await handleDispatchEvent(batchBody('batch_multi_specific_anchor', [
+    item('specified_old', 10), item('specified_latest', 12), item('after_latest_specific', 13),
+  ]), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'batch_multi_specific_anchor');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.equal(batch.results[2].assignee, '李四');
+  assert.equal(store.calibrations[0].assignee, '张三');
 });
 
 test('batch：目标行校准失败时该项不得记为成功且不写表', async () => {
