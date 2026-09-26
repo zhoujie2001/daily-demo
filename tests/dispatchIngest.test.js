@@ -14,6 +14,7 @@ import {
   BESS_ADDITIONAL_CHAT_ID,
   BESS_AD_ADDITIONAL_CHAT_ID,
   LOCAL_PROMO_BLOCKED_REJECT_REASONS,
+  TEST_DISPATCH_CHAT_ID,
   auditLocalPromoRejectReasons,
   batchDispatchActionValue,
   canonicalJson,
@@ -60,6 +61,21 @@ async function invoke(body, { timestamp = NOW, signed = true, targetHandler = ha
 test('接入参数强制绑定群聊与业务类型', () => {
   assert.throws(() => normalizeDispatchIngest({ ...localBody, business_type: '千川', target_category: 'qianchuan' }), (error) => error.code === 'BINDING_MISMATCH');
   assert.throws(() => normalizeDispatchIngest({ ...localBody, chat_id: 'oc_unknown' }), (error) => error.code === 'FORBIDDEN_CHAT');
+});
+
+test('测试群允许多业务派单并保留领取人字段', () => {
+  const normalized = normalizeDispatchIngest({
+    ...localBody,
+    chat_id: TEST_DISPATCH_CHAT_ID,
+    business_type: '存量',
+    target_category: 'stock',
+    assignee_field_id: 'N',
+    assignee_field_name: '领取人',
+  });
+  assert.equal(normalized.chatId, TEST_DISPATCH_CHAT_ID);
+  assert.equal(normalized.fields.targetCategory, 'stock');
+  assert.equal(normalized.fields.assigneeFieldId, 'N');
+  assert.equal(normalized.fields.assigneeFieldName, '领取人');
 });
 
 test('本地推不再按拒绝理由过滤', () => {
