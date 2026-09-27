@@ -166,14 +166,22 @@ test('批次初始卡提供逐条指定按钮，状态卡禁用批量按钮并�
     { requestId: '715431', requestName: '需求二', businessType: '本地推', createdAt: '2026-09-01 16:02:00', creator: '李四', rowIndex: 90 },
   ];
   const action = { action: 'bess_batch_auto_dispatch', batch_id: 'batch_renderer', items: [] };
+  fields[0].riskLevel = '高风险';
+  fields[0].rejectReason = '素材信息不完整';
   const ready = buildBatchDispatchCard(fields, action, { cardTitle: 'E 段', batchId: 'batch_renderer' });
   const readyText = JSON.stringify(ready);
-  const readyButtons = ready.body.elements.filter((item) => item.tag === 'button');
+  const requestRows = ready.body.elements.filter((item) => item.tag === 'column_set');
+  const readyButtons = requestRows.map((row) => row.columns[1].elements[0]);
+  const batchButton = ready.body.elements.at(-1);
   assert.equal(readyButtons.filter((button) => button.element_id.startsWith('spec_')).length, 2);
-  assert.equal(readyButtons.filter((button) => button.element_id.startsWith('batch_')).length, 1);
-  assert.match(readyText, /需求 ID：715430/);
-  assert.match(readyText, /创建时间：2026-09-01 16:01:00/);
-  assert.match(readyText, /创建人：张三/);
+  assert.equal(batchButton.element_id, 'batch_batch_renderer');
+  assert.equal(requestRows[0].columns[0].width, 'weighted');
+  assert.equal(requestRows[0].columns[1].width, 'auto');
+  assert.match(readyText, /715430.*高风险.*素材信息不完整/);
+  assert.match(readyText, /715431.*-.*-/);
+  assert.equal(readyButtons[0].behaviors[0].value.action, 'bess_specify_assignee');
+  assert.equal(readyButtons[0].behaviors[0].value.risk_level, '高风险');
+  assert.equal(readyButtons[0].behaviors[0].value.reject_reason, '素材信息不完整');
 
   const results = [
     { requestId: '715430', requestName: '需求一', status: 'SUCCESS', assignee: '张三' },
