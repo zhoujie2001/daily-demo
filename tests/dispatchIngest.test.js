@@ -100,6 +100,24 @@ test('AD 群仅允许 AD 业态并绑定 G/J 字段', () => {
   );
 });
 
+test('AD 群允许游戏货不对板 Agent（game_agent）派单', () => {
+  const normalized = normalizeDispatchIngest({
+    ...localBody,
+    chat_id: AD_DISPATCH_CHAT_ID,
+    business_type: 'AD',
+    target_category: 'game_agent',
+    date_field_id: 'J',
+    date_field_name: '创建时间',
+    assignee_field_id: 'G',
+    assignee_field_name: '领取人',
+    project_field_id: 'L',
+    project_field_name: '项目名称',
+    project_value: '游戏货不对板agent_P2',
+  });
+  assert.equal(normalized.fields.targetCategory, 'game_agent');
+  assert.equal(normalized.fields.projectFieldId, 'L');
+});
+
 test('本地推不再按拒绝理由过滤', () => {
   const reasons = [
     '【团购】涉及保证产品/服务效果',
