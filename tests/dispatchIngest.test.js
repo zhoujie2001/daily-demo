@@ -368,6 +368,7 @@ test('batch dispatch card contains one callback button with batch_id and all ite
     chat_id: localBody.chat_id,
     batch_id: 'batch_715430',
     card_title: '【本地推】E 段自动派单',
+    card_layout: { version: 'horizontal-v1' },
     time_segment: 'E',
     window_start: '2026-09-01 16:00:00',
     window_end: '2026-09-01 17:00:00',
@@ -376,8 +377,12 @@ test('batch dispatch card contains one callback button with batch_id and all ite
       { ...localBody, request_id: '715431', request_name: '本地新增需求 2', row_index: 90, riskLevel: '中', rejectReason: '描述不清' },
     ],
   };
-  const { fieldsList, cardTitle, batchId, period } = normalizeBatchDispatchIngest(body);
-  const card = buildBatchDispatchCard(fieldsList, batchDispatchActionValue(batchId, fieldsList), { cardTitle, batchId, period });
+  const {
+    fieldsList, cardTitle, batchId, period, cardLayout,
+  } = normalizeBatchDispatchIngest(body);
+  const card = buildBatchDispatchCard(fieldsList, batchDispatchActionValue(batchId, fieldsList), {
+    cardTitle, batchId, period, cardLayout,
+  });
   assert.equal(card.header.title.content, '【本地推】E 段新增 2 条｜批量自动派单（2026-09-01 16:00:00 ~ 2026-09-01 17:00:00 CST）');
   const requestRows = card.body.elements.filter((element) => element.tag === 'column_set');
   assert.equal(requestRows.length, 2);
@@ -395,6 +400,10 @@ test('batch dispatch card contains one callback button with batch_id and all ite
   assert.equal(batchButton.behaviors[0].value.items[0].reject_reason, '素材违规');
   assert.equal(batchButton.behaviors[0].value.items[1].risk_level, '中');
   assert.equal(batchButton.behaviors[0].value.items[1].reject_reason, '描述不清');
+  assert.equal(cardLayout.version, 'horizontal-v1');
+  assert.equal(specifyButtons[0].behaviors[0].value.card_layout, undefined);
+  assert.equal(batchButton.behaviors[0].value.card_layout, undefined);
+  assert.equal(batchButton.behaviors[0].value.items[0].card_layout, undefined);
   assert.match(JSON.stringify(card), /共 \*\*2\*\* 条 E 段需求/);
   assert.match(JSON.stringify(card), /715430.*高.*素材违规/);
   assert.match(JSON.stringify(card), /715431.*中.*描述不清/);
@@ -435,9 +444,9 @@ test('batch ingest 将单按钮卡写入队列并返回 batch_id', async () => {
     .slice(0, 32)}`;
   assert.equal(queued.operation_id, expectedUuid);
   assert.equal(queued.operation_id.length, 44);
-  const requestRows = queued.card.body.elements.filter((element) => element.tag === 'column_set');
-  assert.equal(requestRows.length, 2);
-  assert.equal(requestRows.filter((row) => row.columns[1].elements[0].element_id.startsWith('spec_')).length, 2);
+  const buttons = queued.card.body.elements.filter((element) => element.tag === 'button');
+  assert.equal(queued.card.body.elements.some((element) => element.tag === 'column_set'), false);
+  assert.equal(buttons.filter((button) => button.element_id.startsWith('spec_')).length, 2);
   assert.equal(queued.card.body.elements.at(-1).element_id, 'batch_batch_api_1');
 });
 
@@ -656,6 +665,7 @@ test('拒绝理由变化不会改变同批次幂等指纹或过滤需求', async
   };
   const explicitBody = structuredClone(baseBody);
   explicitBody.items[0].reject_reason = '【团购】涉及保证产品/服务效果';
+  explicitBody.card_layout = { version: 'horizontal-v1' };
 
   const first = await invoke(structuredClone(baseBody), { targetHandler });
   const replay = await invoke(explicitBody, { targetHandler });
