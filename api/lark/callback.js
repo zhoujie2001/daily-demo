@@ -3,6 +3,7 @@ import { waitUntil } from '@vercel/functions';
 import { LarkClient } from '../../lib/lark/client.js';
 import { buildDispatchFailureCard, buildRosterProcessingCard, buildRosterRetryCard } from '../../lib/lark/card-renderer.js';
 import { handleDispatchEvent } from '../../lib/dispatch/dispatch-service.js';
+import { resolveShuffleRoster } from '../../lib/dispatch/roster.js';
 
 // Feishu requires card.action.trigger callbacks to answer within ~3s; leave
 // a small safety margin. If the business flow cannot finish in time the user
@@ -102,11 +103,21 @@ function deadline(timeoutMs, { isForm = false } = {}) {
   });
 }
 
+function retryShufflePreference(body) {
+  try {
+    return resolveShuffleRoster(body?.event?.action?.form_value);
+  } catch {
+    return true;
+  }
+}
+
 export async function finalizeDelayedDispatch({ finalResult, isForm, formMessageId, body, client = larkClient }) {
   if (typeof finalResult.afterResponse === 'function') await finalResult.afterResponse();
   if (isForm && formMessageId && finalResult.errorCode) {
     const message = finalResult.body?.toast?.content || '请求处理未完成，请重试';
-    await client.updateMessageCard(formMessageId, buildRosterRetryCard(message));
+    await client.updateMessageCard(formMessageId, buildRosterRetryCard(message, {
+      shuffleRoster: retryShufflePreference(body),
+    }));
   } else if (isForm && formMessageId && finalResult.updatedCard && !finalResult.afterResponse) {
     // The callback deadline replaces the submitted form with a processing card.
     // Successful form flows without their own background finalizer must replace

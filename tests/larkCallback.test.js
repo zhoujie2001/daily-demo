@@ -446,6 +446,31 @@ test('延时表单成功：将临时处理中卡更新为最终结果卡', async
   assert.deepEqual(calls, [{ messageId: 'om_form_success', card: finalCard }]);
 });
 
+test('延时表单失败：重试卡保留用户取消打乱的选择', async () => {
+  const calls = [];
+  const client = {
+    async updateMessageCard(messageId, card) {
+      calls.push({ messageId, card });
+    },
+  };
+
+  await finalizeDelayedDispatch({
+    finalResult: {
+      httpStatus: 200,
+      body: { toast: { type: 'error', content: '表格写回失败' } },
+      errorCode: 'SHEET_WRITE_FAILED',
+    },
+    isForm: true,
+    formMessageId: 'om_form_retry',
+    body: { event: { action: { form_value: { roster_names: '张三、李四', shuffle_roster: false } } } },
+    client,
+  });
+
+  const form = calls[0].card.body.elements.find((element) => element.tag === 'form');
+  const checker = form.elements.find((element) => element.name === 'shuffle_roster');
+  assert.equal(checker.checked, false);
+});
+
 test('延时批量表单：已有 afterResponse 终态更新时不回写旧处理中卡', async () => {
   const calls = [];
   let finalized = false;
