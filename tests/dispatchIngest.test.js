@@ -102,6 +102,39 @@ test('AD 群允许 ad/game_agent 并绑定 G/J 字段', () => {
   );
 });
 
+test('AD 群兼容 BESS AD 分类并严格绑定 AD 应急表 A/F 字段', () => {
+  for (const targetCategory of ['qianchuan_ad', 'ehc_emergency_ad']) {
+    const normalized = normalizeDispatchIngest({
+      ...localBody,
+      chat_id: AD_DISPATCH_CHAT_ID,
+      business_type: 'AD',
+      target_category: targetCategory,
+      sheet_id: '288afd',
+      date_field_id: 'A',
+      date_field_name: '需求创建时间',
+      assignee_field_id: 'F',
+      assignee_field_name: '回扫人',
+    });
+    assert.equal(normalized.chatId, AD_DISPATCH_CHAT_ID);
+    assert.equal(normalized.fields.targetCategory, targetCategory);
+    assert.equal(normalized.fields.sheetId, '288afd');
+    assert.equal(normalized.fields.dateFieldId, 'A');
+    assert.equal(normalized.fields.assigneeFieldId, 'F');
+  }
+  assert.throws(
+    () => normalizeDispatchIngest({
+      ...localBody,
+      chat_id: AD_DISPATCH_CHAT_ID,
+      business_type: 'AD',
+      target_category: 'ehc_emergency_ad',
+      sheet_id: '288afd',
+      date_field_id: 'J',
+      assignee_field_id: 'G',
+    }),
+    (error) => error.code === 'BINDING_MISMATCH',
+  );
+});
+
 test('本地推不再按拒绝理由过滤', () => {
   const reasons = [
     '【团购】涉及保证产品/服务效果',
