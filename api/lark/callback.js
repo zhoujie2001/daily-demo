@@ -198,7 +198,11 @@ export default async function handler(req, res) {
     || (!hasTopLevelType && !hasHeaderEventType && hasChallenge);
 
   if (isUrlVerification) {
-    if (!verificationToken || !valuesMatch(body.token, verificationToken)) {
+    // The developer-console endpoint check may omit the legacy verification
+    // token. Echoing a non-empty challenge is safe; when a token is supplied,
+    // still reject mismatches so existing authenticated verification is strict.
+    if (body.token !== undefined
+      && (!verificationToken || !valuesMatch(body.token, verificationToken))) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
