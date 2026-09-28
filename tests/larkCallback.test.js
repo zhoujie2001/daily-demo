@@ -238,13 +238,14 @@ test('省略 type 且 Token 错误的 URL verification 返回 403', async () => 
   assert.equal(result.status, 403);
 });
 
-test('URL verification 无 Token 返回 403', async () => {
+test('开发者后台 URL verification 无 Token 时返回 challenge', async () => {
   const result = await invoke({
     type: 'url_verification',
     challenge: 'challenge-value',
   });
 
-  assert.equal(result.status, 403);
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body, { challenge: 'challenge-value' });
 });
 
 test('URL verification 错误 Token 返回 403', async () => {
