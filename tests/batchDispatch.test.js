@@ -71,6 +71,7 @@ class BatchStore {
     this.cursor = 0;
     this.reverseCursor = 0;
     this.calibrations = [];
+    this.initializeCalls = 0;
     this.batchStore = createMemoryBatchStore({ now });
   }
 
@@ -85,6 +86,11 @@ class BatchStore {
   getBatch(chatId, batchId) { return this.batchStore.getBatch(chatId, batchId); }
   async cleanupExpired() {}
   async getDailyState() { return this.state; }
+  async initializeRoster({ roster }) {
+    this.initializeCalls += 1;
+    if (!this.state) this.state = { roster: [...roster] };
+    return this.state;
+  }
   async getAssignment(_day, requestId) { return this.assignments.get(requestId) || null; }
   async getDailyAssignments() {
     return [...this.assignments.values()].sort((a, b) => b.id - a.id);
@@ -468,6 +474,40 @@ test('批量派单首次点击若名单未初始化，则引导填写表单；�
   assert.match(JSON.stringify(update.card), /SUCCESS/);
   const formUpdate = client.calls.find((c) => c.kind === 'update' && c.messageId === 'om_form');
   assert.match(JSON.stringify(formUpdate.card), /名单已保存并完成派单/);
+});
+
+
+test('首次名单提交遇到人工已派单行时先初始化名单，再校准游标并处理剩余空行', async () => {
+  const store = new BatchStore();
+  store.state = null;
+  const sheetRows = new Array(20).fill(null).map(() => ['', '', '']);
+  sheetRows[9] = ['2026-08-30', '王五', '千川'];
+  const client = new BatchClient({ sheetRows });
+  const body = batchBody('batch_manual_first_init');
+
+  await handleDispatchEvent(body, options(store, client));
+  const result = await handleDispatchEvent({
+    header: { event_id: 'evt_manual_first_init_form' },
+    event: {
+      operator: { open_id: 'ou_operator' },
+      action: { tag: 'dispatch_roster_submit', form_value: { roster_names: '王五, 赵六' } },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  }, options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'batch_manual_first_init');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.equal(store.initializeCalls, 1, '表单名单必须在人工锚点校准前持久化一次');
+  assert.deepEqual(new Set(store.state.roster), new Set(['王五', '赵六']));
+  assert.equal(store.calibrations.length, 1);
+  assert.equal(store.calibrations[0].assignee, '王五');
+  assert.equal(batch.results.find(({ requestId }) => requestId === 'batch_manual_first_init_1').assignee, '王五');
+  assert.equal(batch.results.find(({ requestId }) => requestId === 'batch_manual_first_init_1').replayed, true);
+  assert.equal(batch.results.find(({ requestId }) => requestId === 'batch_manual_first_init_2').assignee, '赵六');
+  const writes = client.calls.filter((call) => call.kind === 'write');
+  assert.ok(!writes.some(({ rowIndex }) => rowIndex === 10), '不得覆盖人工负责人');
+  assert.ok(writes.some(({ rowIndex, assignee }) => rowIndex === 11 && assignee === '赵六'));
 });
 
 
