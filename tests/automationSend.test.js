@@ -142,9 +142,14 @@ describe('automation-send', () => {
       publishDispatch: async (msg) => { published.push(msg); return { message_id: 'q1' }; },
     });
     const { res, data } = mockRes();
+    const horizontalPayload = {
+      ...VALID_DISPATCH_PAYLOAD,
+      card_layout: { version: 'horizontal-v1' },
+      items: [{ ...VALID_ITEM, risk_level: '高', reject_reason: '素材违规' }],
+    };
     await handler(mockReq({
       automation_token: TEST_SECRET,
-      dispatch_payload: VALID_DISPATCH_PAYLOAD,
+      dispatch_payload: horizontalPayload,
       source_record_id: 'recTest123456',
     }), res);
     assert.equal(data.statusCode, 202);
@@ -156,6 +161,8 @@ describe('automation-send', () => {
     assert.equal(data.body.source_record_id, 'recTest123456');
     assert.equal(published.length, 1);
     assert.equal(published[0].kind, 'dispatch');
+    assert.equal(published[0].card.body.elements.some((element) => element.tag === 'column_set'), true);
+    assert.doesNotMatch(JSON.stringify(published[0].card.body.elements), /card_layout/);
   });
 
   it('accepts string dispatch_payload (JSON) and queues', async () => {
