@@ -133,6 +133,24 @@ test('AD 群兼容 BESS AD 分类并严格绑定 AD 应急表 A/F 字段', () =>
     }),
     (error) => error.code === 'BINDING_MISMATCH',
   );
+
+  const batchId = '20260928_185043_62f4743d_1774553-ehc_emergency_ad_001-ad_additional';
+  const batch = normalizeBatchDispatchIngest({
+    batch_id: batchId,
+    chat_id: AD_DISPATCH_CHAT_ID,
+    card_title: '【EHC-应急蓝军 AD】新增回扫需求',
+    items: [{
+      ...localBody,
+      business_type: 'AD',
+      target_category: 'ehc_emergency_ad',
+      sheet_id: '288afd',
+      date_field_id: 'A',
+      date_field_name: '需求创建时间',
+      assignee_field_id: 'F',
+      assignee_field_name: '回扫人',
+    }],
+  });
+  assert.equal(batch.batchId, batchId);
 });
 
 test('本地推不再按拒绝理由过滤', () => {
