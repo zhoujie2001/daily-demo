@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { parseRoster, secureShuffle, shanghaiDay, nextShanghaiMidnight, dispatchDirection, dispatchScope, RosterValidationError } from '../lib/dispatch/roster.js';
+import { parseRoster, resolveShuffleRoster, secureShuffle, shanghaiDay, nextShanghaiMidnight, dispatchDirection, dispatchScope, RosterValidationError } from '../lib/dispatch/roster.js';
 import { buildRosterFormCard, buildRosterProcessingCard, buildRosterCompletedCard, buildRosterRetryCard, buildDispatchResultCard } from '../lib/lark/card-renderer.js';
 import { handleDispatchEvent } from '../lib/dispatch/dispatch-service.js';
 import { LarkApiError, LarkClient } from '../lib/lark/client.js';
@@ -16,7 +16,7 @@ const fields = {
 
 function body({
   form = false, requestId = 'p1_1', businessType = '千川', targetCategory = '', messageId = 'om_original',
-  projectFieldId = '', projectFieldName = '', projectValue = '',
+  projectFieldId = '', projectFieldName = '', projectValue = '', shuffleRoster,
 } = {}) {
   return {
     header: { event_id: `evt_${requestId}` },
@@ -24,7 +24,10 @@ function body({
       token: form ? '' : 'update-token', operator: { open_id: 'ou_1' },
       action: form ? {
         tag: 'button', value: { action: 'bess_roster_submit' },
-        form_value: { roster_names: '张三、李四；王五' },
+        form_value: {
+          roster_names: '张三、李四；王五',
+          ...(shuffleRoster === undefined ? {} : { shuffle_roster: shuffleRoster }),
+        },
       } : {
         tag: 'button', value: {
           schema_version: 1, action: 'bess_auto_dispatch', request_id: requestId,
@@ -112,6 +115,16 @@ test('姓名解析支持多种分隔符并拒绝纯数字、工号形态和重�
   assert.throws(() => parseRoster('张三、张三'), RosterValidationError);
 });
 
+test('打乱选项默认兼容旧卡，支持 checker 布尔值和既定数组协议，并拒绝异常值', () => {
+  assert.equal(resolveShuffleRoster({}), true);
+  assert.equal(resolveShuffleRoster({ shuffle_roster: true }), true);
+  assert.equal(resolveShuffleRoster({ shuffle_roster: false }), false);
+  assert.equal(resolveShuffleRoster({ shuffle_roster: ['enabled'] }), true);
+  assert.equal(resolveShuffleRoster({ shuffle_roster: [] }), false);
+  assert.throws(() => resolveShuffleRoster({ shuffle_roster: 'enabled' }), RosterValidationError);
+  assert.throws(() => resolveShuffleRoster({ shuffle_roster: ['unknown'] }), RosterValidationError);
+});
+
 test('Fisher–Yates 使用注入的安全随机源且不修改原名单', () => {
   const source = ['甲甲', '乙乙', '丙丙'];
   const values = [0, 1];
@@ -147,11 +160,15 @@ test('首次点击无名单：创建话题 Card 2.0 表单并保存 pending 映�
   const form = call.card.body.elements[1];
   assert.equal(form.tag, 'form');
   assert.equal(form.name, 'dispatch_roster_form');
-  const [input, submit] = form.elements;
+  const [input, shuffle, submit] = form.elements;
   assert.deepEqual({ tag: input.tag, name: input.name, inputType: input.input_type }, {
     tag: 'input', name: 'roster_names', inputType: 'multiline_text',
   });
   assert.ok(input.max_length <= 1000);
+  assert.equal(shuffle.tag, 'checker');
+  assert.equal(shuffle.name, 'shuffle_roster');
+  assert.equal(shuffle.checked, true);
+  assert.match(shuffle.text.content, /取消勾选后，将严格按输入顺序轮转/);
   assert.equal(submit.tag, 'button');
   assert.equal(submit.name, 'dispatch_roster_submit');
   assert.equal(submit.form_action_type, 'submit');
@@ -172,6 +189,14 @@ test('名单提交过程卡、完成卡和失败重试卡提供明确状态且�
   const retry = buildRosterRetryCard('表格写回失败');
   const form = retry.body.elements.find((element) => element.tag === 'form');
   assert.ok(form);
+  const retryShuffle = form.elements.find((element) => element.name === 'shuffle_roster');
+  assert.equal(retryShuffle.tag, 'checker');
+  assert.equal(retryShuffle.checked, true);
+  const retryWithoutShuffle = buildRosterRetryCard('表格写回失败', { shuffleRoster: false });
+  const retryWithoutShuffleField = retryWithoutShuffle.body.elements
+    .find((element) => element.tag === 'form').elements
+    .find((element) => element.name === 'shuffle_roster');
+  assert.equal(retryWithoutShuffleField.checked, false);
   assert.equal(form.elements.at(-1).form_action_type, 'submit');
   assert.match(JSON.stringify(retry), /重新保存名单并派单/);
 });
@@ -195,6 +220,46 @@ test('首次表单提交：按 message_id 找回原请求、立即派单、写�
   assert.equal(originalUpdate.card.body.elements.at(-1).disabled, true);
   assert.match(JSON.stringify(formUpdate.card), /名单已保存并完成派单/);
   assert.ok(store.pending.get('om_form').completed_at, '全部外部副作用成功后才标记 pending 完成');
+});
+
+test('取消打乱后首次初始化严格保留输入顺序', async () => {
+  const store = new FakeStore();
+  const client = new FakeClient();
+  await handleDispatchEvent(body(), options(store, client));
+
+  const result = await handleDispatchEvent(body({ form: true, messageId: 'om_form', shuffleRoster: false }), options(store, client));
+
+  assert.equal(result.body.toast.type, 'success');
+  assert.deepEqual(store.state.roster, ['张三', '李四', '王五']);
+});
+
+test('已有当天名单不会因迟到的初始化表单重新排序', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['王五', '李四', '张三'] };
+  store.pending.set('om_form', {
+    original_message_id: 'om_original', request_context: fields, completed_at: null,
+  });
+  const client = new FakeClient();
+
+  const result = await handleDispatchEvent(body({ form: true, messageId: 'om_form', shuffleRoster: false }), options(store, client));
+
+  assert.equal(result.body.toast.type, 'success');
+  assert.deepEqual(store.state.roster, ['王五', '李四', '张三']);
+});
+
+test('打乱选项异常时拒绝初始化且保留待提交表单', async () => {
+  const store = new FakeStore();
+  const client = new FakeClient();
+  await handleDispatchEvent(body(), options(store, client));
+
+  const result = await handleDispatchEvent(body({ form: true, messageId: 'om_form', shuffleRoster: 'enabled' }), options(store, client));
+
+  assert.equal(result.body.toast.type, 'error');
+  assert.equal(result.errorCode, 'INVALID_ROSTER');
+  assert.match(result.body.toast.content, /打乱人员顺序/);
+  assert.equal(store.state, null);
+  assert.equal(store.assignCalls, 0);
+  assert.equal(store.pending.get('om_form').completed_at, null);
 });
 
 test('外部消息更新失败不回滚已完成派单，pending 标记完成且记录失败操作', async () => {

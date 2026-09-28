@@ -490,7 +490,7 @@ test('首次名单提交遇到人工已派单行时先初始化名单，再校�
     header: { event_id: 'evt_manual_first_init_form' },
     event: {
       operator: { open_id: 'ou_operator' },
-      action: { tag: 'dispatch_roster_submit', form_value: { roster_names: '王五, 赵六' } },
+      action: { tag: 'dispatch_roster_submit', form_value: { roster_names: '王五, 赵六', shuffle_roster: false } },
       context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
     },
   }, options(store, client));
@@ -499,7 +499,7 @@ test('首次名单提交遇到人工已派单行时先初始化名单，再校�
   const batch = store.getBatch('oc_allowed', 'batch_manual_first_init');
   assert.equal(batch.status, 'SUCCESS');
   assert.equal(store.initializeCalls, 1, '表单名单必须在人工锚点校准前持久化一次');
-  assert.deepEqual(new Set(store.state.roster), new Set(['王五', '赵六']));
+  assert.deepEqual(store.state.roster, ['王五', '赵六']);
   assert.equal(store.calibrations.length, 1);
   assert.equal(store.calibrations[0].assignee, '王五');
   assert.equal(batch.results.find(({ requestId }) => requestId === 'batch_manual_first_init_1').assignee, '王五');
