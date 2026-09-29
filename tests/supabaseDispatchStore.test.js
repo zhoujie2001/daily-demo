@@ -77,18 +77,19 @@ test('assignSpecific 使用 scope 原子预留指定负责人', async () => {
   });
 });
 
-test('calibrateCursor 通过事务 RPC 按负责人原子校准双向游标', async () => {
-  const state = { forward_cursor: 2, reverse_cursor: 2 };
+test('calibrateCursor 通过事务 RPC 仅校准指定方向游标', async () => {
+  const state = { forward_cursor: 2, reverse_cursor: 0 };
   const { store, calls } = setup([[state]]);
 
   assert.deepEqual(await store.calibrateCursor({
-    dayKey: '2026-08-30', assignee: '周杰', roster: ['张三', '周杰', '罗世坤'],
+    dayKey: '2026-08-30', direction: 'forward', assignee: '周杰', roster: ['张三', '周杰', '罗世坤'],
   }), state);
 
   assert.equal(calls[0].options.method, 'POST');
   assert.match(calls[0].url, /rpc\/bess_calibrate_cursor$/);
   assert.deepEqual(JSON.parse(calls[0].options.body), {
-    p_day_key: '2026-08-30', p_scope: 'default', p_assignee: '周杰', p_roster: ['张三', '周杰', '罗世坤'],
+    p_day_key: '2026-08-30', p_scope: 'default', p_direction: 'forward',
+    p_assignee: '周杰', p_roster: ['张三', '周杰', '罗世坤'],
   });
 });
 
@@ -186,7 +187,7 @@ test('批次进度和 finalization 状态写入 pending request_context 并校�
 });
 
 
-test('calibrateCursor 在新 RPC 未部署时使用现有 daily_state CAS 兼容校准', async () => {
+test('calibrateCursor 在新 RPC 未部署时使用现有 daily_state CAS 且仅校准指定方向', async () => {
   const calls = [];
   const fetchImpl = async (url, options) => {
     calls.push({ url, options });
@@ -203,7 +204,7 @@ test('calibrateCursor 在新 RPC 未部署时使用现有 daily_state CAS 兼容
   });
 
   const state = await store.calibrateCursor({
-    dayKey: '2026-08-30', assignee: '周杰', roster: ['张三', '周杰', '罗世坤'],
+    dayKey: '2026-08-30', direction: 'forward', assignee: '周杰', roster: ['张三', '周杰', '罗世坤'],
   });
 
   assert.equal(calls.length, 3);
@@ -212,7 +213,7 @@ test('calibrateCursor 在新 RPC 未部署时使用现有 daily_state CAS 兼容
   assert.match(calls[2].url, /forward_cursor=eq\.0/);
   assert.match(calls[2].url, /reverse_cursor=eq\.0/);
   assert.deepEqual(JSON.parse(calls[2].options.body), {
-    forward_cursor: 2, reverse_cursor: 2, updated_at: JSON.parse(calls[2].options.body).updated_at,
+    forward_cursor: 2, updated_at: JSON.parse(calls[2].options.body).updated_at,
   });
   assert.equal(state.forward_cursor, 2);
 });
@@ -228,7 +229,7 @@ test('calibrateCursor 兼容 CAS 遇到并发游标变化时 fail-closed', async
   });
 
   await assert.rejects(
-    store.calibrateCursor({ dayKey: '2026-08-30', assignee: '周杰', roster: ['张三', '周杰'] }),
+    store.calibrateCursor({ dayKey: '2026-08-30', direction: 'reverse', assignee: '周杰', roster: ['张三', '周杰'] }),
     (error) => error instanceof DispatchStoreError && error.code === 'CURSOR_CALIBRATION_CONFLICT',
   );
 });
