@@ -95,12 +95,12 @@ class BatchStore {
   async getDailyAssignments() {
     return [...this.assignments.values()].sort((a, b) => b.id - a.id);
   }
-  async calibrateCursor({ dayKey, assignee, roster }) {
+  async calibrateCursor({ dayKey, direction, assignee, roster }) {
     const index = roster.indexOf(assignee);
     if (index < 0) throw new Error('ASSIGNEE_NOT_IN_ROSTER');
-    this.calibrations.push({ dayKey, assignee, roster });
-    this.cursor = index + 1;
-    this.reverseCursor = roster.length - index;
+    this.calibrations.push({ dayKey, direction, assignee, roster });
+    if (direction === 'forward') this.cursor = index + 1;
+    else this.reverseCursor = roster.length - index;
   }
   async getPendingByRequest(requestId, chatId) {
     return [...this.pending.values()].find((row) => row.request_id === requestId && row.chat_id === chatId && !row.completed_at) || null;
@@ -502,6 +502,7 @@ test('首次名单提交遇到人工已派单行时先初始化名单，再校�
   assert.deepEqual(store.state.roster, ['王五', '赵六']);
   assert.equal(store.calibrations.length, 1);
   assert.equal(store.calibrations[0].assignee, '王五');
+  assert.equal(store.calibrations[0].direction, 'forward');
   assert.equal(batch.results.find(({ requestId }) => requestId === 'batch_manual_first_init_1').assignee, '王五');
   assert.equal(batch.results.find(({ requestId }) => requestId === 'batch_manual_first_init_1').replayed, true);
   assert.equal(batch.results.find(({ requestId }) => requestId === 'batch_manual_first_init_2').assignee, '赵六');
