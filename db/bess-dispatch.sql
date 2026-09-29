@@ -291,10 +291,11 @@ begin
 end;
 $$;
 
--- 目标行已有人为负责人时不创建 assignment，但必须在返回成功前把该负责人
--- 原子持久化为双向游标锚点。行锁保证校准不会与 bess_assign_next 丢失更新。
+-- 目标行已有负责人时不创建 assignment；仅校准当前业务方向的游标，
+-- 避免千川正序锚点覆盖本地倒序游标。行锁保证校准不会与 bess_assign_next 丢失更新。
 create or replace function public.bess_calibrate_cursor(
   p_day_key date,
+  p_direction text,
   p_assignee text,
   p_roster jsonb
 )
@@ -308,6 +309,10 @@ declare
   v_index integer;
   v_count integer;
 begin
+  if p_direction not in ('forward', 'reverse') then
+    raise exception 'INVALID_DIRECTION' using errcode = 'P0001';
+  end if;
+
   select * into v_state
     from public.bess_dispatch_daily_state as state
    where state.day_key = p_day_key
@@ -330,13 +335,21 @@ begin
   end if;
 
   v_count := jsonb_array_length(v_state.roster);
-  return query
-    update public.bess_dispatch_daily_state as state
-       set forward_cursor = v_index + 1,
-           reverse_cursor = v_count - v_index,
-           updated_at = now()
-     where state.day_key = p_day_key
-     returning state.*;
+  if p_direction = 'forward' then
+    return query
+      update public.bess_dispatch_daily_state as state
+         set forward_cursor = v_index + 1,
+             updated_at = now()
+       where state.day_key = p_day_key
+       returning state.*;
+  else
+    return query
+      update public.bess_dispatch_daily_state as state
+         set reverse_cursor = v_count - v_index,
+             updated_at = now()
+       where state.day_key = p_day_key
+       returning state.*;
+  end if;
 end;
 $$;
 
@@ -524,9 +537,9 @@ revoke all on function public.bess_assign_next(date, text, text, jsonb, timestam
 grant execute on function public.bess_assign_next(date, text, text, jsonb, timestamptz, jsonb)
   to service_role;
 
-revoke all on function public.bess_calibrate_cursor(date, text, jsonb)
+revoke all on function public.bess_calibrate_cursor(date, text, text, jsonb)
   from public, anon, authenticated, service_role;
-grant execute on function public.bess_calibrate_cursor(date, text, jsonb)
+grant execute on function public.bess_calibrate_cursor(date, text, text, jsonb)
   to service_role;
 
 revoke all on function public.bess_claim_ingest(text, text, text, text, text, jsonb, timestamptz, timestamptz)

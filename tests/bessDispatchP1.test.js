@@ -58,12 +58,12 @@ class FakeStore {
     this.assignmentQueries += 1;
     return this.assignments.get(requestId) || null;
   }
-  async calibrateCursor({ dayKey, assignee, roster }) {
+  async calibrateCursor({ dayKey, direction, assignee, roster }) {
     const index = roster.indexOf(assignee);
     if (index < 0) throw new Error('ASSIGNEE_NOT_IN_ROSTER');
-    this.calibrations.push({ dayKey, assignee, roster });
-    this.forward = index + 1;
-    this.reverse = roster.length - index;
+    this.calibrations.push({ dayKey, direction, assignee, roster });
+    if (direction === 'forward') this.forward = index + 1;
+    else this.reverse = roster.length - index;
     return { ...(this.state || {}), forward_cursor: this.forward, reverse_cursor: this.reverse };
   }
   async assign({ requestId, direction, roster, context = {} }) {
@@ -696,18 +696,18 @@ test('多块扫描跳过较新块名单外负责人并保留旧块有效锚点',
   assert.ok(client.calls.some((call) => call.kind === 'write' && call.assignee === '罗世坤'));
 });
 
-test('SQL：锚点原子同步双向游标、btrim 名单名称且先执行 request_id 重放', () => {
+test('SQL：锚点仅同步当前方向游标、btrim 名单名称且先执行 request_id 重放', () => {
   const sql = readFileSync(new URL('../db/bess-dispatch.sql', import.meta.url), 'utf8');
   const replayAt = sql.indexOf('if found then');
   const anchorAt = sql.indexOf('select item.ordinality - 1');
   assert.ok(replayAt > 0 && replayAt < anchorAt, 'request_id 重放必须在锚点和游标变更前返回');
   assert.match(sql, /where btrim\(item\.value\) = nullif\(btrim\(p_context ->> 'anchor_assignee'\), ''\)/);
-  assert.match(sql, /update[\s\S]*set forward_cursor = v_index \+ 1,\s+reverse_cursor = v_count - v_index/);
+  assert.match(sql, /if p_direction = 'forward' then[\s\S]*set forward_cursor = v_index \+ 1,[\s\S]*else[\s\S]*set reverse_cursor = v_count - v_index,/);
   assert.match(sql, /assignee := btrim\(v_state\.roster ->> v_index::integer\)/);
 });
 
 
-test('P1：目标行已有周杰时不写表，等待双向游标校准后下一需求分配罗世坤', async () => {
+test('P1：目标行已有周杰时不写表，仅校准千川正序游标后下一需求分配罗世坤', async () => {
   const store = new FakeStore();
   store.state = { roster: ['张三', '周杰', '罗世坤'] };
   const rows = new Array(9).fill(null).map(() => []);
@@ -718,16 +718,21 @@ test('P1：目标行已有周杰时不写表，等待双向游标校准后下一
   assert.equal(filled.body.toast.type, 'success');
   assert.equal(client.calls.filter((call) => call.kind === 'write').length, 0);
   assert.deepEqual(store.calibrations[0], {
-    dayKey: '2026-08-30', assignee: '周杰', roster: ['张三', '周杰', '罗世坤'],
+    dayKey: '2026-08-30', direction: 'forward', assignee: '周杰', roster: ['张三', '周杰', '罗世坤'],
   });
   assert.equal(store.forward, 2);
-  assert.equal(store.reverse, 2);
+  assert.equal(store.reverse, 0);
 
   rows[8] = ['2026-08-30', ''];
   const nextRequest = body({ requestId: 'after_manual_zhou' });
   nextRequest.event.action.value.row_index = 9;
   await handleDispatchEvent(nextRequest, options(store, client));
   assert.equal(store.assignments.get('after_manual_zhou').assignee, '罗世坤');
+
+  const firstLocal = await store.assign({
+    requestId: 'first_local_after_qianchuan_anchor', direction: 'reverse', roster: store.state.roster,
+  });
+  assert.equal(firstLocal.assignee, '罗世坤', '千川锚点不得推进本地倒序游标');
 });
 
 test('P1：目标行游标校准失败时 fail-closed，不返回成功且不写表', async () => {
