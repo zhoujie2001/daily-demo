@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'public/ffmpeg']),
+  globalIgnores(['dist', '.vercel', 'public/ffmpeg']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

@@ -667,6 +667,39 @@ test('短日期带时间仍可识别为当天', () => {
   assert.equal(sheetDateDay(' 9.3 13:17:05 ', '2026-09-03'), '2026-09-03');
 });
 
+test('中文处理日期可识别为当天', () => {
+  assert.equal(sheetDateDay('9月30日', '2026-09-30'), '2026-09-30');
+  assert.equal(sheetDateDay('09月30号 17:02', '2026-09-30'), '2026-09-30');
+  assert.equal(sheetDateDay('2026年9月30日 17:02:11', '2026-09-30'), '2026-09-30');
+});
+
+test('回归：E 段派单前识别中文日期下人工修正的肖婷，并从罗理开始', async () => {
+  const roster = ['孙琴', '黄鲜', '林志平', '陈冰清', '周杰', '陈丽梅', '罗理', '肖婷'];
+  const store = new FakeStore();
+  store.state = { roster };
+  store.reverse = 4; // 旧游标会错误地从陈冰清开始
+  const sheetRows = new Array(10).fill(null).map(() => []);
+  sheetRows[8] = ['9月30日', '肖婷', ''];
+  const client = new FakeClient({ sheetRows });
+  const request = body({
+    requestId: '797180', businessType: '本地推', targetCategory: 'local_promo',
+  });
+  Object.assign(request.event.action.value, {
+    sheet_id: 'JJqR2d', row_index: 10,
+    date_field_id: 'A', assignee_field_id: 'L',
+  });
+
+  const result = await handleDispatchEvent(
+    request,
+    { ...options(store, client), now: () => new Date('2026-09-30T09:00:00Z') },
+  );
+
+  assert.equal(result.body.toast.type, 'success');
+  assert.equal(store.assignments.get('797180').assignee, '罗理');
+  assert.ok(client.calls.some((call) => call.kind === 'write' && call.assignee === '罗理'));
+  assert.ok(!client.calls.some((call) => call.kind === 'write' && call.assignee === '陈冰清'));
+});
+
 
 test('回归：728748 人工改为周杰后，729449 从实际上一负责人继续为罗世坤', async () => {
   const store = new FakeStore();
