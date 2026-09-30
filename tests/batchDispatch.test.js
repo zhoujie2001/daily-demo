@@ -72,6 +72,7 @@ class BatchStore {
     this.reverseCursor = 0;
     this.calibrations = [];
     this.initializeCalls = 0;
+    this.releaseCalls = 0;
     this.batchStore = createMemoryBatchStore({ now });
   }
 
@@ -82,10 +83,15 @@ class BatchStore {
   async saveBatchProgress(args) { return this.batchStore.saveBatchProgress(args); }
   async markBatchFinalization(args) { return this.batchStore.markBatchFinalization(args); }
   async saveBatchResultMessage(args) { return this.batchStore.saveBatchResultMessage(args); }
-  async releaseBatchClaim(args) { return this.batchStore.releaseBatchClaim(args); }
+  async releaseBatchClaim(args) {
+    this.releaseCalls += 1;
+    return this.batchStore.releaseBatchClaim(args);
+  }
   getBatch(chatId, batchId) { return this.batchStore.getBatch(chatId, batchId); }
   async cleanupExpired() {}
-  async getDailyState() { return this.state; }
+  async getDailyState() {
+    return this.state ? { ...this.state, forward_cursor: this.cursor, reverse_cursor: this.reverseCursor } : null;
+  }
   async initializeRoster({ roster }) {
     this.initializeCalls += 1;
     if (!this.state) this.state = { roster: [...roster] };
@@ -142,8 +148,8 @@ class BatchStore {
       assignee: this.state.roster[index],
       request_context: context,
     };
-    this.cursor = index + 1;
-    this.reverseCursor = this.state.roster.length - index;
+    if (direction === 'forward') this.cursor = index + 1;
+    else this.reverseCursor = this.state.roster.length - index;
     this.assignments.set(requestId, assignment);
     return { ...assignment, roster: this.state.roster, replayed: false };
   }
@@ -245,11 +251,70 @@ test('批量点击立即禁用按钮，逐项处理后更新原卡并在单一�
   const rosterColumns = reply.card.body.elements.find((element) => element.tag === 'column_set');
   assert.ok(rosterColumns, '话题卡片必须明确展示千川与本地两套名单顺序');
   assert.match(rosterColumns.columns[0].elements[0].content, /千川正序（从上到下）/);
-  assert.match(rosterColumns.columns[0].elements[0].content, /1\. 张三 \*\*← 当前人员\*\*/);
+  assert.match(rosterColumns.columns[0].elements[0].content, /2\. 李四 \*\*← 当前人员\*\*/);
   assert.match(rosterColumns.columns[1].elements[0].content, /本地倒序（从下到上）/);
   assert.doesNotMatch(rosterColumns.columns[1].elements[0].content, /当前人员/);
   assert.doesNotMatch(JSON.stringify(reply.card), /本批次负责人/);
   assert.doesNotMatch(JSON.stringify(reply.card), /sensitive write error/);
+});
+
+test('后置 daily state 刷新返回 null 时批量仍完成补偿并释放 claim', async () => {
+  const store = new BatchStore();
+  store.cursor = 1;
+  store.reverseCursor = 1;
+  const getDailyState = store.getDailyState.bind(store);
+  store.getDailyState = async (...args) => (
+    store.assignCalls >= 2 ? null : getDailyState(...args)
+  );
+  const client = new BatchClient();
+  const logs = [];
+
+  const result = await handleDispatchEvent(batchBody('batch_refresh_null'), options(store, client, {
+    logger: { info(line) { logs.push(JSON.parse(line)); } },
+  }));
+  await result.afterResponse();
+
+  assert.equal(store.getBatch('oc_allowed', 'batch_refresh_null').status, 'SUCCESS');
+  assert.equal(store.releaseCalls, 1);
+  assert.equal(client.calls.filter((call) => call.kind === 'update').length, 1);
+  assert.equal(client.calls.filter((call) => call.kind === 'replyCard').length, 1);
+  const resultCard = client.calls.find((call) => call.kind === 'replyCard').card;
+  const columns = resultCard.body.elements.find((element) => element.tag === 'column_set').columns;
+  assert.match(columns[0].elements[0].content, /1\. 张三 \*\*← 当前人员\*\*/);
+  assert.match(columns[1].elements[0].content, /1\. 李四 \*\*← 当前人员\*\*/);
+  const warning = logs.find((entry) => entry.stage === 'daily_state_refresh_warning');
+  assert.equal(warning.severity, 'warn');
+  assert.equal(warning.flow, 'batch');
+  assert.equal(warning.error_code, 'DAILY_STATE_NOT_FOUND');
+});
+
+test('混合方向批量后置刷新失败时按各方向最后成功结果校正双游标', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['张三', '李四', '王五'] };
+  store.cursor = 1;
+  store.reverseCursor = 2;
+  const getDailyState = store.getDailyState.bind(store);
+  store.getDailyState = async (...args) => (
+    store.assignCalls >= 2 ? null : getDailyState(...args)
+  );
+  const local = {
+    ...item('fallback_mixed_local', 11),
+    business_type: '本地推', target_category: 'local_promo', project_value: '本地',
+  };
+  const client = new BatchClient();
+
+  const result = await handleDispatchEvent(
+    batchBody('batch_refresh_mixed', [item('fallback_mixed_qianchuan', 10), local]),
+    options(store, client),
+  );
+  await result.afterResponse();
+
+  assert.equal(store.getBatch('oc_allowed', 'batch_refresh_mixed').status, 'SUCCESS');
+  assert.equal(store.releaseCalls, 1);
+  const resultCard = client.calls.find((call) => call.kind === 'replyCard').card;
+  const columns = resultCard.body.elements.find((element) => element.tag === 'column_set').columns;
+  assert.match(columns[0].elements[0].content, /2\. 李四 \*\*← 当前人员\*\*/);
+  assert.match(columns[1].elements[0].content, /3\. 张三 \*\*← 当前人员\*\*/);
 });
 
 test('同 batch_id 并发重复点击不重复派单，完成后重放也不新增副作用', async () => {

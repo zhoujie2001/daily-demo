@@ -47,7 +47,13 @@ function body({
 class FakeStore {
   constructor() { this.state = null; this.pending = new Map(); this.assignments = new Map(); this.forward = 0; this.reverse = 0; this.cleanupCalls = 0; this.assignCalls = 0; this.assignmentQueries = 0; this.calibrations = []; }
   async cleanupExpired() { this.cleanupCalls += 1; }
-  async getDailyState() { return this.state; }
+  async getDailyState() {
+    return this.state ? { ...this.state, forward_cursor: this.forward, reverse_cursor: this.reverse } : null;
+  }
+  async initializeRoster({ roster }) {
+    if (!this.state) this.state = { roster: [...roster] };
+    return this.getDailyState();
+  }
   async savePending(row) { this.pending.set(row.form_message_id, { ...row, completed_at: null }); return row; }
   async getPending(id, _now, { includeCompleted = false } = {}) {
     const row = this.pending.get(id) || null;
@@ -75,8 +81,8 @@ class FakeStore {
     const index = anchorIndex >= 0
       ? (direction === 'forward' ? (anchorIndex + 1) % list.length : (anchorIndex - 1 + list.length) % list.length)
       : (direction === 'forward' ? this.forward % list.length : list.length - 1 - (this.reverse % list.length));
-    if (direction === 'forward') this.forward += 1;
-    else this.reverse += 1;
+    if (direction === 'forward') this.forward = index + 1;
+    else this.reverse = list.length - index;
     const assignment = { assignee: list[index], direction };
     this.assignments.set(requestId, assignment);
     return { ...assignment, roster: list, replayed: false };
@@ -284,6 +290,37 @@ test('外部消息更新失败不回滚已完成派单，pending 标记完成且
   assert.ok(updateIds.includes('om_form'));
 });
 
+test('后置 daily state 刷新抛错时单条派单仍成功并使用已有名单渲染', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['张三', '李四', '王五'], off_duty: [] };
+  store.forward = 1;
+  store.reverse = 1;
+  const getDailyState = store.getDailyState.bind(store);
+  store.getDailyState = async (...args) => {
+    if (store.assignCalls > 0) throw Object.assign(new Error('temporary db failure'), { code: 'DISPATCH_DB_TIMEOUT' });
+    return getDailyState(...args);
+  };
+  const client = new FakeClient();
+  const logs = [];
+
+  const result = await handleDispatchEvent(body({ requestId: 'refresh_throw_single' }), {
+    ...options(store, client),
+    logger: { info(line) { logs.push(JSON.parse(line)); } },
+  });
+
+  assert.equal(result.body.toast.type, 'success');
+  assert.equal(store.assignments.get('refresh_throw_single').assignee, '李四');
+  assert.ok(client.calls.some((call) => call.kind === 'write' && call.assignee === '李四'));
+  const resultCard = client.calls.find((call) => call.kind === 'replyCard').card;
+  const columns = resultCard.body.elements.find((element) => element.tag === 'column_set').columns;
+  assert.match(columns[0].elements[0].content, /2\. 李四 \*\*← 当前人员\*\*/);
+  assert.match(columns[1].elements[0].content, /1\. 王五 \*\*← 当前人员\*\*/);
+  const warning = logs.find((entry) => entry.stage === 'daily_state_refresh_warning');
+  assert.equal(warning.severity, 'warn');
+  assert.equal(warning.flow, 'single');
+  assert.equal(warning.error_code, 'DISPATCH_DB_TIMEOUT');
+});
+
 test('同日正序/倒序游标独立，重复 request_id 跨实例语义幂等', async () => {
   const store = new FakeStore();
   store.state = { roster: ['张三', '李四', '王五'] };
@@ -293,6 +330,14 @@ test('同日正序/倒序游标独立，重复 request_id 跨实例语义幂等'
   const replay = await store.assign({ requestId: 'a', direction: 'reverse' });
   assert.equal(replay.assignee, '张三');
   assert.equal(replay.replayed, true);
+});
+
+test('本地首次派单后千川首次仍从正序首位开始', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['张三', '李四', '王五'] };
+  assert.equal((await store.assign({ requestId: 'local_first', direction: 'reverse' })).assignee, '王五');
+  assert.equal(store.forward, 0);
+  assert.equal((await store.assign({ requestId: 'qianchuan_first', direction: 'forward' })).assignee, '张三');
 });
 
 test('后续派单从最新有效人工锚点轮转，并跳过空值、非当天和名单外姓名', async () => {
