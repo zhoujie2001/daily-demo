@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { LarkApiError } from '../lib/lark/client.js';
-import { handleDispatchEvent, redactLarkApiMessage } from '../lib/dispatch/dispatch-service.js';
+import { handleDispatchEvent, batchDispatchFingerprint, redactLarkApiMessage } from '../lib/dispatch/dispatch-service.js';
+import { validateBatchDispatchValue } from '../lib/lark/card-actions.js';
 import { createMemoryBatchStore } from '../lib/dispatch/memory-batch-store.js';
 
 const silentLogger = { info() {} };
@@ -68,6 +70,9 @@ class BatchStore {
     this.assignments = new Map();
     this.pending = new Map();
     this.assignCalls = 0;
+    this.assignDetails = [];
+    this.stateScopeCalls = [];
+    this.initializeDetails = [];
     this.cursor = 0;
     this.reverseCursor = 0;
     this.calibrations = [];
@@ -89,10 +94,12 @@ class BatchStore {
   }
   getBatch(chatId, batchId) { return this.batchStore.getBatch(chatId, batchId); }
   async cleanupExpired() {}
-  async getDailyState() {
+  async getDailyState(_dayKey, scope) {
+    this.stateScopeCalls.push(scope);
     return this.state ? { ...this.state, forward_cursor: this.cursor, reverse_cursor: this.reverseCursor } : null;
   }
-  async initializeRoster({ roster }) {
+  async initializeRoster({ roster, scope }) {
+    this.initializeDetails.push({ roster: [...roster], scope });
     this.initializeCalls += 1;
     if (!this.state) this.state = { roster: [...roster] };
     return this.state;
@@ -126,9 +133,10 @@ class BatchStore {
     this.assignments.set(requestId, assignment);
     return { ...assignment, replayed: false };
   }
-  async assign({ requestId, direction = 'forward', roster, context = {} }) {
+  async assign({ requestId, scope, direction = 'forward', roster, context = {} }) {
     if (roster) this.state = { roster };
     this.assignCalls += 1;
+    this.assignDetails.push({ requestId, scope, direction });
     if (this.assignments.has(requestId)) {
       return { ...this.assignments.get(requestId), roster: this.state.roster, replayed: true };
     }
@@ -1085,4 +1093,93 @@ test('旧话题结果卡更新失败时补发最终结果卡并持久化新 mess
   const replacement = client.calls.filter((call) => call.kind === 'replyCard').at(-1).card;
   assert.match(JSON.stringify(replacement), /此前的话题结果卡已失效/);
   assert.match(JSON.stringify(replacement), /SUCCESS/);
+});
+
+
+test('旧 pending 批次表单恢复时逐项规范化 profile：AD 使用共享 ad+reverse，千川保持 default+forward', async () => {
+  const cases = [
+    {
+      label: 'AD',
+      raw: item('legacy_ad_pending', 10),
+      overrides: {
+        business_type: 'AD', target_category: 'game_agent', sheet_id: 'adGame',
+        project_field_id: undefined, project_value: undefined,
+      },
+      expectedScope: 'ad',
+      expectedDirection: 'reverse',
+    },
+    {
+      label: '千川',
+      raw: item('legacy_qian_pending', 10),
+      overrides: {},
+      expectedScope: 'default',
+      expectedDirection: 'forward',
+    },
+  ];
+
+  for (const [caseIndex, entry] of cases.entries()) {
+    const raw = { ...entry.raw, ...entry.overrides };
+    const batchId = `legacy_pending_${caseIndex}`;
+    const normalized = validateBatchDispatchValue({
+      action: 'bess_batch_auto_dispatch', schema_version: 1,
+      batch_id: batchId, items: [raw],
+    }).items[0];
+    delete normalized.dispatchProfile;
+    delete normalized.dispatchScope;
+    delete normalized.dispatchDirection;
+
+    const store = new BatchStore();
+    store.state = null;
+    await store.savePending({
+      form_message_id: `om_legacy_${entry.label}`,
+      request_id: `batch_legacy_${entry.label}`,
+      original_message_id: `om_original_${entry.label}`,
+      chat_id: 'oc_allowed',
+      request_context: {
+        kind: 'batch', batchId, items: [normalized],
+      },
+    });
+    const client = new BatchClient();
+    const result = await handleDispatchEvent({
+      header: { event_id: `evt_legacy_${entry.label}` },
+      event: {
+        operator: { open_id: 'ou_operator' },
+        action: { tag: 'dispatch_roster_submit', form_value: { roster_names: '王五, 赵六', shuffle_roster: false } },
+        context: { open_chat_id: 'oc_allowed', open_message_id: `om_legacy_${entry.label}` },
+      },
+    }, options(store, client));
+    await result.afterResponse();
+
+    assert.equal(store.initializeDetails[0].scope, entry.expectedScope, `${entry.label} 初始化 scope`);
+    assert.deepEqual(
+      [store.assignDetails[0].scope, store.assignDetails[0].direction],
+      [entry.expectedScope, entry.expectedDirection],
+      `${entry.label} 派单 profile`,
+    );
+  }
+});
+
+test('派生 profile 字段不改变旧批次 fingerprint，PROCESSING/PARTIAL/FAILED 重试沿用原指纹', () => {
+  const normalizedItems = validateBatchDispatchValue({
+    action: 'bess_batch_auto_dispatch', schema_version: 1,
+    batch_id: 'legacy_fingerprint', items: [item('legacy_fingerprint_1', 10)],
+  }).items;
+  const legacyItems = normalizedItems.map((entry) => {
+    const legacy = { ...entry };
+    delete legacy.dispatchProfile;
+    delete legacy.dispatchScope;
+    delete legacy.dispatchDirection;
+    return legacy;
+  });
+  const oldFingerprint = createHash('sha256').update(JSON.stringify(legacyItems)).digest('hex');
+
+  assert.equal(batchDispatchFingerprint(normalizedItems), oldFingerprint);
+  assert.equal(batchDispatchFingerprint(legacyItems), oldFingerprint);
+  for (const status of ['PROCESSING', 'PARTIAL', 'FAILED']) {
+    assert.equal(
+      batchDispatchFingerprint(normalizedItems),
+      oldFingerprint,
+      `${status} 重试不得因派生 profile 字段产生指纹冲突`,
+    );
+  }
 });

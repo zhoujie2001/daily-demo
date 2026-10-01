@@ -37,8 +37,8 @@ class MockStore {
     return res;
   }
 
-  async calibrateCursor({ direction, assignee }) {
-    this.calibrateCalls.push({ direction, assignee });
+  async calibrateCursor({ scope, direction, assignee }) {
+    this.calibrateCalls.push({ scope, direction, assignee });
     const idx = this.roster.indexOf(assignee);
     if (direction === 'forward') this.state.forward_cursor = idx + 1;
     else this.state.reverse_cursor = this.roster.length - idx;
@@ -193,4 +193,48 @@ test('游标校准失败时不把指定表单标记为完成', async () => {
 
   assert.equal(result.body.toast.type, 'error');
   assert.equal(store.pending.get('om_form').completed_at, undefined);
+});
+
+
+test('AD 游戏指定人员后重置共享 AD 倒序游标，复盘下一条从下一位开始', async () => {
+  const store = new MockStore();
+  const client = new MockClient();
+
+  await store.savePending({
+    form_message_id: 'om_ad_form',
+    request_context: {
+      kind: 'specify_assignee', dispatchProfile: 'ad', businessType: 'AD',
+      targetCategory: 'game_agent', requestId: 'ad_game_1', requestName: 'AD 游戏',
+      sheetUrl: 'https://sheet.url', sheetId: 'game', rowIndex: 10,
+      dateFieldId: 'J', assigneeFieldId: 'G',
+    },
+  });
+
+  const specified = await handleDispatchEvent({
+    header: { event_id: 'ad_e1', event_type: 'card.action.trigger' },
+    event: {
+      operator: { open_id: 'u1' },
+      action: { tag: 'button', form_value: { assignee_name: '黄鲜' } },
+      context: { open_chat_id: 'oc_1', open_message_id: 'om_ad_form' },
+    },
+  }, options(store, client));
+  assert.equal(specified.body.toast.type, 'success');
+  assert.deepEqual(store.calibrateCalls[0], { scope: 'ad', direction: 'reverse', assignee: '黄鲜' });
+
+  const replay = await handleDispatchEvent({
+    header: { event_id: 'ad_e2', event_type: 'card.action.trigger' },
+    event: {
+      operator: { open_id: 'u1' },
+      action: { tag: 'button', value: {
+        action: 'bess_auto_dispatch', dispatch_profile: 'ad',
+        business_type: 'AD', target_category: 'ad', request_name: 'AD 复盘', request_id: 'ad_review_2',
+        sheet_id: 'review', sheet_url: 'https://sheet.url', row_index: 11,
+        date_field_id: 'J', assignee_field_id: 'G',
+      } },
+      context: { open_chat_id: 'oc_1', open_message_id: 'om_ad_2' },
+    },
+  }, options(store, client));
+
+  assert.match(replay.body.toast.content, /派单成功：林志平/);
+  assert.equal(store.state.reverse_cursor, 2);
 });

@@ -45,7 +45,7 @@ test('游标为 0 时对应方向不标记当前人员', () => {
 });
 
 test('AD 结果卡保持单名单并从当前方向持久化游标标记人员', () => {
-  const card = buildDispatchResultCard({ ...qianchuan, businessType: 'AD' }, {
+  const card = buildDispatchResultCard({ ...qianchuan, businessType: 'AD', dispatchProfile: 'ad' }, {
     assignee: '王五', direction: 'reverse', roster: ['张三', '李四', '王五'],
     forwardCursor: 2, reverseCursor: 1, dispatchedAt: '2026-09-30 16:00:00',
   });

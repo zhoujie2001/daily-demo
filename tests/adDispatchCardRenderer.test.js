@@ -12,6 +12,7 @@ const adFields = {
   requestName: 'AD 派单展示测试',
   businessType: 'AD',
   targetCategory: 'qianchuan_ad',
+  dispatchProfile: 'ad',
   sheetUrl: 'https://bytedance.larkoffice.com/sheets/QcX5sFcY0hw8w2tXxPbczs6wnog',
   sheetId: '288afd',
   rowIndex: 122,
