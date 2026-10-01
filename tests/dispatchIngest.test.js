@@ -79,7 +79,7 @@ test('测试群允许多业务派单并保留领取人字段', () => {
   assert.equal(normalized.fields.assigneeFieldName, '领取人');
 });
 
-test('AD 群允许 ad/game_agent 并绑定 G/J 字段', () => {
+test('AD 群允许 ad/game_agent 并绑定 B/J 字段', () => {
   for (const targetCategory of ['ad', 'game_agent']) {
     const normalized = normalizeDispatchIngest({
       ...localBody,
@@ -88,14 +88,27 @@ test('AD 群允许 ad/game_agent 并绑定 G/J 字段', () => {
       target_category: targetCategory,
       date_field_id: 'J',
       date_field_name: '日期',
-      assignee_field_id: 'G',
-      assignee_field_name: '领取人',
+      assignee_field_id: 'B',
+      assignee_field_name: '姓名',
     });
     assert.equal(normalized.chatId, AD_DISPATCH_CHAT_ID);
     assert.equal(normalized.fields.targetCategory, targetCategory);
     assert.equal(normalized.fields.dateFieldId, 'J');
-    assert.equal(normalized.fields.assigneeFieldId, 'G');
+    assert.equal(normalized.fields.assigneeFieldId, 'B');
+    assert.equal(normalized.fields.assigneeFieldName, '姓名');
   }
+  const defaulted = normalizeDispatchIngest({
+    ...localBody,
+    chat_id: AD_DISPATCH_CHAT_ID,
+    business_type: 'AD',
+    target_category: 'game_agent',
+    date_field_id: undefined,
+    assignee_field_id: undefined,
+    assignee_field_name: undefined,
+  });
+  assert.equal(defaulted.fields.dateFieldId, 'J');
+  assert.equal(defaulted.fields.assigneeFieldId, 'B');
+  assert.equal(defaulted.fields.assigneeFieldName, '姓名');
   assert.throws(
     () => normalizeDispatchIngest({ ...localBody, chat_id: AD_DISPATCH_CHAT_ID }),
     (error) => error.code === 'BINDING_MISMATCH',

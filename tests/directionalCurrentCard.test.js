@@ -44,10 +44,10 @@ test('游标为 0 时对应方向不标记当前人员', () => {
   assert.match(reverse, /当前人员/);
 });
 
-test('AD 正序结果卡保持单名单并从 forward 持久化游标标记人员', () => {
+test('AD 正序结果卡保持单名单并从 reverse 持久化游标标记人员', () => {
   const card = buildDispatchResultCard({ ...qianchuan, businessType: 'AD', dispatchProfile: 'ad' }, {
-    assignee: '李四', direction: 'forward', roster: ['张三', '李四', '王五'],
-    forwardCursor: 2, reverseCursor: 1, dispatchedAt: '2026-09-30 16:00:00',
+    assignee: '李四', direction: 'reverse', roster: ['张三', '李四', '王五'],
+    forwardCursor: 0, reverseCursor: 2, dispatchedAt: '2026-09-30 16:00:00',
   });
   const text = JSON.stringify(card);
   assert.match(text, /AD正序名单（从上到下）/);

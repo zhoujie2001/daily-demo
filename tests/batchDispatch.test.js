@@ -1096,7 +1096,7 @@ test('旧话题结果卡更新失败时补发最终结果卡并持久化新 mess
 });
 
 
-test('旧 pending 批次表单恢复时逐项规范化 profile：AD 使用共享 ad+forward，千川保持 default+forward', async () => {
+test('旧 pending 批次表单恢复时逐项规范化 profile：AD 使用共享 ad+reverse，千川保持 default+forward', async () => {
   const cases = [
     {
       label: 'AD',
@@ -1106,7 +1106,7 @@ test('旧 pending 批次表单恢复时逐项规范化 profile：AD 使用共享
         project_field_id: undefined, project_value: undefined,
       },
       expectedScope: 'ad',
-      expectedDirection: 'forward',
+      expectedDirection: 'reverse',
     },
     {
       label: '千川',

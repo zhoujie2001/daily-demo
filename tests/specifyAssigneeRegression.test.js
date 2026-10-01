@@ -196,7 +196,7 @@ test('游标校准失败时不把指定表单标记为完成', async () => {
 });
 
 
-test('AD 游戏指定人员后重置共享 AD 正序游标，复盘下一条从下一位开始', async () => {
+test('AD 游戏指定人员后重置共享 AD 正序游标，复盘下一条按第四→第三→第二→第一→第五继续', async () => {
   const store = new MockStore();
   const client = new MockClient();
 
@@ -206,7 +206,7 @@ test('AD 游戏指定人员后重置共享 AD 正序游标，复盘下一条从�
       kind: 'specify_assignee', dispatchProfile: 'ad', businessType: 'AD',
       targetCategory: 'game_agent', requestId: 'ad_game_1', requestName: 'AD 游戏',
       sheetUrl: 'https://sheet.url', sheetId: 'game', rowIndex: 10,
-      dateFieldId: 'J', assigneeFieldId: 'G',
+      dateFieldId: 'J', assigneeFieldId: 'B',
     },
   });
 
@@ -219,7 +219,7 @@ test('AD 游戏指定人员后重置共享 AD 正序游标，复盘下一条从�
     },
   }, options(store, client));
   assert.equal(specified.body.toast.type, 'success');
-  assert.deepEqual(store.calibrateCalls[0], { scope: 'ad', direction: 'forward', assignee: '黄鲜' });
+  assert.deepEqual(store.calibrateCalls[0], { scope: 'ad', direction: 'reverse', assignee: '黄鲜' });
 
   const replay = await handleDispatchEvent({
     header: { event_id: 'ad_e2', event_type: 'card.action.trigger' },
@@ -229,13 +229,13 @@ test('AD 游戏指定人员后重置共享 AD 正序游标，复盘下一条从�
         action: 'bess_auto_dispatch', dispatch_profile: 'ad',
         business_type: 'AD', target_category: 'ad', request_name: 'AD 复盘', request_id: 'ad_review_2',
         sheet_id: 'review', sheet_url: 'https://sheet.url', row_index: 11,
-        date_field_id: 'J', assignee_field_id: 'G',
+        date_field_id: 'J', assignee_field_id: 'B',
       } },
       context: { open_chat_id: 'oc_1', open_message_id: 'om_ad_2' },
     },
   }, options(store, client));
 
-  assert.match(replay.body.toast.content, /派单成功：周杰/);
-  assert.equal(store.state.forward_cursor, 1);
-  assert.equal(store.state.reverse_cursor, 0);
+  assert.match(replay.body.toast.content, /派单成功：林志平/);
+  assert.equal(store.state.forward_cursor, 0);
+  assert.equal(store.state.reverse_cursor, 2);
 });

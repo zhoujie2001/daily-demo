@@ -29,7 +29,7 @@ test('AD 批量结果卡只展示 AD正序名单（从上到下），不串入�
     batchId: 'ad_batch_1',
     status: 'FAILED',
     roster: ['张三', '李四'],
-    direction: 'forward',
+    direction: 'reverse',
     results: [{ requestId: 'ad_9001', status: 'FAILED', error: '测试失败' }],
     dispatchedAt: '2026-09-24T12:00:00.000Z',
   });
@@ -43,13 +43,13 @@ test('AD 批量结果卡只展示 AD正序名单（从上到下），不串入�
 test('AD 单条结果与名单完成卡使用 AD正序名单（从上到下）文案', () => {
   const resultCard = buildDispatchResultCard(adFields, {
     assignee: '李四',
-    direction: 'forward',
+    direction: 'reverse',
     roster: ['张三', '李四'],
     dispatchedAt: '2026-09-24T12:00:00.000Z',
   });
   const completedCard = buildRosterCompletedCard(adFields, {
     assignee: '李四',
-    direction: 'forward',
+    direction: 'reverse',
     dispatchedAt: '2026-09-24T12:00:00.000Z',
   });
   for (const card of [resultCard, completedCard]) {
