@@ -3,6 +3,7 @@ import test from 'node:test';
 import { validateDispatchValue } from '../lib/lark/card-actions.js';
 import { dispatchActionValue, normalizeDispatchIngest, AD_DISPATCH_CHAT_ID } from '../lib/dispatch/ingest.js';
 import { resolveDispatchProfile } from '../lib/dispatch/profile.js';
+import { enforceAssigneeFieldContract } from '../lib/dispatch/dispatch-service.js';
 
 const action = (overrides = {}) => ({
   action: 'bess_auto_dispatch',
@@ -69,4 +70,29 @@ test('AD ingest 规范化后单卡和批次 action 均显式携带 ad profile', 
   });
   assert.equal(fields.dispatchProfile, 'ad');
   assert.equal(dispatchActionValue(fields).dispatch_profile, 'ad');
+});
+
+
+test('历史 AD/游戏卡片即使携带 G/领取人，执行时也强制写入 B/姓名', () => {
+  for (const targetCategory of ['ad', 'game_agent']) {
+    const normalized = enforceAssigneeFieldContract({
+      targetCategory,
+      assigneeFieldId: 'G',
+      assigneeFieldName: '领取人',
+    });
+    assert.equal(normalized.assigneeFieldId, 'B');
+    assert.equal(normalized.assigneeFieldName, '姓名');
+  }
+
+  const batch = enforceAssigneeFieldContract({
+    kind: 'batch',
+    items: [
+      { targetCategory: 'ad', assigneeFieldId: 'G', assigneeFieldName: '领取人' },
+      { targetCategory: 'qianchuan_ad', assigneeFieldId: 'F', assigneeFieldName: '责任人' },
+    ],
+  });
+  assert.deepEqual(
+    batch.items.map((item) => [item.assigneeFieldId, item.assigneeFieldName]),
+    [['B', '姓名'], ['F', '责任人']],
+  );
 });
