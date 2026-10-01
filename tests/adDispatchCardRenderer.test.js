@@ -24,37 +24,37 @@ function serialized(card) {
   return JSON.stringify(card);
 }
 
-test('AD 批量结果卡只展示 AD业态在班名单，不串入方向或千川本地文案', () => {
+test('AD 批量结果卡只展示 AD正序名单（从上到下），不串入方向或千川本地文案', () => {
   const card = buildBatchDispatchResultCard([adFields], {
     batchId: 'ad_batch_1',
     status: 'FAILED',
     roster: ['张三', '李四'],
-    direction: 'reverse',
+    direction: 'forward',
     results: [{ requestId: 'ad_9001', status: 'FAILED', error: '测试失败' }],
     dispatchedAt: '2026-09-24T12:00:00.000Z',
   });
   const text = serialized(card);
-  assert.match(text, /AD业态在班名单/);
+  assert.match(text, /AD正序名单（从上到下）/);
   assert.doesNotMatch(text, /AD 独立名单/);
   assert.doesNotMatch(text, /千川正序/);
   assert.doesNotMatch(text, /本地倒序/);
 });
 
-test('AD 单条结果与名单完成卡使用 AD业态在班名单文案', () => {
+test('AD 单条结果与名单完成卡使用 AD正序名单（从上到下）文案', () => {
   const resultCard = buildDispatchResultCard(adFields, {
     assignee: '李四',
-    direction: 'reverse',
+    direction: 'forward',
     roster: ['张三', '李四'],
     dispatchedAt: '2026-09-24T12:00:00.000Z',
   });
   const completedCard = buildRosterCompletedCard(adFields, {
     assignee: '李四',
-    direction: 'reverse',
+    direction: 'forward',
     dispatchedAt: '2026-09-24T12:00:00.000Z',
   });
   for (const card of [resultCard, completedCard]) {
     const text = serialized(card);
-    assert.match(text, /AD业态在班名单/);
+    assert.match(text, /AD正序名单（从上到下）/);
     assert.doesNotMatch(text, /AD 独立名单/);
     assert.doesNotMatch(text, /千川正序/);
     assert.doesNotMatch(text, /本地倒序/);

@@ -20,7 +20,7 @@ const action = (overrides = {}) => ({
 
 test('统一 profile 固定服务端 scope/direction，千川与本地规则不回归', () => {
   assert.deepEqual(resolveDispatchProfile({ dispatchProfile: 'ad', businessType: 'AD', targetCategory: 'ad' }), {
-    name: 'ad', scope: 'ad', direction: 'reverse',
+    name: 'ad', scope: 'ad', direction: 'forward',
   });
   assert.deepEqual(resolveDispatchProfile({ dispatchProfile: 'default', businessType: '千川', targetCategory: 'qianchuan' }), {
     name: 'default', scope: 'default', direction: 'forward',
@@ -44,13 +44,13 @@ test('显式 ad profile 对业务类型和合法 AD 分类 fail-closed', () => {
   }
   for (const target_category of ['ad', 'game_agent', 'qianchuan_ad', 'ehc_emergency_ad']) {
     const fields = validateDispatchValue(action({ target_category, dispatch_profile: 'ad' }));
-    assert.deepEqual([fields.dispatchProfile, fields.dispatchScope, fields.dispatchDirection], ['ad', 'ad', 'reverse']);
+    assert.deepEqual([fields.dispatchProfile, fields.dispatchScope, fields.dispatchDirection], ['ad', 'ad', 'forward']);
   }
 });
 
 test('legacy AD payload 兼容推断，规范化 action 显式透传 ad profile', () => {
   const fields = validateDispatchValue(action({ dispatch_profile: undefined }));
-  assert.deepEqual([fields.dispatchProfile, fields.dispatchScope, fields.dispatchDirection], ['ad', 'ad', 'reverse']);
+  assert.deepEqual([fields.dispatchProfile, fields.dispatchScope, fields.dispatchDirection], ['ad', 'ad', 'forward']);
   assert.equal(dispatchActionValue(fields).dispatch_profile, 'ad');
 });
 

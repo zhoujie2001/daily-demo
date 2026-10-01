@@ -143,8 +143,8 @@ test('上海日界线和次日零点正确，业务方向符合规则', () => {
   assert.equal(shanghaiDay(now), '2026-08-30');
   assert.equal(nextShanghaiMidnight(now), '2026-08-30T16:00:00.000Z');
   assert.equal(shanghaiDay(new Date('2026-08-30T16:00:00Z')), '2026-08-31');
-  for (const type of ['千川', 'qianchuan', 'QIANCHUAN']) assert.equal(dispatchDirection(type), 'forward');
-  for (const type of ['本地推', '本地', '存量', '其它', 'EHC', 'AD']) assert.equal(dispatchDirection(type), 'reverse');
+  for (const type of ['千川', 'qianchuan', 'QIANCHUAN', 'AD']) assert.equal(dispatchDirection(type), 'forward');
+  for (const type of ['本地推', '本地', '存量', '其它', 'EHC']) assert.equal(dispatchDirection(type), 'reverse');
   for (const type of ['AD', 'ad', '广告']) assert.equal(dispatchScope(type), 'ad');
   for (const type of ['千川', '本地推', '存量']) assert.equal(dispatchScope(type), 'default');
 });
