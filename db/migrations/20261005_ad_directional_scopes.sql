@@ -20,7 +20,14 @@ create table if not exists public.bess_dispatch_person_status (
 );
 alter table public.bess_dispatch_person_status enable row level security;
 alter table public.bess_dispatch_person_status force row level security;
-revoke all on table public.bess_dispatch_person_status from public, anon, authenticated;
+drop policy if exists bess_dispatch_service_role_only on public.bess_dispatch_person_status;
+create policy bess_dispatch_service_role_only
+  on public.bess_dispatch_person_status
+  for all
+  to service_role
+  using (true)
+  with check (true);
+revoke all on table public.bess_dispatch_person_status from public, anon, authenticated, service_role;
 grant select, insert, update, delete on table public.bess_dispatch_person_status to service_role;
 
 -- A legacy AD row is copied twice only as an initial snapshot. The two rows have

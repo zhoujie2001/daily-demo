@@ -6,6 +6,8 @@ import { enforceSingleBatchScope } from '../lib/dispatch/dispatch-service.js';
 
 const sql = readFileSync(new URL('../db/migrations/20261005_ad_directional_scopes.sql', import.meta.url), 'utf8');
 
+const verification = readFileSync(new URL('../db/bess-dispatch-verify.sql', import.meta.url), 'utf8');
+
 function functionSql(name) {
   const start = sql.indexOf(`create or replace function public.${name}(`);
   assert.notEqual(start, -1, `${name} must exist`);
@@ -66,6 +68,53 @@ test('AD assignment 仅在 targetCategory 与完整 sheet/字段契约一致时�
   assert.match(sql, /category in \('qianchuan_ad', 'ehc_emergency_ad'\)[\s\S]*sheet_id = '288afd'[\s\S]*date_field_id = 'A'[\s\S]*assignee_field_id = 'F'/i);
   assert.match(sql, /Contradictory, partial and category-less records remain in legacy ad/i);
   assert.doesNotMatch(sql, /coalesce\([^)]*sheet[^)]*,[^)]*'ad_review'/i);
+});
+
+test('人员状态表重复迁移后仍保持唯一 service_role policy 与最小表权限', () => {
+  assert.match(sql, /drop policy if exists bess_dispatch_service_role_only on public\.bess_dispatch_person_status/i);
+  assert.match(sql, /create policy bess_dispatch_service_role_only[\s\S]*?to service_role[\s\S]*?using \(true\)[\s\S]*?with check \(true\)/i);
+  assert.match(sql, /revoke all on table public\.bess_dispatch_person_status from public, anon, authenticated, service_role/i);
+  assert.match(sql, /grant select, insert, update, delete on table public\.bess_dispatch_person_status to service_role/i);
+});
+
+test('只读验收覆盖双 scope 键、人员状态、双名单、scope-aware RPC 和 rollback shadow', () => {
+  for (const contract of [
+    'PRIMARY KEY (day_key, scope)',
+    'UNIQUE (day_key, scope, request_id)',
+    'bess_dispatch_person_status',
+    'bess_initialize_ad_rosters',
+    'bess_replace_ad_rosters',
+    'bess_assign_specific',
+    'bess_calibrate_cursor',
+    'bess_update_roster_status',
+    'LEGACY_AD_CURSOR_UNREPRESENTABLE',
+    'bess_sync_legacy_ad_shadow',
+  ]) assert.match(verification, new RegExp(contract.replace(/[()]/g, '\\$&'), 'i'));
+  assert.match(verification, /'default'.*'ad'.*'ad_review'.*'ad_game'/i);
+  assert.match(verification, /begin transaction read only/i);
+});
+
+test('验收脚本精确校验枚举域并保留基础 schema/序列契约', () => {
+  assert.match(verification, /pg_get_constraintdef\(c\.oid\) =\s*'CHECK \(\(scope = ANY \(ARRAY\[/i);
+  assert.match(verification, /pg_get_constraintdef\(c\.oid\) =\s*'CHECK \(\(direction = ANY \(ARRAY\[/i);
+  assert.doesNotMatch(verification, /pg_get_constraintdef\(c\.oid\) like '%scope%'/i);
+  for (const contract of [
+    'PRIMARY KEY (form_message_id)',
+    'UNIQUE (request_id)',
+    'PRIMARY KEY (id)',
+    'jsonb_array_length(roster) > 0',
+    'forward_cursor >= 0',
+    'reverse_cursor >= 0',
+    'bess_dispatch_assignments_id_seq',
+    'service_role 拥有不必要的 assignments identity 序列 SELECT/UPDATE',
+  ]) assert.match(verification, new RegExp(contract.replace(/[()]/g, '\\$&'), 'i'));
+});
+
+test('assign_next 验收精确锁定三个默认表达式和五个 OUT 类型', () => {
+  assert.match(verification, /pg_get_expr\(p\.proargdefaults, 0\)[\s\S]*?NULL::jsonb, NULL::timestamp with time zone, ''\{\}''::jsonb/i);
+  assert.match(verification, /p\.proallargtypes = array\[[\s\S]*?'date'::regtype,[\s\S]*?'jsonb'::regtype, 'timestamptz'::regtype, 'jsonb'::regtype,[\s\S]*?'text'::regtype, 'jsonb'::regtype, 'text'::regtype, 'boolean'::regtype,[\s\S]*?'text'::regtype[\s\S]*?\]::oid\[\]/i);
+  assert.match(verification, /p\.proargmodes = array\['i','i','i','i','i','i','i','t','t','t','t','t'\]::"char"\[\]/i);
+  assert.match(verification, /'assignee','roster','direction','replayed','original_message_id'/i);
 });
 
 test('内存契约：双 scope 名单同序、游标和 assignment 隔离、离岗与恢复全局共享', async () => {
