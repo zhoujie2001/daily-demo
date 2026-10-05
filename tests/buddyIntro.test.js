@@ -76,6 +76,7 @@ test('派单改动通知以排单 Buddy 身份覆盖全部六个生产群', asyn
   assert.ok(calls.every((call) => call.msgType === 'text'));
   assert.ok(calls.every((call) => call.content.text.includes('默认不勾选')));
   assert.ok(calls.every((call) => call.content.text.includes('2026年10月6日')));
+  assert.ok(calls.every((call) => call.uuid.length <= 50));
   assert.equal(result.body.messages.length, 6);
   assert.ok(result.body.messages.every((message) => message.message_id));
 });
