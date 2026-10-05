@@ -65,6 +65,23 @@ test('首次指定派单按 scope 原子初始化名单且不覆盖并发先写�
   assert.match(calls[1].url, /scope=eq\.ad/);
 });
 
+test('AD 双 scope 名单通过单事务 RPC 原子初始化', async () => {
+  const states = [
+    { day_key: '2026-10-05', scope: 'ad_game', roster: ['周杰', '张三'] },
+    { day_key: '2026-10-05', scope: 'ad_review', roster: ['周杰', '张三'] },
+  ];
+  const { store, calls } = setup([states]);
+  const state = await store.initializeRoster({
+    dayKey: '2026-10-05', scope: 'ad_review', roster: ['周杰', '张三'],
+    expiresAt: '2026-10-06T16:00:00.000Z', current: new Date('2026-10-05T08:00:00Z'),
+  });
+  assert.equal(state.scope, 'ad_review');
+  assert.match(calls[0].url, /rpc\/bess_initialize_ad_rosters$/);
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    p_day_key: '2026-10-05', p_roster: ['周杰', '张三'], p_expires_at: '2026-10-06T16:00:00.000Z',
+  });
+});
+
 test('assignSpecific 使用 scope 原子预留指定负责人', async () => {
   const { store, calls } = setup([[{ assignee: '周杰', replayed: false }]]);
   const result = await store.assignSpecific({

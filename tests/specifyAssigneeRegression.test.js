@@ -12,13 +12,18 @@ class MockStore {
       reverse_cursor: 0,
       version: 1,
     };
+    this.states = new Map([
+      ['default', this.state],
+      ['ad_review', { ...this.state }],
+      ['ad_game', { ...this.state }],
+    ]);
     this.pending = new Map();
     this.assignments = new Map();
     this.calibrateCalls = [];
   }
 
   async cleanupExpired() {}
-  async getDailyState() { return this.state; }
+  async getDailyState(_day, scope = 'default') { return this.states.get(scope); }
   async getAssignment(_day, id) { 
     const a = this.assignments.get(id);
     return a ? { assignee: a.assignee } : null;
@@ -37,23 +42,25 @@ class MockStore {
     return res;
   }
 
-  async calibrateCursor({ scope, direction, assignee }) {
+  async calibrateCursor({ scope = 'default', direction, assignee }) {
     this.calibrateCalls.push({ scope, direction, assignee });
+    const state = this.states.get(scope);
     const idx = this.roster.indexOf(assignee);
-    if (direction === 'forward') this.state.forward_cursor = idx + 1;
-    else this.state.reverse_cursor = this.roster.length - idx;
-    return this.state;
+    if (direction === 'forward') state.forward_cursor = idx + 1;
+    else state.reverse_cursor = this.roster.length - idx;
+    return state;
   }
 
-  async assign({ direction }) {
+  async assign({ scope = 'default', direction }) {
+    const state = this.states.get(scope);
     const count = this.roster.length;
     let idx;
     if (direction === 'forward') {
-      idx = this.state.forward_cursor % count;
-      this.state.forward_cursor = idx + 1;
+      idx = state.forward_cursor % count;
+      state.forward_cursor = idx + 1;
     } else {
-      idx = count - 1 - (this.state.reverse_cursor % count);
-      this.state.reverse_cursor = count - idx;
+      idx = count - 1 - (state.reverse_cursor % count);
+      state.reverse_cursor = count - idx;
     }
     const assignee = this.roster[idx];
     return { assignee, roster: this.roster, original_message_id: 'om_1' };
@@ -196,7 +203,7 @@ test('游标校准失败时不把指定表单标记为完成', async () => {
 });
 
 
-test('AD 游戏指定人员后重置共享 AD 正序游标，复盘下一条按第四→第三→第二→第一→第五继续', async () => {
+test('AD 游戏指定人员只重置 ad_game 游标，AD 复盘继续使用独立游标', async () => {
   const store = new MockStore();
   const client = new MockClient();
 
@@ -219,7 +226,7 @@ test('AD 游戏指定人员后重置共享 AD 正序游标，复盘下一条按�
     },
   }, options(store, client));
   assert.equal(specified.body.toast.type, 'success');
-  assert.deepEqual(store.calibrateCalls[0], { scope: 'ad', direction: 'reverse', assignee: '黄鲜' });
+  assert.deepEqual(store.calibrateCalls[0], { scope: 'ad_game', direction: 'reverse', assignee: '黄鲜' });
 
   const replay = await handleDispatchEvent({
     header: { event_id: 'ad_e2', event_type: 'card.action.trigger' },
@@ -235,7 +242,8 @@ test('AD 游戏指定人员后重置共享 AD 正序游标，复盘下一条按�
     },
   }, options(store, client));
 
-  assert.match(replay.body.toast.content, /派单成功：林志平/);
-  assert.equal(store.state.forward_cursor, 0);
-  assert.equal(store.state.reverse_cursor, 2);
+  assert.match(replay.body.toast.content, /派单成功：黄鲜/);
+  assert.equal(store.states.get('ad_review').forward_cursor, 0);
+  assert.equal(store.states.get('ad_review').reverse_cursor, 1);
+  assert.equal(store.states.get('ad_game').reverse_cursor, 1);
 });

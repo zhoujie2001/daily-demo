@@ -1096,16 +1096,17 @@ test('旧话题结果卡更新失败时补发最终结果卡并持久化新 mess
 });
 
 
-test('旧 pending 批次表单恢复时逐项规范化 profile：AD 使用共享 ad+reverse，千川保持 default+forward', async () => {
+test('旧 pending 批次表单恢复时逐项规范化 profile：AD 游戏使用 ad_game+reverse，千川保持 default+forward', async () => {
   const cases = [
     {
       label: 'AD',
       raw: item('legacy_ad_pending', 10),
       overrides: {
         business_type: 'AD', target_category: 'game_agent', sheet_id: 'adGame',
+        date_field_id: 'J', assignee_field_id: 'B',
         project_field_id: undefined, project_value: undefined,
       },
-      expectedScope: 'ad',
+      expectedScope: 'ad_game',
       expectedDirection: 'reverse',
     },
     {
