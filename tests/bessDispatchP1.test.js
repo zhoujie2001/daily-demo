@@ -5,7 +5,7 @@ import { parseRoster, resolveShuffleRoster, secureShuffle, shanghaiDay, nextShan
 import { buildRosterFormCard, buildRosterProcessingCard, buildRosterCompletedCard, buildRosterRetryCard, buildDispatchResultCard } from '../lib/lark/card-renderer.js';
 import { handleDispatchEvent } from '../lib/dispatch/dispatch-service.js';
 import { LarkApiError, LarkClient } from '../lib/lark/client.js';
-import { latestDailyAnchor, sheetDateDay } from '../lib/dispatch/sheet-anchor.js';
+import { latestDailyAnchor, projectMatches, sheetDateDay } from '../lib/dispatch/sheet-anchor.js';
 import { validateDispatchValue } from '../lib/lark/card-actions.js';
 
 const fields = {
@@ -672,6 +672,37 @@ test('中文处理日期可识别为当天', () => {
   assert.equal(sheetDateDay('09月30号 17:02', '2026-09-30'), '2026-09-30');
   assert.equal(sheetDateDay('2026年9月30日 17:02:11', '2026-09-30'), '2026-09-30');
 });
+
+test('本地推不同采集段共享同一派单锚点范围', () => {
+  assert.equal(projectMatches('本地推-A段', '本地推-C段'), true);
+  assert.equal(projectMatches('本地推', '本地推-C段'), true);
+  assert.equal(projectMatches('千川-A段', '本地推-C段'), false);
+});
+
+test('回归：本地推名单重置后仍以其他采集段的最新表格负责人刷新锚点', async () => {
+  const roster = ['周杰', '罗理', '陈丽梅', '林志平', '孙琴', '陈冰清'];
+  const store = new FakeStore();
+  store.state = { roster };
+  store.reverse = 4; // 旧游标会错误地从罗理开始
+  const sheetRows = new Array(8).fill(null).map(() => []);
+  sheetRows[6] = ['2026-08-30', '孙琴', '本地推-A段'];
+  const client = new FakeClient({ sheetRows });
+  const request = body({
+    requestId: 'local_segment_anchor_refresh',
+    businessType: '本地推',
+    targetCategory: 'local_promo',
+    projectFieldId: 'C',
+    projectValue: '本地推-C段',
+  });
+
+  const result = await handleDispatchEvent(request, options(store, client));
+
+  assert.equal(result.body.toast.type, 'success');
+  assert.equal(store.assignments.get('local_segment_anchor_refresh').assignee, '林志平');
+  assert.ok(client.calls.some((call) => call.kind === 'write' && call.assignee === '林志平'));
+  assert.ok(!client.calls.some((call) => call.kind === 'write' && call.assignee === '罗理'));
+});
+
 
 test('回归：E 段派单前识别中文日期下人工修正的肖婷，并从罗理开始', async () => {
   const roster = ['孙琴', '黄鲜', '林志平', '陈冰清', '周杰', '陈丽梅', '罗理', '肖婷'];
