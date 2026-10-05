@@ -59,6 +59,27 @@ test('业务群动作仅向本地推和千川两个固定群发送', async () =>
   assert.ok(calls.every((call) => call.content.header.title.content === '自我介绍'));
 });
 
+test('派单改动通知以排单 Buddy 身份覆盖全部六个生产群', async () => {
+  const calls = [];
+  const result = await invoke({ action: 'send_shuffle_default_notice_20261006' }, {
+    client: { async sendMessage(payload) { calls.push(payload); return { message_id: `om_notice_${calls.length}` }; } },
+  });
+  assert.equal(result.status, 200);
+  assert.deepEqual(calls.map((call) => call.receiveId), [
+    'oc_aa1602f07bf35a5fdfd289aff67025a4',
+    'oc_2ecc53a432a03f6f81f6a18babe8cda1',
+    'oc_99cb9239c03701fe263b870cc26a825c',
+    'oc_e1bdb85a89d9f49cb62fd4e3ffebb68e',
+    'oc_56debf24fa90e17ea92257c20454d742',
+    'oc_38aec46e64a6ebd245c7751271bd770f',
+  ]);
+  assert.ok(calls.every((call) => call.msgType === 'text'));
+  assert.ok(calls.every((call) => call.content.text.includes('默认不勾选')));
+  assert.ok(calls.every((call) => call.content.text.includes('2026年10月6日')));
+  assert.equal(result.body.messages.length, 6);
+  assert.ok(result.body.messages.every((message) => message.message_id));
+});
+
 test('自我介绍动作拒绝无效签名及调用方注入的群或卡片', async () => {
   const client = { async sendMessage() { throw new Error('should not send'); } };
   const unsigned = await invoke({ action: 'send_buddy_intro' }, { signed: false, client });
