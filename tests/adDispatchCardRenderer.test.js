@@ -70,7 +70,7 @@ test('游戏 scope 卡片明确展示“游戏货不对板”', () => {
     dispatchedAt: '2026-10-05T12:00:00.000Z',
   });
   const text = serialized(card);
-  assert.match(text, /游戏货不对板名单（从下到上）/);
+  assert.match(text, /游戏货不对板在班名单（从下到上）/);
   assert.doesNotMatch(text, /AD 复盘名单/);
 });
 

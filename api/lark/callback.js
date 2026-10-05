@@ -198,10 +198,11 @@ export default async function handler(req, res) {
     || (!hasTopLevelType && !hasHeaderEventType && hasChallenge);
 
   if (isUrlVerification) {
-    if (!verificationToken || !valuesMatch(body.token, verificationToken)) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-
+    // URL verification only proves endpoint ownership by echoing an ephemeral
+    // challenge. Do not couple this handshake to the legacy verification token:
+    // the developer console may send no token or a newly rotated token before
+    // production environment variables can be updated. Real card callbacks
+    // remain strictly authenticated below by both token and app_id.
     if (typeof body.challenge !== 'string' || body.challenge.length === 0) {
       return res.status(400).json({ error: 'Invalid challenge' });
     }
