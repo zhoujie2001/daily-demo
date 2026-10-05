@@ -1,27 +1,29 @@
--- Give game mismatch dispatch its own daily roster/cursors while preserving
--- the existing default and AD scopes.
+-- Compose main's game-agent roster isolation with the newer AD directional
+-- scopes. New and restored game_agent callbacks resolve to ad_game, while AD
+-- review remains in ad_review; do not reintroduce the superseded game_agent
+-- database scope after the directional-scope migration has run.
 begin;
 
 alter table public.bess_dispatch_daily_state
   drop constraint if exists bess_dispatch_daily_state_scope_check;
 alter table public.bess_dispatch_daily_state
   add constraint bess_dispatch_daily_state_scope_check
-  check (scope in ('default', 'ad', 'game_agent'));
+  check (scope in ('default', 'ad', 'ad_review', 'ad_game'));
 
 alter table public.bess_dispatch_assignments
   drop constraint if exists bess_dispatch_assignments_scope_check;
 alter table public.bess_dispatch_assignments
   add constraint bess_dispatch_assignments_scope_check
-  check (scope in ('default', 'ad', 'game_agent'));
+  check (scope in ('default', 'ad', 'ad_review', 'ad_game'));
 
--- Preserve the latest deployed RPC bodies and only widen their scope guards.
--- This avoids replacing later cursor-calibration fixes with older definitions.
+-- Preserve the latest deployed RPC bodies and only widen old two/three-scope
+-- guards. If the AD directional-scope migration already installed the current
+-- four-scope RPCs, no replacement is necessary.
 do $widen_game_agent_scope$
 declare
   fn record;
   original_definition text;
   patched_definition text;
-  patched_count integer := 0;
 begin
   for fn in
     select p.oid, p.proname
@@ -33,18 +35,18 @@ begin
     original_definition := pg_get_functiondef(fn.oid);
     patched_definition := replace(
       original_definition,
+      'p_scope not in (''default'', ''ad'', ''game_agent'')',
+      'p_scope not in (''default'', ''ad'', ''ad_review'', ''ad_game'')'
+    );
+    patched_definition := replace(
+      patched_definition,
       'p_scope not in (''default'', ''ad'')',
-      'p_scope not in (''default'', ''ad'', ''game_agent'')'
+      'p_scope not in (''default'', ''ad'', ''ad_review'', ''ad_game'')'
     );
     if patched_definition <> original_definition then
       execute patched_definition;
-      patched_count := patched_count + 1;
     end if;
   end loop;
-
-  if patched_count < 3 then
-    raise exception 'expected to patch 3 scoped dispatch RPCs, patched %', patched_count;
-  end if;
 end
 $widen_game_agent_scope$;
 

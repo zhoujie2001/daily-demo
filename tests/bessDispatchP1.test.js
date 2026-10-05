@@ -5,7 +5,7 @@ import { parseRoster, resolveShuffleRoster, secureShuffle, shanghaiDay, nextShan
 import { buildRosterFormCard, buildRosterProcessingCard, buildRosterCompletedCard, buildRosterRetryCard, buildDispatchResultCard } from '../lib/lark/card-renderer.js';
 import { handleDispatchEvent } from '../lib/dispatch/dispatch-service.js';
 import { LarkApiError, LarkClient } from '../lib/lark/client.js';
-import { latestDailyAnchor, sheetDateDay } from '../lib/dispatch/sheet-anchor.js';
+import { latestDailyAnchor, projectMatches, sheetDateDay } from '../lib/dispatch/sheet-anchor.js';
 import { validateDispatchValue } from '../lib/lark/card-actions.js';
 
 const fields = {
@@ -47,7 +47,13 @@ function body({
 class FakeStore {
   constructor() { this.state = null; this.pending = new Map(); this.assignments = new Map(); this.forward = 0; this.reverse = 0; this.cleanupCalls = 0; this.assignCalls = 0; this.assignmentQueries = 0; this.calibrations = []; }
   async cleanupExpired() { this.cleanupCalls += 1; }
-  async getDailyState() { return this.state; }
+  async getDailyState() {
+    return this.state ? { ...this.state, forward_cursor: this.forward, reverse_cursor: this.reverse } : null;
+  }
+  async initializeRoster({ roster }) {
+    if (!this.state) this.state = { roster: [...roster] };
+    return this.getDailyState();
+  }
   async savePending(row) { this.pending.set(row.form_message_id, { ...row, completed_at: null }); return row; }
   async getPending(id, _now, { includeCompleted = false } = {}) {
     const row = this.pending.get(id) || null;
@@ -75,8 +81,8 @@ class FakeStore {
     const index = anchorIndex >= 0
       ? (direction === 'forward' ? (anchorIndex + 1) % list.length : (anchorIndex - 1 + list.length) % list.length)
       : (direction === 'forward' ? this.forward % list.length : list.length - 1 - (this.reverse % list.length));
-    if (direction === 'forward') this.forward += 1;
-    else this.reverse += 1;
+    if (direction === 'forward') this.forward = index + 1;
+    else this.reverse = list.length - index;
     const assignment = { assignee: list[index], direction };
     this.assignments.set(requestId, assignment);
     return { ...assignment, roster: list, replayed: false };
@@ -167,8 +173,8 @@ test('首次点击无名单：创建话题 Card 2.0 表单并保存 pending 映�
   assert.ok(input.max_length <= 1000);
   assert.equal(shuffle.tag, 'checker');
   assert.equal(shuffle.name, 'shuffle_roster');
-  assert.equal(shuffle.checked, true);
-  assert.match(shuffle.text.content, /取消勾选后，将严格按输入顺序轮转/);
+  assert.equal(shuffle.checked, false);
+  assert.match(shuffle.text.content, /不勾选则严格按输入顺序轮转/);
   assert.equal(submit.tag, 'button');
   assert.equal(submit.name, 'dispatch_roster_submit');
   assert.equal(submit.form_action_type, 'submit');
@@ -284,6 +290,37 @@ test('外部消息更新失败不回滚已完成派单，pending 标记完成且
   assert.ok(updateIds.includes('om_form'));
 });
 
+test('后置 daily state 刷新抛错时单条派单仍成功并使用已有名单渲染', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['张三', '李四', '王五'], off_duty: [] };
+  store.forward = 1;
+  store.reverse = 1;
+  const getDailyState = store.getDailyState.bind(store);
+  store.getDailyState = async (...args) => {
+    if (store.assignCalls > 0) throw Object.assign(new Error('temporary db failure'), { code: 'DISPATCH_DB_TIMEOUT' });
+    return getDailyState(...args);
+  };
+  const client = new FakeClient();
+  const logs = [];
+
+  const result = await handleDispatchEvent(body({ requestId: 'refresh_throw_single' }), {
+    ...options(store, client),
+    logger: { info(line) { logs.push(JSON.parse(line)); } },
+  });
+
+  assert.equal(result.body.toast.type, 'success');
+  assert.equal(store.assignments.get('refresh_throw_single').assignee, '李四');
+  assert.ok(client.calls.some((call) => call.kind === 'write' && call.assignee === '李四'));
+  const resultCard = client.calls.find((call) => call.kind === 'replyCard').card;
+  const columns = resultCard.body.elements.find((element) => element.tag === 'column_set').columns;
+  assert.match(columns[0].elements[0].content, /2\. 李四 \*\*← 当前人员\*\*/);
+  assert.match(columns[1].elements[0].content, /1\. 王五 \*\*← 当前人员\*\*/);
+  const warning = logs.find((entry) => entry.stage === 'daily_state_refresh_warning');
+  assert.equal(warning.severity, 'warn');
+  assert.equal(warning.flow, 'single');
+  assert.equal(warning.error_code, 'DISPATCH_DB_TIMEOUT');
+});
+
 test('同日正序/倒序游标独立，重复 request_id 跨实例语义幂等', async () => {
   const store = new FakeStore();
   store.state = { roster: ['张三', '李四', '王五'] };
@@ -293,6 +330,14 @@ test('同日正序/倒序游标独立，重复 request_id 跨实例语义幂等'
   const replay = await store.assign({ requestId: 'a', direction: 'reverse' });
   assert.equal(replay.assignee, '张三');
   assert.equal(replay.replayed, true);
+});
+
+test('本地首次派单后千川首次仍从正序首位开始', async () => {
+  const store = new FakeStore();
+  store.state = { roster: ['张三', '李四', '王五'] };
+  assert.equal((await store.assign({ requestId: 'local_first', direction: 'reverse' })).assignee, '王五');
+  assert.equal(store.forward, 0);
+  assert.equal((await store.assign({ requestId: 'qianchuan_first', direction: 'forward' })).assignee, '张三');
 });
 
 test('后续派单从最新有效人工锚点轮转，并跳过空值、非当天和名单外姓名', async () => {
@@ -620,6 +665,70 @@ test('已有 assignment 但与表格人工填写的不同时，以表格为准�
 test('短日期带时间仍可识别为当天', () => {
   assert.equal(sheetDateDay('9.3 13:17', '2026-09-03'), '2026-09-03');
   assert.equal(sheetDateDay(' 9.3 13:17:05 ', '2026-09-03'), '2026-09-03');
+});
+
+test('中文处理日期可识别为当天', () => {
+  assert.equal(sheetDateDay('9月30日', '2026-09-30'), '2026-09-30');
+  assert.equal(sheetDateDay('09月30号 17:02', '2026-09-30'), '2026-09-30');
+  assert.equal(sheetDateDay('2026年9月30日 17:02:11', '2026-09-30'), '2026-09-30');
+});
+
+test('本地推不同采集段共享同一派单锚点范围', () => {
+  assert.equal(projectMatches('本地推-A段', '本地推-C段'), true);
+  assert.equal(projectMatches('本地推', '本地推-C段'), true);
+  assert.equal(projectMatches('千川-A段', '本地推-C段'), false);
+});
+
+test('回归：本地推名单重置后仍以其他采集段的最新表格负责人刷新锚点', async () => {
+  const roster = ['周杰', '罗理', '陈丽梅', '林志平', '孙琴', '陈冰清'];
+  const store = new FakeStore();
+  store.state = { roster };
+  store.reverse = 4; // 旧游标会错误地从罗理开始
+  const sheetRows = new Array(8).fill(null).map(() => []);
+  sheetRows[6] = ['2026-08-30', '孙琴', '本地推-A段'];
+  const client = new FakeClient({ sheetRows });
+  const request = body({
+    requestId: 'local_segment_anchor_refresh',
+    businessType: '本地推',
+    targetCategory: 'local_promo',
+    projectFieldId: 'C',
+    projectValue: '本地推-C段',
+  });
+
+  const result = await handleDispatchEvent(request, options(store, client));
+
+  assert.equal(result.body.toast.type, 'success');
+  assert.equal(store.assignments.get('local_segment_anchor_refresh').assignee, '林志平');
+  assert.ok(client.calls.some((call) => call.kind === 'write' && call.assignee === '林志平'));
+  assert.ok(!client.calls.some((call) => call.kind === 'write' && call.assignee === '罗理'));
+});
+
+
+test('回归：E 段派单前识别中文日期下人工修正的肖婷，并从罗理开始', async () => {
+  const roster = ['孙琴', '黄鲜', '林志平', '陈冰清', '周杰', '陈丽梅', '罗理', '肖婷'];
+  const store = new FakeStore();
+  store.state = { roster };
+  store.reverse = 4; // 旧游标会错误地从陈冰清开始
+  const sheetRows = new Array(10).fill(null).map(() => []);
+  sheetRows[8] = ['9月30日', '肖婷', ''];
+  const client = new FakeClient({ sheetRows });
+  const request = body({
+    requestId: '797180', businessType: '本地推', targetCategory: 'local_promo',
+  });
+  Object.assign(request.event.action.value, {
+    sheet_id: 'JJqR2d', row_index: 10,
+    date_field_id: 'A', assignee_field_id: 'L',
+  });
+
+  const result = await handleDispatchEvent(
+    request,
+    { ...options(store, client), now: () => new Date('2026-09-30T09:00:00Z') },
+  );
+
+  assert.equal(result.body.toast.type, 'success');
+  assert.equal(store.assignments.get('797180').assignee, '罗理');
+  assert.ok(client.calls.some((call) => call.kind === 'write' && call.assignee === '罗理'));
+  assert.ok(!client.calls.some((call) => call.kind === 'write' && call.assignee === '陈冰清'));
 });
 
 

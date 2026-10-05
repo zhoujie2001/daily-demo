@@ -81,6 +81,10 @@ class Store {
     this.assignments.set(requestId, assignee);
     return { assignee, replayed: false };
   }
+  async calibrateCursor({ direction, assignee, roster }) {
+    this.calibration = { direction, assignee, roster };
+    return this.state;
+  }
 }
 
 class Client {

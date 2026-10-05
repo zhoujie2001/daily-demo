@@ -25,7 +25,7 @@ test('原子接单 RPC 遵循最小权限并纳入只读验收', () => {
   assert.match(migration, /revoke all on function public\.bess_claim_ingest[\s\S]*?from public, anon, authenticated, service_role;/i);
   assert.match(migration, /grant execute on function public\.bess_claim_ingest[\s\S]*?to service_role;/i);
   assert.match(verification, /缺少原子接单 RPC bess_claim_ingest/);
-  assert.match(verification, /PUBLIC 仍可执行 bess_claim_ingest/);
+  assert.match(verification, /bess_claim_ingest 执行权限不符合最小权限/);
 });
 
 

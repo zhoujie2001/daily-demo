@@ -2,6 +2,23 @@
 -- Existing rows remain in scope='default'; AD uses scope='ad'.
 begin;
 
+-- If this historical migration is replayed after the directional AD migration,
+-- preserve every later implementation that shares an input signature with this
+-- file. CREATE OR REPLACE below is still needed for genuine 20260924 upgrades;
+-- restoring inside the same transaction makes a post-20261005 replay behaviorally
+-- idempotent as well as syntactically idempotent.
+create temporary table bess_20260924_later_function_defs
+on commit drop
+as
+select function_oid, pg_catalog.pg_get_functiondef(function_oid) as definition
+from unnest(array[
+  to_regprocedure('public.bess_assign_next(date,text,text,text,jsonb,timestamp with time zone,jsonb)'),
+  to_regprocedure('public.bess_assign_specific(date,text,text,text,jsonb)'),
+  to_regprocedure('public.bess_update_roster_status(date,text,jsonb,bigint)')
+]) as saved(function_oid)
+where to_regprocedure('public.bess_sync_legacy_ad_shadow(date)') is not null
+  and function_oid is not null;
+
 alter table public.bess_dispatch_daily_state
   add column if not exists scope text not null default 'default';
 alter table public.bess_dispatch_assignments
@@ -10,11 +27,13 @@ alter table public.bess_dispatch_assignments
 alter table public.bess_dispatch_daily_state
   drop constraint if exists bess_dispatch_daily_state_scope_check;
 alter table public.bess_dispatch_daily_state
-  add constraint bess_dispatch_daily_state_scope_check check (scope in ('default', 'ad'));
+  add constraint bess_dispatch_daily_state_scope_check
+  check (scope in ('default', 'ad', 'ad_review', 'ad_game'));
 alter table public.bess_dispatch_assignments
   drop constraint if exists bess_dispatch_assignments_scope_check;
 alter table public.bess_dispatch_assignments
-  add constraint bess_dispatch_assignments_scope_check check (scope in ('default', 'ad'));
+  add constraint bess_dispatch_assignments_scope_check
+  check (scope in ('default', 'ad', 'ad_review', 'ad_game'));
 
 alter table public.bess_dispatch_assignments
   drop constraint if exists bess_dispatch_assignments_direction_check;
@@ -225,6 +244,27 @@ begin
 end;
 $$;
 
+-- The baseline already has this four-type signature, but its second input is
+-- p_direction. PostgreSQL identifies functions by input types while refusing to
+-- rename input parameters with CREATE OR REPLACE. Drop only that legacy contract;
+-- a partially-applied scope-aware function with p_scope must remain in place.
+do $drop_legacy_calibrate_cursor$
+declare
+  v_function regprocedure := to_regprocedure(
+    'public.bess_calibrate_cursor(date,text,text,jsonb)'
+  );
+begin
+  if v_function is not null and exists (
+    select 1
+      from pg_catalog.pg_proc as p
+     where p.oid = v_function
+       and p.proargnames = array['p_day_key', 'p_direction', 'p_assignee', 'p_roster']
+  ) then
+    execute 'drop function public.bess_calibrate_cursor(date,text,text,jsonb)';
+  end if;
+end
+$drop_legacy_calibrate_cursor$;
+
 create or replace function public.bess_calibrate_cursor(
   p_day_key date,
   p_scope text,
@@ -308,11 +348,32 @@ grant execute on function public.bess_assign_next(date,text,text,text,jsonb,time
 revoke all on function public.bess_update_roster_status(date,jsonb,bigint) from public, anon, authenticated, service_role;
 revoke all on function public.bess_update_roster_status(date,text,jsonb,bigint) from public, anon, authenticated, service_role;
 grant execute on function public.bess_update_roster_status(date,text,jsonb,bigint) to service_role;
-revoke all on function public.bess_calibrate_cursor(date,text,jsonb) from public, anon, authenticated, service_role;
 revoke all on function public.bess_calibrate_cursor(date,text,text,jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.bess_calibrate_cursor(date,text,text,jsonb) to service_role;
 
 revoke all on function public.bess_assign_specific(date,text,text,text,jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.bess_assign_specific(date,text,text,text,jsonb) to service_role;
+
+-- A post-20261005 replay must commit with byte-for-byte equivalent later
+-- implementations. Function DDL is transactional, so intermediate historical
+-- bodies are never visible outside this transaction.
+do $restore_later_function_defs$
+declare
+  item record;
+begin
+  for item in
+    select definition from bess_20260924_later_function_defs order by function_oid
+  loop
+    execute item.definition;
+  end loop;
+
+  if exists (select 1 from bess_20260924_later_function_defs) then
+    -- 20261005 uses the direction-aware five-argument overload. Do not reopen
+    -- the historical four-argument cursor writer during a replay.
+    revoke all on function public.bess_calibrate_cursor(date,text,text,jsonb)
+      from public, anon, authenticated, service_role;
+  end if;
+end
+$restore_later_function_defs$;
 
 commit;

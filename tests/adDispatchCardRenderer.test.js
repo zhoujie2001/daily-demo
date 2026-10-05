@@ -12,6 +12,8 @@ const adFields = {
   requestName: 'AD 派单展示测试',
   businessType: 'AD',
   targetCategory: 'qianchuan_ad',
+  dispatchProfile: 'ad',
+  dispatchScope: 'ad_review',
   sheetUrl: 'https://bytedance.larkoffice.com/sheets/QcX5sFcY0hw8w2tXxPbczs6wnog',
   sheetId: '288afd',
   rowIndex: 122,
@@ -23,7 +25,7 @@ function serialized(card) {
   return JSON.stringify(card);
 }
 
-test('AD 批量结果卡只展示 AD业态在班名单，不串入方向或千川本地文案', () => {
+test('AD 批量结果卡只展示 AD 复盘名单（从下到上），不串入方向或千川本地文案', () => {
   const card = buildBatchDispatchResultCard([adFields], {
     batchId: 'ad_batch_1',
     status: 'FAILED',
@@ -33,13 +35,13 @@ test('AD 批量结果卡只展示 AD业态在班名单，不串入方向或千�
     dispatchedAt: '2026-09-24T12:00:00.000Z',
   });
   const text = serialized(card);
-  assert.match(text, /AD业态在班名单/);
+  assert.match(text, /AD 复盘名单（从下到上）/);
   assert.doesNotMatch(text, /AD 独立名单/);
   assert.doesNotMatch(text, /千川正序/);
   assert.doesNotMatch(text, /本地倒序/);
 });
 
-test('AD 单条结果与名单完成卡使用 AD业态在班名单文案', () => {
+test('AD 单条结果与名单完成卡使用 AD 复盘名单（从下到上）文案', () => {
   const resultCard = buildDispatchResultCard(adFields, {
     assignee: '李四',
     direction: 'reverse',
@@ -53,11 +55,23 @@ test('AD 单条结果与名单完成卡使用 AD业态在班名单文案', () =>
   });
   for (const card of [resultCard, completedCard]) {
     const text = serialized(card);
-    assert.match(text, /AD业态在班名单/);
+    assert.match(text, /AD 复盘名单（从下到上）/);
     assert.doesNotMatch(text, /AD 独立名单/);
     assert.doesNotMatch(text, /千川正序/);
     assert.doesNotMatch(text, /本地倒序/);
   }
+});
+
+test('游戏 scope 卡片明确展示“游戏货不对板”', () => {
+  const card = buildDispatchResultCard({
+    ...adFields, targetCategory: 'game_agent', dispatchScope: 'ad_game', sheetId: 'game',
+  }, {
+    assignee: '张三', direction: 'reverse', roster: ['张三', '李四'],
+    dispatchedAt: '2026-10-05T12:00:00.000Z',
+  });
+  const text = serialized(card);
+  assert.match(text, /游戏货不对板在班名单（从下到上）/);
+  assert.doesNotMatch(text, /AD 复盘名单/);
 });
 
 test('后台派单失败卡明确反馈失败且保留原需求卡重试入口', () => {

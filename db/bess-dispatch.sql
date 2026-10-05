@@ -246,12 +246,19 @@ begin
     end if;
   end loop;
 
-  -- 统一使用本次实际分配位置原子校准两个方向。
-  update public.bess_dispatch_daily_state as state
-     set forward_cursor = v_index + 1,
-         reverse_cursor = v_count - v_index,
-         updated_at = now()
-   where state.day_key = p_day_key;
+  -- 仅推进本次业务方向；正序与倒序是相互独立的消费流。
+  -- 行锁覆盖读取、离岗跳过与更新，避免并发派单丢失游标推进。
+  if p_direction = 'forward' then
+    update public.bess_dispatch_daily_state as state
+       set forward_cursor = v_index + 1,
+           updated_at = now()
+     where state.day_key = p_day_key;
+  else
+    update public.bess_dispatch_daily_state as state
+       set reverse_cursor = v_count - v_index,
+           updated_at = now()
+     where state.day_key = p_day_key;
+  end if;
 
   roster := v_state.roster;
   direction := p_direction;

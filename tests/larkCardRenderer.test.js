@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   patchCardForDispatched,
+  buildInitialDispatchCard,
   buildDispatchedCard,
   buildDispatchThreadText,
   buildBatchDispatchCard,
@@ -46,6 +47,31 @@ function cardWithButton({ elementId = 'dsp_706001', valueRequestId = '706001' } 
     },
   };
 }
+
+function sheetButtons(card) {
+  return card.body.elements.filter((element) => element.tag === 'button'
+    && element.behaviors?.[0]?.type === 'open_url');
+}
+
+test('单条派单卡底部附带唯一的对应工作表入口', () => {
+  const fields = {
+    requestId: '706001', requestName: '测试需求', businessType: '千川',
+    sheetUrl: 'https://bytedance.larkoffice.com/sheets/token?from=dispatch', sheetId: 'NWVztk',
+  };
+  const card = buildInitialDispatchCard(fields, { action: 'bess_auto_dispatch' });
+  const buttons = sheetButtons(card);
+  assert.equal(buttons.length, 1);
+  assert.equal(buttons[0].text.content, '📊 查看对应表格');
+  assert.equal(buttons[0].behaviors[0].default_url,
+    'https://bytedance.larkoffice.com/sheets/token?from=dispatch&sheet=NWVztk');
+  assert.equal(card.body.elements.at(-1), buttons[0]);
+});
+
+test('无有效表格地址时不渲染表格入口', () => {
+  const fields = { requestId: '706002', requestName: '测试需求', businessType: '千川', sheetUrl: 'javascript:alert(1)' };
+  const card = buildInitialDispatchCard(fields, { action: 'bess_auto_dispatch' });
+  assert.equal(sheetButtons(card).length, 0);
+});
 
 test('按 element_id 定位按钮并置灰、清空 behaviors、追加结果备注', () => {
   const result = patchCardForDispatched(cardWithButton(), {
@@ -109,6 +135,8 @@ test('compact 原卡不可用时可生成包含置灰按钮的替代卡片', () 
     createdAt: '2026-08-29 19:00:00',
     creator: '张三',
     rowIndex: 32,
+    sheetUrl: 'https://bytedance.larkoffice.com/wiki/wikiToken',
+    sheetId: 'TQuzLA',
     cardTitle: '【千川/本地推】新增回扫需求',
   }, { dispatchedAt: '2026-08-29 20:29:04' });
 
@@ -120,11 +148,15 @@ test('compact 原卡不可用时可生成包含置灰按钮的替代卡片', () 
   assert.match(card.body.elements[0].content, /创建时间：2026-08-29 19:00:00/);
   assert.match(card.body.elements[0].content, /创建人：张三/);
   assert.match(card.body.elements[0].content, /第 32 行/);
-  const button = card.body.elements[2];
+  const button = card.body.elements.find((element) => element.element_id === 'dsp_706001');
   assert.equal(button.disabled, true);
   assert.equal(button.type, 'default');
   assert.equal(button.text.content, '✅ 已派单');
   assert.deepEqual(button.behaviors, []);
+  const links = sheetButtons(card);
+  assert.equal(links.length, 1);
+  assert.equal(links[0].behaviors[0].default_url,
+    'https://bytedance.larkoffice.com/wiki/wikiToken?sheet=TQuzLA');
 });
 
 test('话题消息包含需求基本信息', () => {
@@ -162,8 +194,8 @@ test('formatDispatchTime 输出上海时区 yyyy-MM-dd HH:mm:ss', () => {
 
 test('批次初始卡提供逐条指定按钮，状态卡禁用批量按钮并展示逐项结果', () => {
   const fields = [
-    { requestId: '715430', requestName: '需求一', businessType: '本地推', createdAt: '2026-09-01 16:01:00', creator: '张三', rowIndex: 89 },
-    { requestId: '715431', requestName: '需求二', businessType: '本地推', createdAt: '2026-09-01 16:02:00', creator: '李四', rowIndex: 90 },
+    { requestId: '715430', requestName: '需求一', businessType: '本地推', createdAt: '2026-09-01 16:01:00', creator: '张三', rowIndex: 89, sheetUrl: 'https://bytedance.larkoffice.com/sheets/token', sheetId: 'NWVztk' },
+    { requestId: '715431', requestName: '需求二', businessType: '本地推', createdAt: '2026-09-01 16:02:00', creator: '李四', rowIndex: 90, sheetUrl: 'https://bytedance.larkoffice.com/sheets/token', sheetId: 'NWVztk' },
   ];
   const action = { action: 'bess_batch_auto_dispatch', batch_id: 'batch_renderer', items: [] };
   fields[0].riskLevel = '高风险';
@@ -197,6 +229,9 @@ test('批次初始卡提供逐条指定按钮，状态卡禁用批量按钮并�
   assert.equal(readyButtons[0].behaviors[0].value.action, 'bess_specify_assignee');
   assert.equal(readyButtons[0].behaviors[0].value.card_layout, undefined);
   assert.equal(batchButton.behaviors[0].value.card_layout, undefined);
+  assert.equal(sheetButtons(ready).length, 1);
+  assert.equal(sheetButtons(ready)[0].behaviors[0].default_url,
+    'https://bytedance.larkoffice.com/sheets/token?sheet=NWVztk');
 
   const results = [
     { requestId: '715430', requestName: '需求一', status: 'SUCCESS', assignee: '张三' },
@@ -212,6 +247,7 @@ test('批次初始卡提供逐条指定按钮，状态卡禁用批量按钮并�
   const button = card.body.elements.at(-1);
   assert.equal(button.disabled, true);
   assert.deepEqual(button.behaviors, []);
+  assert.equal(sheetButtons(card).length, 1);
 
   const text = buildBatchThreadText({ batchId: 'batch_renderer', status: 'PARTIAL', results, dispatchedAt: 't' });
   assert.match(text, /批量自动派单结果/);

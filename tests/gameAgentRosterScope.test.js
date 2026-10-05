@@ -23,9 +23,9 @@ function serialized(card) {
   return JSON.stringify(card);
 }
 
-test('游戏货不对板使用独立 game_agent scope，不复用普通 AD scope', () => {
-  assert.equal(dispatchScope('AD', 'game_agent'), 'game_agent');
-  assert.equal(dispatchScope('AD', 'qianchuan_ad'), 'ad');
+test('游戏货不对板使用独立 ad_game scope，不复用 AD 复盘 scope', () => {
+  assert.equal(dispatchScope('AD', 'game_agent'), 'ad_game');
+  assert.equal(dispatchScope('AD', 'qianchuan_ad'), 'ad_review');
   assert.equal(dispatchScope('千川', 'qianchuan'), 'default');
 });
 
@@ -66,6 +66,8 @@ test('游戏结果卡的状态调整按钮保留 target_category', () => {
     roster: ['张三', '李四'],
     dispatchedAt: '2026-10-05T14:00:00.000Z',
   });
-  const button = card.body.elements.find((element) => element?.tag === 'button');
+  const button = card.body.elements.find(
+    (element) => element?.tag === 'button' && element?.value?.action === 'bess_adjust_status',
+  );
   assert.equal(button?.value?.target_category, 'game_agent');
 });

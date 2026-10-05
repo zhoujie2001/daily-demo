@@ -201,9 +201,9 @@ test('人员状态 RPC：使用空 search_path 且仅允许 service_role 执行'
     /grant execute on function public\.bess_update_roster_status\(date, jsonb, bigint\)\s+to service_role;/i,
   );
   assert.match(verification, /acl\.grantee = 0[\s\S]*?acl\.privilege_type = 'EXECUTE'/i);
-  assert.match(verification, /anon 仍可执行 bess_update_roster_status/);
-  assert.match(verification, /authenticated 仍可执行 bess_update_roster_status/);
-  assert.match(verification, /service_role 缺少 bess_update_roster_status EXECUTE/);
+  assert.match(verification, /'public\.bess_update_roster_status\(date,text,jsonb,bigint\)'/i);
+  assert.match(verification, /未授权角色仍可执行 RPC %s/);
+  assert.match(verification, /service_role 缺少 RPC %s EXECUTE/);
 });
 
 
