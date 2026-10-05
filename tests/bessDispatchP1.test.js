@@ -173,8 +173,8 @@ test('首次点击无名单：创建话题 Card 2.0 表单并保存 pending 映�
   assert.ok(input.max_length <= 1000);
   assert.equal(shuffle.tag, 'checker');
   assert.equal(shuffle.name, 'shuffle_roster');
-  assert.equal(shuffle.checked, true);
-  assert.match(shuffle.text.content, /取消勾选后，将严格按输入顺序轮转/);
+  assert.equal(shuffle.checked, false);
+  assert.match(shuffle.text.content, /不勾选则严格按输入顺序轮转/);
   assert.equal(submit.tag, 'button');
   assert.equal(submit.name, 'dispatch_roster_submit');
   assert.equal(submit.form_action_type, 'submit');
