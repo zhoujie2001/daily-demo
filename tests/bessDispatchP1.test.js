@@ -115,8 +115,8 @@ test('姓名解析支持多种分隔符并拒绝纯数字、工号形态和重�
   assert.throws(() => parseRoster('张三、张三'), RosterValidationError);
 });
 
-test('打乱选项默认兼容旧卡，支持 checker 布尔值和既定数组协议，并拒绝异常值', () => {
-  assert.equal(resolveShuffleRoster({}), true);
+test('打乱选项默认关闭，支持 checker 布尔值和既定数组协议，并拒绝异常值', () => {
+  assert.equal(resolveShuffleRoster({}), false);
   assert.equal(resolveShuffleRoster({ shuffle_roster: true }), true);
   assert.equal(resolveShuffleRoster({ shuffle_roster: false }), false);
   assert.equal(resolveShuffleRoster({ shuffle_roster: ['enabled'] }), true);
@@ -167,7 +167,7 @@ test('首次点击无名单：创建话题 Card 2.0 表单并保存 pending 映�
   assert.ok(input.max_length <= 1000);
   assert.equal(shuffle.tag, 'checker');
   assert.equal(shuffle.name, 'shuffle_roster');
-  assert.equal(shuffle.checked, true);
+  assert.equal(shuffle.checked, false);
   assert.match(shuffle.text.content, /取消勾选后，将严格按输入顺序轮转/);
   assert.equal(submit.tag, 'button');
   assert.equal(submit.name, 'dispatch_roster_submit');
@@ -191,7 +191,7 @@ test('名单提交过程卡、完成卡和失败重试卡提供明确状态且�
   assert.ok(form);
   const retryShuffle = form.elements.find((element) => element.name === 'shuffle_roster');
   assert.equal(retryShuffle.tag, 'checker');
-  assert.equal(retryShuffle.checked, true);
+  assert.equal(retryShuffle.checked, false);
   const retryWithoutShuffle = buildRosterRetryCard('表格写回失败', { shuffleRoster: false });
   const retryWithoutShuffleField = retryWithoutShuffle.body.elements
     .find((element) => element.tag === 'form').elements
@@ -207,6 +207,7 @@ test('首次表单提交：按 message_id 找回原请求、立即派单、写�
   await handleDispatchEvent(body(), options(store, client));
   const result = await handleDispatchEvent(body({ form: true, messageId: 'om_form' }), options(store, client));
   assert.equal(result.body.toast.type, 'success');
+  assert.deepEqual(store.state.roster, ['张三', '李四', '王五'], '默认不勾选时应按输入顺序保存名单');
   assert.equal(store.assignments.size, 1);
   assert.equal(store.calibrations.length, 0);
   assert.equal(client.calls.filter((item) => item.kind === 'readRows').length, 1, '名单提交也应读表保护人工填写的负责人');

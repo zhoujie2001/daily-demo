@@ -107,7 +107,7 @@ function retryShufflePreference(body) {
   try {
     return resolveShuffleRoster(body?.event?.action?.form_value);
   } catch {
-    return true;
+    return false;
   }
 }
 
