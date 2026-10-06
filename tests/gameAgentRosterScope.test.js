@@ -35,19 +35,19 @@ test('游戏批量、单条和名单完成卡展示游戏独立名单文案', ()
       batchId: 'game-bess-u-test',
       status: 'FAILED',
       roster: ['张三', '李四'],
-      direction: 'reverse',
+      direction: 'forward',
       results: [{ requestId: gameFields.requestId, status: 'FAILED', error: '测试失败' }],
       dispatchedAt: '2026-10-05T14:00:00.000Z',
     }),
     buildDispatchResultCard(gameFields, {
       assignee: '李四',
-      direction: 'reverse',
+      direction: 'forward',
       roster: ['张三', '李四'],
       dispatchedAt: '2026-10-05T14:00:00.000Z',
     }),
     buildRosterCompletedCard(gameFields, {
       assignee: '李四',
-      direction: 'reverse',
+      direction: 'forward',
       dispatchedAt: '2026-10-05T14:00:00.000Z',
     }),
   ];
@@ -62,7 +62,7 @@ test('游戏批量、单条和名单完成卡展示游戏独立名单文案', ()
 test('游戏结果卡的状态调整按钮保留 target_category', () => {
   const card = buildDispatchResultCard(gameFields, {
     assignee: '李四',
-    direction: 'reverse',
+    direction: 'forward',
     roster: ['张三', '李四'],
     dispatchedAt: '2026-10-05T14:00:00.000Z',
   });

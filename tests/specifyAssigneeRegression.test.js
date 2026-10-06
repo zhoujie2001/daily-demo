@@ -226,7 +226,7 @@ test('AD 游戏指定人员只重置 ad_game 游标，AD 复盘继续使用独�
     },
   }, options(store, client));
   assert.equal(specified.body.toast.type, 'success');
-  assert.deepEqual(store.calibrateCalls[0], { scope: 'ad_game', direction: 'reverse', assignee: '黄鲜' });
+  assert.deepEqual(store.calibrateCalls[0], { scope: 'ad_game', direction: 'forward', assignee: '黄鲜' });
 
   const replay = await handleDispatchEvent({
     header: { event_id: 'ad_e2', event_type: 'card.action.trigger' },
@@ -242,8 +242,9 @@ test('AD 游戏指定人员只重置 ad_game 游标，AD 复盘继续使用独�
     },
   }, options(store, client));
 
-  assert.match(replay.body.toast.content, /派单成功：黄鲜/);
-  assert.equal(store.states.get('ad_review').forward_cursor, 0);
-  assert.equal(store.states.get('ad_review').reverse_cursor, 1);
-  assert.equal(store.states.get('ad_game').reverse_cursor, 1);
+  assert.match(replay.body.toast.content, /派单成功：周杰/);
+  assert.equal(store.states.get('ad_review').forward_cursor, 1);
+  assert.equal(store.states.get('ad_review').reverse_cursor, 0);
+  assert.equal(store.states.get('ad_game').forward_cursor, 5);
+  assert.equal(store.states.get('ad_game').reverse_cursor, 0);
 });
