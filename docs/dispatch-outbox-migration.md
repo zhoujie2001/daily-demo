@@ -27,7 +27,7 @@
    - `bess_retry_dispatch_outbox`
    - `bess_nudge_dispatch_outbox`
 3. 确认 `api/cron/bess-dispatch-outbox.js` 在 Vercel 中显示为 `bess-dispatch-v2` 的私有 Queue consumer。它没有公网 URL，不要将该路径当作 Cron 手工调用。`bess-dispatch-cleanup` 每日 Cron 会额外尝试恢复 1 条已持久化的 Outbox 任务。
-4. 用签名的尚未物化批次调用 `/api/dispatch/status`，确认有界返回 `200/QUEUED + found=false + transient=true`。
+4. 用签名的尚未物化批次调用 `/api/dispatch/status`：仅当 Runtime Cache 命中带 `accepted=true` 且 `operation_id` 匹配的接单凭证时，返回 `200/QUEUED + found=false + transient=true`；缓存未命中或无接单凭证时必须回查持久账本，持久账本仍未命中才返回 `200/NOT_FOUND + transient=false`。
 5. 用测试群的唯一 `batch_id` 调用 `/send`，确认先返回 `202/QUEUED + operation_id`，随后 `/status` 返回 `SENT + operation_id + message_id`。
 6. 重放同一 `chat_id + batch_id`，确认 `operation_id` 和最终 `message_id` 不变，群内只有一张卡。
 
@@ -54,7 +54,7 @@
 
 - `/send` 的 `Server-Timing` 包含 `auth`、`enrich`、`queue`、`cache` 和 `total`；
 - `/status` 的 `Server-Timing` 包含 `auth`、`cache`，缓存未命中时另含 `database`；
-- `/status` 的 `X-Bess-Status-Source` 为 `runtime-cache` 或 `supabase`；
+- `/status` 的 `X-Bess-Status-Source` 为 `runtime-cache` 或 `supabase`，响应体同步提供 `status_source`、`http_status`；失败结果同时提供 `error_code` 与 `error_detail`；
 - worker 日志包含 `claim_duration_ms`、`lark_duration_ms`、`completion_duration_ms`，数据库请求日志继续包含 `operation`、`duration_ms`、`timeout_ms` 和脱敏 request id。
 
 上线验收建议连续采样至少 30 次，冷热请求各占一半：

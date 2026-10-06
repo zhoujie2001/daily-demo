@@ -3,6 +3,7 @@ import { createHmac } from 'node:crypto';
 import test from 'node:test';
 import { createDispatchStatusHandler } from '../lib/dispatch/api/status.js';
 import { canonicalJson } from '../lib/dispatch/ingest.js';
+import { dispatchOperationId } from '../lib/dispatch/operation.js';
 import { runDispatchOutbox } from '../lib/dispatch/outbox-worker.js';
 
 const SECRET = 'dispatch-status-test-secret';
@@ -72,7 +73,10 @@ test('Supabase 状态查询超时返回可重试 503，不误报业务失败', a
     status: 'UNAVAILABLE',
     transient: true,
     error_code: 'STATUS_TEMPORARILY_UNAVAILABLE',
+    error_detail: 'slow Supabase',
     retry_after_ms: 2_000,
+    status_source: 'supabase',
+    http_status: 503,
   });
 });
 
@@ -92,9 +96,14 @@ test('持久化批次完成后返回 SENT 和 message_id', async () => {
   assert.equal(result.status, 200);
   assert.deepEqual(result.body, {
     ok: true,
+    chat_id: 'oc_test',
+    batch_id: 'batch_sent',
     found: true,
     status: 'SENT',
     message_id: 'om_sent',
+    source: 'supabase',
+    status_source: 'supabase',
+    http_status: 200,
   });
 });
 
@@ -177,9 +186,10 @@ test('status 优先命中 Runtime Cache 且完全不访问 Supabase', async () =
   assert.equal(storeCreated, 0);
 });
 
-test('缓存中的旧 QUEUED 缺失快照被降级为 NOT_FOUND 且不触发 Supabase 恢复风暴', async () => {
+test('已接单的 QUEUED 缓存命中保持可重试，不误报为真正不存在', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   let storeCreated = 0;
+  const operationId = dispatchOperationId('oc_test', 'batch_cached_queued');
   const result = await invoke(
     { chat_id: 'oc_test', batch_id: 'batch_cached_queued' },
     {},
@@ -187,7 +197,39 @@ test('缓存中的旧 QUEUED 缺失快照被降级为 NOT_FOUND 且不触发 Sup
       storeFactory() { storeCreated += 1; throw new Error('must not create store'); },
       statusCache: {
         async get() {
-          return { found: false, status: 'QUEUED', transient: true, operation_id: 'op_cached_queued' };
+          return { accepted: true, found: false, status: 'QUEUED', transient: true, operation_id: operationId };
+        },
+      },
+    },
+  );
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.status, 'QUEUED');
+  assert.equal(result.body.found, false);
+  assert.equal(result.body.transient, true);
+  assert.equal(result.body.retry_after_ms, 2_000);
+  assert.equal(result.body.operation_id, operationId);
+  assert.equal(result.headers['X-Bess-Status-Source'], 'runtime-cache');
+  assert.equal(storeCreated, 0);
+  assert.equal(result.deferred.length, 0);
+});
+
+test('没有接单凭证的 QUEUED 缓存回退持久账本再判定不存在', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  let reads = 0;
+  const operationId = dispatchOperationId('oc_test', 'batch_cached_without_receipt');
+  const result = await invoke(
+    { chat_id: 'oc_test', batch_id: 'batch_cached_without_receipt' },
+    {
+      async getIngestBatchStatus() {
+        reads += 1;
+        return { found: false };
+      },
+    },
+    {
+      statusCache: {
+        async get() {
+          return { found: false, status: 'QUEUED', transient: true, operation_id: operationId };
         },
       },
     },
@@ -197,9 +239,9 @@ test('缓存中的旧 QUEUED 缺失快照被降级为 NOT_FOUND 且不触发 Sup
   assert.equal(result.body.status, 'NOT_FOUND');
   assert.equal(result.body.found, false);
   assert.equal(result.body.transient, false);
-  assert.equal(result.headers['X-Bess-Status-Source'], 'runtime-cache');
-  assert.equal(storeCreated, 0);
-  assert.equal(result.deferred.length, 0);
+  assert.equal(result.body.retryable, false);
+  assert.equal(result.headers['X-Bess-Status-Source'], 'supabase');
+  assert.equal(reads, 1);
 });
 
 test('status 缓存未命中才读取 Supabase 并回填终态', async () => {

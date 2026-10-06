@@ -3,6 +3,7 @@ import { createHmac } from 'node:crypto';
 import test from 'node:test';
 import { createDispatchStatusBatchHandler } from '../lib/dispatch/api/status-batch.js';
 import { canonicalJson } from '../lib/dispatch/ingest.js';
+import { dispatchOperationId } from '../lib/dispatch/operation.js';
 
 const SECRET = 'batch-status-secret';
 const NOW = Math.floor(Date.now() / 1000);
@@ -156,4 +157,90 @@ test('响应头不回显签名、密钥或完整批次内容', async () => {
   assert.doesNotMatch(serializedHeaders, /batch-secret-value-that-must-not-leak/);
   assert.doesNotMatch(serializedHeaders, /batch-status-secret/);
   assert.doesNotMatch(serializedHeaders, /x-bess-signature/i);
+});
+
+
+test('batch status 区分已接单缓存命中与持久账本真正不存在', async () => {
+  const acceptedBody = { items: [{ chat_id: 'oc_accept', batch_id: 'batch_accept' }] };
+  const acceptedOperationId = dispatchOperationId('oc_accept', 'batch_accept');
+  let acceptedStoreCreated = 0;
+  const accepted = await invoke(acceptedBody, {
+    statusCache: {
+      async get() {
+        return {
+          accepted: true,
+          found: false,
+          status: 'QUEUED',
+          transient: true,
+          operation_id: acceptedOperationId,
+        };
+      },
+      async set() { return true; },
+    },
+    storeFactory() {
+      acceptedStoreCreated += 1;
+      throw new Error('accepted cache receipt must not query Supabase');
+    },
+  });
+
+  assert.equal(accepted.status, 200);
+  assert.equal(acceptedStoreCreated, 0);
+  assert.equal(accepted.body.items[0].status, 'QUEUED');
+  assert.equal(accepted.body.items[0].found, false);
+  assert.equal(accepted.body.items[0].transient, true);
+  assert.equal(accepted.body.items[0].status_source, 'runtime-cache');
+
+  const missingBody = { items: [{ chat_id: 'oc_missing', batch_id: 'batch_missing' }] };
+  let negativeCacheWrites = 0;
+  const missing = await invoke(missingBody, {
+    statusCache: {
+      async get() { return null; },
+      async set() { negativeCacheWrites += 1; return true; },
+    },
+    storeFactory: () => ({
+      async getIngestBatchStatuses() { return []; },
+    }),
+  });
+
+  assert.equal(missing.status, 200);
+  assert.equal(missing.body.items[0].status, 'NOT_FOUND');
+  assert.equal(missing.body.items[0].found, false);
+  assert.equal(missing.body.items[0].transient, false);
+  assert.equal(missing.body.items[0].error_code, 'DISPATCH_NOT_FOUND');
+  assert.equal(missing.body.items[0].status_source, 'supabase');
+  assert.equal(negativeCacheWrites, 0);
+});
+
+test('batch status 跨缓存 TTL 后从已接单 QUEUED 收敛到持久 SENT', async () => {
+  const body = { items: [{ chat_id: 'oc_ttl', batch_id: 'batch_ttl' }] };
+  const operationId = dispatchOperationId('oc_ttl', 'batch_ttl');
+  let cacheRead = 0;
+  const options = {
+    statusCache: {
+      async get() {
+        cacheRead += 1;
+        return cacheRead === 1
+          ? { accepted: true, found: false, status: 'QUEUED', transient: true, operation_id: operationId }
+          : null;
+      },
+      async set() { return true; },
+    },
+    storeFactory: () => ({
+      async getIngestBatchStatuses() {
+        return [{
+          chat_id: 'oc_ttl', batch_id: 'batch_ttl', found: true,
+          status: 'SENT', operation_id: operationId, message_id: 'om_ttl',
+        }];
+      },
+    }),
+  };
+
+  const queued = await invoke(body, options);
+  const sent = await invoke(body, options);
+
+  assert.equal(queued.body.items[0].status, 'QUEUED');
+  assert.equal(queued.body.items[0].transient, true);
+  assert.equal(sent.body.items[0].status, 'SENT');
+  assert.equal(sent.body.items[0].message_id, 'om_ttl');
+  assert.equal(sent.body.items[0].status_source, 'supabase');
 });

@@ -138,8 +138,10 @@ describe('automation-send', () => {
 
   it('accepts object dispatch_payload and queues (202)', async () => {
     const published = [];
+    const cacheWrites = [];
     const handler = createHandler({
       publishDispatch: async (msg) => { published.push(msg); return { message_id: 'q1' }; },
+      statusCache: { async set(payload) { cacheWrites.push(payload); return true; } },
     });
     const { res, data } = mockRes();
     const horizontalPayload = {
@@ -161,6 +163,10 @@ describe('automation-send', () => {
     assert.equal(data.body.source_record_id, 'recTest123456');
     assert.equal(published.length, 1);
     assert.equal(published[0].kind, 'dispatch');
+    assert.equal(cacheWrites.length, 1);
+    assert.equal(cacheWrites[0].value.accepted, true);
+    assert.equal(cacheWrites[0].value.found, false);
+    assert.equal(cacheWrites[0].value.status, 'QUEUED');
     assert.equal(published[0].card.body.elements.some((element) => element.tag === 'column_set'), true);
     assert.doesNotMatch(JSON.stringify(published[0].card.body.elements), /card_layout/);
   });
