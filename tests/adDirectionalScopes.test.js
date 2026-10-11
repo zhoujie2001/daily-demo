@@ -159,6 +159,7 @@ test('20261011 迁移物理删除全部旧 overload 并保留 9/7/4 契约', () 
     'bess_assign_next(date,text,text,jsonb,timestamptz,jsonb)',
     'bess_assign_next(date,text,text,text,jsonb,timestamptz,jsonb)',
     'bess_assign_next(date,text,text,text,jsonb,timestamptz,jsonb,bigint)',
+    'bess_calibrate_cursor(date,text,jsonb)',
     'bess_calibrate_cursor(date,text,text,jsonb)',
     'bess_calibrate_cursor(date,text,text,text,jsonb)',
     'bess_calibrate_cursor(date,text,text,text,jsonb,bigint)',
