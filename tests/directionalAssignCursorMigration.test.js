@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 
-const sql = readFileSync(new URL('../db/migrations/20260930_directional_assign_cursors.sql', import.meta.url), 'utf8');
+const sql = readFileSync(new URL('../db/migrations/20260930_directional_assign_cursors.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
 test('20260930 仅替换 scope-aware 生产签名并保留五列返回契约', () => {
   assert.match(sql, /function public\.bess_assign_next\(\s*p_day_key date,\s*p_scope text,\s*p_request_id text,\s*p_direction text,\s*p_roster jsonb default null,\s*p_expires_at timestamptz default null,\s*p_context jsonb default '\{\}'::jsonb\s*\) returns table \(\s*assignee text,\s*roster jsonb,\s*direction text,\s*replayed boolean,\s*original_message_id text/is);

@@ -186,8 +186,17 @@ class BatchClient {
     const rowIndex = Number(match?.[2] || 0);
     return [[this.sheetRows[rowIndex - 1]?.[1] || '']];
   }
+  async readSheetAssignee(fields) {
+    const rows = await this.getSheetValues({ sheetUrl: fields.sheetUrl,
+      range: `${fields.sheetId}!${fields.assigneeFieldId}${fields.rowIndex}:${fields.assigneeFieldId}${fields.rowIndex}` });
+    return String(rows?.[0]?.[0] || '').trim();
+  }
   async getMessage() { return null; }
   async writeSheetAssignee(args) {
+    if (args.requireEmpty && this.sheetRows[args.rowIndex - 1]?.[1]) {
+      if (this.sheetRows[args.rowIndex - 1][1] === args.assignee) return;
+      throw new LarkApiError('SHEET_TARGET_CHANGED', 'manual value must not be overwritten');
+    }
     this.calls.push({ kind: 'write', ...args });
     this.onWrite?.(args);
     if (args.rowIndex === this.failRow || this.failRows.has(args.rowIndex)) throw new Error('sensitive write error');
@@ -981,6 +990,9 @@ test('专项集成：多条提前指定时沿用最高行最新有效锚点', as
   store.assignments.set('specified_latest', {
     id: 2, assignee: '张三', request_context: { ...item('specified_latest', 12), rowIndex: 12 },
   });
+  // A completed specified-assignment flow already calibrates its cursor.
+  // Reading its ledger later must not calibrate it a second time.
+  store.cursor = 1;
   const rows = new Array(14).fill(null).map(() => ['', '', '']);
   rows[9] = ['2026-08-30', '周杰', '千川'];
   rows[11] = ['2026-08-30', '张三', '千川'];
@@ -995,7 +1007,7 @@ test('专项集成：多条提前指定时沿用最高行最新有效锚点', as
   const batch = store.getBatch('oc_allowed', 'batch_multi_specific_anchor');
   assert.equal(batch.status, 'SUCCESS');
   assert.equal(batch.results[2].assignee, '李四');
-  assert.equal(store.calibrations[0].assignee, '张三');
+  assert.equal(store.calibrations.length, 0);
 });
 
 test('batch：目标行校准失败时该项不得记为成功且不写表', async () => {
@@ -1209,7 +1221,7 @@ test('跨批次锚点扫描较旧时以更新的持久派单为准，F 到 G 不
   await result.afterResponse();
   const write = client.calls.find((call) => call.kind === 'write' && call.rowIndex === 33);
   assert.equal(write?.assignee, '吴红');
-  assert.equal(store.calibrations.at(-1)?.assignee, '王晓凤');
+  assert.equal(store.calibrations.length, 0, '已消费的持久派单不再次校准');
 });
 
 test('跨批次首条若游标异常返回上一负责人则 fail-closed 且不写表', async () => {
@@ -1273,3 +1285,330 @@ test('CAS 故障注入：冲突后重读 sheet/durable anchor，另一批已派�
   assert.ok(client.calls.filter((call) => call.kind === 'read').length >= 2,
     '冲突重试必须重新读取 sheet 与 durable anchor');
 });
+
+test('预校准 CAS 冲突重读完整锚点，已派乙后应派丙而不是重派乙', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['甲', '乙', '丙'], version: 1, forward_version: 1 };
+  store.cursor = 1;
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[8] = ['2026-08-30', '甲', '千川'];
+  const client = new BatchClient({ sheetRows: rows });
+  let injected = false;
+  store.calibrateCursor = async ({ assignee, roster, direction, expectedVersion, expectedCursorVersion }) => {
+    store.calibrations.push({ assignee, direction, expectedVersion, expectedCursorVersion });
+    if (!injected) {
+      injected = true;
+      store.cursor = 2;
+      store.state.forward_version = 2;
+      rows[8][1] = '乙';
+      store.assignments.set('concurrent_other', { id: 99, assignee: '乙', direction: 'forward',
+        request_context: { sheetId: 'sheetA', businessType: '千川', projectValue: '千川', rowIndex: 9 } });
+      const error = new Error('CAS_FORWARD_CURSOR_MISMATCH');
+      error.code = 'CURSOR_CALIBRATION_CONFLICT';
+      throw error;
+    }
+    const residue = (roster.indexOf(assignee) + 1) % roster.length;
+    store.cursor += (residue - store.cursor % roster.length + roster.length) % roster.length;
+    store.state.forward_version += 1;
+    return store.getDailyState();
+  };
+  const result = await handleDispatchEvent(
+    batchBody('calibration_refresh', [item('current_after_conflict', 10)]), options(store, client),
+  );
+  await result.afterResponse();
+  const batch = store.getBatch('oc_allowed', 'calibration_refresh');
+  assert.equal(batch.results[0].status, 'SUCCESS');
+  assert.equal(batch.results[0].assignee, '丙');
+  assert.equal(store.calibrations.filter(({ assignee }) => assignee === '甲').length, 1);
+  assert.equal(store.calibrations[0].expectedVersion, 1);
+  assert.equal(store.calibrations[0].expectedCursorVersion, 1);
+});
+
+for (const direction of ['forward', 'reverse']) {
+  test(`${direction} 整圈边界：已消费的自动锚点不能再次推动 cursor`, async () => {
+    const store = new BatchStore();
+    store.state = { roster: ['A', 'B', 'C'], version: 1, forward_version: 4, reverse_version: 4 };
+    store.cursor = 3;
+    store.reverseCursor = 3;
+    const previous = direction === 'forward' ? 'A' : 'C';
+    const businessType = direction === 'forward' ? '千川' : '本地推';
+    const old = { id: 1, assignee: previous, direction,
+      request_context: { sheetId: 'sheetA', businessType, projectValue: businessType, rowIndex: 7 } };
+    store.assignments.set('old', old);
+    const rows = new Array(20).fill(null).map(() => ['', '', '']);
+    rows[6] = ['2026-08-30', previous, businessType];
+    const client = new BatchClient({ sheetRows: rows });
+    const single = batchBody(`boundary_${direction}`);
+    single.event.action.value = { ...item(`next_${direction}`, 12), business_type: businessType,
+      target_category: direction === 'forward' ? 'qianchuan' : 'local_promo', project_value: businessType };
+    // Only the automatic anchor is stale; the durable cursor is authoritative.
+    // It must not be treated as a fresh manual edit or drive duplicate guards.
+    const result = await handleDispatchEvent(single, options(store, client));
+    if (result.afterResponse) await result.afterResponse();
+    assert.equal(result.body.toast.type, 'success');
+    assert.equal(store.assignments.get(`next_${direction}`)?.assignee, direction === 'forward' ? 'A' : 'C');
+    assert.equal(store.calibrations.length, 0);
+  });
+}
+
+for (const direction of ['forward', 'reverse']) {
+  test(`${direction}: RPC 已提交后人工填写时写前保护拒绝覆盖，重试不得伪报成功`, async () => {
+    const store = new BatchStore();
+    store.state = { roster: ['甲', '乙', '丙'] };
+    const businessType = direction === 'forward' ? '千川' : '本地推';
+    const fieldsFor = (id, row) => ({ ...item(id, row), business_type: businessType,
+      target_category: direction === 'forward' ? 'qianchuan' : 'local_promo', project_value: businessType });
+    const rows = new Array(20).fill(null).map(() => ['', '', '']);
+    const client = new BatchClient({ sheetRows: rows });
+    const assign = store.assign.bind(store);
+    store.assign = async (args) => {
+      const assigned = await assign(args);
+      if (args.requestId === 'late_manual_edit') rows[9] = ['2026-08-30', '人工已填', businessType];
+      return assigned;
+    };
+    const batchId = `late_guard_${direction}`;
+    const request = batchBody(batchId, [fieldsFor('late_manual_edit', 10), fieldsFor('after_late_edit', 11)]);
+    const first = await handleDispatchEvent(request, options(store, client));
+    await first.afterResponse();
+    const committed = store.assignments.get('late_manual_edit');
+    assert.ok(committed, '保留真实已提交账本，不倒退或删除');
+    assert.equal(rows[9][1], '人工已填');
+    assert.equal(client.calls.filter(({ kind, rowIndex }) => kind === 'write' && rowIndex === 10).length, 0);
+    assert.equal(store.getBatch('oc_allowed', batchId).results[0].errorCode, 'SHEET_TARGET_CHANGED');
+    assert.equal(store.getBatch('oc_allowed', batchId).status, 'PARTIAL');
+    assert.match(store.getBatch('oc_allowed', batchId).results[0].message, /人工核对/);
+
+    const retry = await handleDispatchEvent(request, options(store, client));
+    await retry.afterResponse();
+    assert.equal(rows[9][1], '人工已填');
+    assert.equal(store.assignments.get('late_manual_edit'), committed);
+    assert.equal(store.getBatch('oc_allowed', batchId).results[0].errorCode, 'SHEET_ASSIGNMENT_MISMATCH');
+    assert.equal(store.getBatch('oc_allowed', batchId).status, 'PARTIAL');
+    assert.equal(client.calls.filter(({ kind, rowIndex }) => kind === 'write' && rowIndex === 10).length, 0);
+  });
+}
+
+test('目标行实时读取失败时不能把失败解释为空行，不抢占、不写表', async () => {
+  const store = new BatchStore();
+  const client = new BatchClient();
+  client.readSheetAssignee = async () => { throw new LarkApiError('LARK_API_TIMEOUT', 'timeout'); };
+  const result = await handleDispatchEvent(batchBody('target_read_timeout', [item('must_not_assign', 10)]), options(store, client));
+  await result.afterResponse();
+  assert.equal(store.assignCalls, 0);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'write').length, 0);
+  assert.equal(store.getBatch('oc_allowed', 'target_read_timeout').results[0].errorCode, 'LARK_API_TIMEOUT');
+});
+
+test('目标行反复变化导致实时单元格与重读快照不一致时拒绝继续派单', async () => {
+  const store = new BatchStore();
+  const client = new BatchClient();
+  const values = ['第一次人工填写', '第二次人工填写'];
+  client.readSheetAssignee = async () => values.shift();
+  const result = await handleDispatchEvent(batchBody('unstable_target', [item('must_not_assign', 10)]), options(store, client));
+  await result.afterResponse();
+  assert.equal(store.assignCalls, 0);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'write').length, 0);
+  assert.equal(store.getBatch('oc_allowed', 'unstable_target').results[0].errorCode, 'SHEET_TARGET_CHANGED');
+});
+
+test('锚点与 state 读取期间并发提交 B/C，单条派单不得跳过下一圈 A', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['A', 'B', 'C'], version: 1, forward_version: 2 };
+  store.cursor = 1;
+  const oldA = { id: 1, assignee: 'A', direction: 'forward',
+    request_context: { sheetId: 'sheetA', businessType: '千川', projectValue: '千川', rowIndex: 7 } };
+  store.assignments.set('already_A', oldA);
+  let raced = false;
+  store.getDailyAssignments = async () => {
+    const snapshot = [...store.assignments.values()].sort((a, b) => b.id - a.id);
+    if (!raced) {
+      raced = true;
+      store.assignments.set('already_B', { ...oldA, id: 2, assignee: 'B', request_context: { ...oldA.request_context, rowIndex: 8 } });
+      store.assignments.set('already_C', { ...oldA, id: 3, assignee: 'C', request_context: { ...oldA.request_context, rowIndex: 9 } });
+      store.cursor = 3;
+      store.state.forward_version = 4;
+    }
+    return snapshot;
+  };
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[6] = ['2026-08-30', 'A', '千川'];
+  const client = new BatchClient({ sheetRows: rows });
+  const single = batchBody('mixed_snapshot');
+  single.event.action.value = item('next_after_C', 12);
+  const result = await handleDispatchEvent(single, options(store, client));
+  if (result.afterResponse) await result.afterResponse();
+  assert.equal(store.assignments.get('next_after_C')?.assignee, 'A');
+  assert.equal(store.calibrations.length, 0);
+});
+
+test('单条已填目标校准冲突后重读新负责人，不重用旧名字或覆盖表格', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['A', 'B', 'C'], version: 1, forward_version: 1 };
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[11] = ['2026-08-30', 'A', '千川'];
+  const client = new BatchClient({ sheetRows: rows });
+  store.calibrateCursor = async ({ assignee }) => {
+    store.calibrations.push({ assignee });
+    rows[11][1] = 'B';
+    store.cursor = 2;
+    store.state.forward_version = 2;
+    store.assignments.set('filled_during_conflict', { id: 1, assignee: 'B', direction: 'forward',
+      request_context: { sheetId: 'sheetA', businessType: '千川', projectValue: '千川', rowIndex: 12 } });
+    const error = new Error('calibration conflict');
+    error.code = 'CURSOR_CALIBRATION_CONFLICT';
+    throw error;
+  };
+  const single = batchBody('filled_conflict');
+  single.event.action.value = item('filled_during_conflict', 12);
+  const result = await handleDispatchEvent(single, options(store, client));
+  assert.equal(result.body.toast.type, 'success');
+  assert.match(result.body.toast.content, /B/);
+  assert.equal(store.calibrations.length, 1);
+  assert.equal(store.assignCalls, 0);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'write').length, 0);
+});
+
+test('单条空目标派单冲突后变为已填写，只回读结果而不继续派单或写表', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['A', 'B', 'C'], version: 1, forward_version: 1 };
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  const client = new BatchClient({ sheetRows: rows });
+  let attempts = 0;
+  store.assign = async () => {
+    attempts += 1;
+    rows[11] = ['2026-08-30', 'B', '千川'];
+    store.cursor = 2;
+    store.state.forward_version = 2;
+    store.assignments.set('filled_while_assigning', { id: 1, assignee: 'B', direction: 'forward',
+      request_context: { sheetId: 'sheetA', businessType: '千川', projectValue: '千川', rowIndex: 12 } });
+    const error = new Error('assignment conflict');
+    error.code = 'ASSIGNMENT_CONFLICT';
+    throw error;
+  };
+  const single = batchBody('target_changed');
+  single.event.action.value = item('filled_while_assigning', 12);
+  const result = await handleDispatchEvent(single, options(store, client));
+  assert.equal(result.body.toast.type, 'success');
+  assert.match(result.body.toast.content, /B/);
+  assert.equal(attempts, 1);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'write').length, 0);
+});
+
+test('同一表格行多个账本记录以最新值识别自动锚点，不误判为人工校准', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['A', 'B', 'C'] };
+  store.cursor = 2;
+  const context = { sheetId: 'sheetA', businessType: '千川', projectValue: '千川', rowIndex: 9 };
+  store.assignments.set('old_row_value', { id: 1, assignee: 'A', request_context: context });
+  store.assignments.set('new_row_value', { id: 2, assignee: 'B', request_context: context });
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[8] = ['2026-08-30', 'B', '千川'];
+  const client = new BatchClient({ sheetRows: rows });
+  const result = await handleDispatchEvent(batchBody('newest_row_ledger', [item('next_after_newest', 12)]), options(store, client));
+  await result.afterResponse();
+  assert.equal(store.getBatch('oc_allowed', 'newest_row_ledger').results[0].assignee, 'C');
+  assert.equal(store.calibrations.length, 0);
+});
+
+test('预校准持续冲突时有限重试并阻止整个方向派单，不让其他空行绕过门禁', async () => {
+  const store = new BatchStore();
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[8] = ['2026-08-30', '张三', '千川'];
+  const client = new BatchClient({ sheetRows: rows });
+  store.calibrateCursor = async ({ assignee }) => {
+    store.calibrations.push({ assignee });
+    const error = new Error('concurrent cursor update');
+    error.code = 'CURSOR_CALIBRATION_CONFLICT';
+    throw error;
+  };
+  const result = await handleDispatchEvent(
+    batchBody('persistent_calibration_conflict', [item('blocked_first', 10), item('blocked_second', 11)]),
+    options(store, client),
+  );
+  await result.afterResponse();
+  const batch = store.getBatch('oc_allowed', 'persistent_calibration_conflict');
+  assert.equal(batch.status, 'FAILED');
+  assert.ok(batch.results.every(({ errorCode }) => errorCode === 'CURSOR_CALIBRATION_CONFLICT'));
+  assert.equal(store.calibrations.length, 2);
+  assert.equal(store.assignCalls, 0);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'write').length, 0);
+});
+
+test('混合方向校准冲突使用新名单及新锚点，不能把旧锚点配上新版本', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['A', 'B', 'C'], version: 1, forward_version: 1, reverse_version: 1 };
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[8] = ['2026-08-30', 'A', '千川'];
+  const client = new BatchClient({ sheetRows: rows });
+  const originalCalibrate = store.calibrateCursor.bind(store);
+  let changed = false;
+  store.calibrateCursor = async (args) => {
+    if (!changed) {
+      changed = true;
+      store.calibrations.push(args);
+      store.state = { roster: ['X', 'Y', 'Z'], version: 2, forward_version: 2, reverse_version: 1 };
+      rows[8][1] = 'Y';
+      const error = new Error('roster changed');
+      error.code = 'CURSOR_CALIBRATION_CONFLICT';
+      throw error;
+    }
+    assert.deepEqual(args.roster, ['X', 'Y', 'Z']);
+    assert.equal(args.assignee, 'Y');
+    assert.equal(args.expectedVersion, 2);
+    return originalCalibrate(args);
+  };
+  const local = { ...item('mixed_reverse_after_change', 12), business_type: '本地推',
+    target_category: 'local_promo', project_value: '本地推' };
+  const result = await handleDispatchEvent(
+    batchBody('mixed_roster_conflict', [item('mixed_forward_after_change', 10), local]), options(store, client),
+  );
+  await result.afterResponse();
+  const batch = store.getBatch('oc_allowed', 'mixed_roster_conflict');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.equal(batch.results[0].assignee, 'Z');
+  assert.equal(batch.results[1].assignee, 'Z');
+  assert.deepEqual(store.calibrations.map(({ assignee }) => assignee), ['A', 'Y']);
+});
+
+for (const direction of ['forward', 'reverse']) {
+  for (const injection of ['assignment_conflict', 'first_write']) {
+    for (const manualValue of ['人工已填', '乙']) {
+      test(`${direction}/${injection}/${manualValue}: 后续行的旧空快照不能覆盖新人工值`, async () => {
+        const store = new BatchStore();
+        store.state = { roster: ['甲', '乙', '丙'] };
+        const businessType = direction === 'forward' ? '千川' : '本地推';
+        const fieldsFor = (id, row) => ({ ...item(id, row), business_type: businessType,
+          target_category: direction === 'forward' ? 'qianchuan' : 'local_promo', project_value: businessType });
+        const rows = new Array(20).fill(null).map(() => ['', '', '']);
+        const fillSecond = () => { rows[10] = ['2026-08-30', manualValue, businessType]; };
+        const client = new BatchClient({ sheetRows: rows,
+          onWrite: injection === 'first_write' ? ({ rowIndex }) => { if (rowIndex === 10) fillSecond(); } : undefined });
+        const assign = store.assign.bind(store);
+        let raced = false;
+        store.assign = async (args) => {
+          if (injection === 'assignment_conflict' && !raced) {
+            raced = true;
+            fillSecond();
+            const error = new Error('first row CAS conflict');
+            error.code = 'ASSIGNMENT_CONFLICT';
+            throw error;
+          }
+          return assign(args);
+        };
+        const batchId = `later_target_${direction}_${injection}_${manualValue === '乙' ? 'roster' : 'external'}`;
+        const result = await handleDispatchEvent(batchBody(batchId, [
+          fieldsFor('first_racing_target', 10), fieldsFor('later_manual_target', 11),
+        ]), options(store, client));
+        assert.equal(typeof result.afterResponse, 'function', JSON.stringify(result.body));
+        await result.afterResponse();
+        const batch = store.getBatch('oc_allowed', batchId);
+        assert.equal(client.calls.filter(({ kind, rowIndex }) => kind === 'write' && rowIndex === 11).length, 0);
+        assert.equal(rows[10][1], manualValue);
+        assert.equal(store.assignments.has('later_manual_target'), false, '不得为已填后续行新建自动派单');
+        assert.equal(batch.status, 'SUCCESS');
+        assert.equal(batch.results[1].assignee, manualValue);
+        assert.equal(batch.results[1].replayed, true);
+      });
+    }
+  }
+}

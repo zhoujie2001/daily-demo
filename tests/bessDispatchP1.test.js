@@ -114,6 +114,98 @@ class FakeClient {
 
 const options = (store, client) => ({ store, client, config: { allowedChatIds: 'oc_allowed' }, logger: { info() {} }, now: () => new Date('2026-08-30T01:00:00Z') });
 
+function guardedSingleClient(rows, { guardFailure } = {}) {
+  const client = new FakeClient({ sheetRows: rows });
+  const requests = [];
+  const sheetClient = new LarkClient({
+    appId: 'test-app', appSecret: 'test-only', baseUrl: 'https://open.feishu.test',
+    fetchImpl: async (url, request) => {
+      requests.push({ method: request.method, path: new URL(url).pathname });
+      if (guardFailure === 'timeout') throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+      let payload;
+      if (request.method === 'PUT') {
+        rows[7][1] = JSON.parse(request.body).valueRange.values[0][0];
+        payload = { code: 0 };
+      } else {
+        payload = { code: 0, data: { valueRange: guardFailure === 'invalid' ? {} : { values: [[rows[7][1]]] } } };
+      }
+      return { ok: true, status: 200, async text() { return JSON.stringify(payload); } };
+    },
+  });
+  sheetClient.getTenantAccessToken = async () => 'test-token';
+  client.writeSheetAssignee = sheetClient.writeSheetAssignee.bind(sheetClient);
+  return { client, requests };
+}
+
+for (const businessType of ['千川', '本地推']) {
+  for (const form of [false, true]) {
+    for (const targetAfterCommit of ['人工已填', '李四', 'same', 'empty']) {
+      test(`单条写前门禁/${businessType}/${form ? '表单' : '点击'}/${targetAfterCommit}: 真实请求不覆盖人工值`, async () => {
+        const store = new FakeStore();
+        store.state = { roster: ['张三', '李四', '王五'] };
+        const rows = Array.from({ length: 8 }, () => ['', '', '']);
+        const { client, requests } = guardedSingleClient(rows);
+        if (form) store.pending.set('om_form', {
+          original_message_id: 'om_original', completed_at: null,
+          request_context: { ...fields, businessType },
+        });
+        const assign = store.assign.bind(store);
+        store.assign = async (args) => {
+          const assigned = await assign(args);
+          rows[7] = ['2026-08-30', targetAfterCommit === 'same' ? assigned.assignee
+            : targetAfterCommit === 'empty' ? '' : targetAfterCommit, businessType];
+          return assigned;
+        };
+        const request = body({ businessType, form, messageId: form ? 'om_form' : 'om_original', shuffleRoster: false });
+        const result = await handleDispatchEvent(request, options(store, client));
+        const reserved = store.assignments.get('p1_1').assignee;
+        assert.equal(requests.filter(({ method }) => method === 'PUT').length, targetAfterCommit === 'empty' ? 1 : 0);
+        assert.equal(store.assignCalls, 1);
+        if (['人工已填', '李四'].includes(targetAfterCommit)) {
+          assert.equal(result.body.toast.type, 'error');
+          assert.equal(result.errorCode, 'SHEET_TARGET_CHANGED');
+          assert.match(result.body.toast.content, /已落库.*人工核对|人工核对.*已落库/);
+          assert.equal(rows[7][1], targetAfterCommit);
+          assert.equal(client.calls.filter(({ kind }) => ['replyCard', 'update', 'delay'].includes(kind)).length, 0);
+          if (form) assert.equal(store.pending.get('om_form').completed_at, null);
+          const cursorBeforeRetry = [store.forward, store.reverse];
+          const retry = await handleDispatchEvent(request, options(store, client));
+          assert.equal(retry.body.toast.type, 'error');
+          assert.equal(retry.errorCode, 'SHEET_ASSIGNMENT_MISMATCH');
+          assert.equal(store.assignCalls, 1, '不能重派已落账的请求');
+          assert.deepEqual([store.forward, store.reverse], cursorBeforeRetry);
+          assert.equal(store.assignments.get('p1_1').assignee, reserved);
+          assert.equal(rows[7][1], targetAfterCommit);
+        } else {
+          assert.equal(result.body.toast.type, 'success');
+          assert.equal(rows[7][1], reserved);
+          assert.deepEqual(requests.map(({ method }) => method), targetAfterCommit === 'same' ? ['GET'] : ['GET', 'PUT', 'GET']);
+          const retry = await handleDispatchEvent(request, options(store, client));
+          assert.equal(retry.body.toast.type, 'success');
+          assert.equal(store.assignCalls, 1);
+          assert.equal(requests.filter(({ method }) => method === 'PUT').length, targetAfterCommit === 'empty' ? 1 : 0);
+        }
+      });
+    }
+  }
+  for (const guardFailure of ['timeout', 'invalid']) {
+    test(`单条写前门禁/${businessType}/${guardFailure}: 读失败保留账本，不 PUT 不发成功卡`, async () => {
+      const store = new FakeStore();
+      store.state = { roster: ['张三', '李四', '王五'] };
+      const rows = Array.from({ length: 8 }, () => ['', '', '']);
+      const { client, requests } = guardedSingleClient(rows, { guardFailure });
+      const result = await handleDispatchEvent(body({ businessType }), options(store, client));
+      assert.equal(result.body.toast.type, 'error');
+      assert.equal(result.errorCode, guardFailure === 'timeout' ? 'LARK_API_TIMEOUT' : 'SHEET_TARGET_READ_INVALID');
+      assert.match(result.body.toast.content, /已落库.*核对/);
+      assert.equal(store.assignments.size, 1);
+      assert.equal(rows[7][1], '');
+      assert.deepEqual(requests.map(({ method }) => method), ['GET']);
+      assert.equal(client.calls.filter(({ kind }) => ['replyCard', 'update', 'delay'].includes(kind)).length, 0);
+    });
+  }
+}
+
 test('姓名解析支持多种分隔符并拒绝纯数字、工号形态和重复值', () => {
   assert.deepEqual(parseRoster('张三，李四、王五;赵六\nAlice Wu'), ['张三', '李四', '王五', '赵六', 'Alice Wu']);
   assert.throws(() => parseRoster('12345、张三'), RosterValidationError);
@@ -652,7 +744,7 @@ test('名单表单提交时，若目标行已被人工填写，应保护不覆�
   assert.equal(client.calls.filter(c => c.kind === 'write').length, 0, '表单提交也不应覆盖人工填写行');
 });
 
-test('已有 assignment 但与表格人工填写的不同时，以表格为准且跳过写入', async () => {
+test('已有 assignment 与表格人工填写不同时保留双方，拒绝伪报成功', async () => {
   const store = new FakeStore();
   store.state = { roster: ['张三', '李四'] };
   store.assignments.set('p1_1', { assignee: '张三', replayed: false });
@@ -660,9 +752,14 @@ test('已有 assignment 但与表格人工填写的不同时，以表格为准�
   sheetRows[7] = ['2026-08-30', '李四'];
   const client = new FakeClient({ sheetRows });
   const result = await handleDispatchEvent(body({ requestId: 'p1_1' }), options(store, client));
-  assert.match(result.body.toast.content, /李四/);
+  assert.equal(result.body.toast.type, 'error');
+  assert.equal(result.errorCode, 'SHEET_ASSIGNMENT_MISMATCH');
+  assert.match(result.body.toast.content, /人工核对/);
   assert.equal(client.calls.filter(c => c.kind === 'write').length, 0);
+  assert.equal(client.calls.filter(c => ['replyCard', 'update', 'delay'].includes(c.kind)).length, 0);
   assert.equal(store.assignCalls, 0);
+  assert.equal(store.assignments.get('p1_1').assignee, '张三');
+  assert.equal(sheetRows[7][1], '李四');
 });
 
 
