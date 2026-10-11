@@ -186,8 +186,17 @@ class BatchClient {
     const rowIndex = Number(match?.[2] || 0);
     return [[this.sheetRows[rowIndex - 1]?.[1] || '']];
   }
+  async readSheetAssignee(fields) {
+    const rows = await this.getSheetValues({ sheetUrl: fields.sheetUrl,
+      range: `${fields.sheetId}!${fields.assigneeFieldId}${fields.rowIndex}:${fields.assigneeFieldId}${fields.rowIndex}` });
+    return String(rows?.[0]?.[0] || '').trim();
+  }
   async getMessage() { return null; }
   async writeSheetAssignee(args) {
+    if (args.requireEmpty && this.sheetRows[args.rowIndex - 1]?.[1]) {
+      if (this.sheetRows[args.rowIndex - 1][1] === args.assignee) return;
+      throw new LarkApiError('SHEET_TARGET_CHANGED', 'manual value must not be overwritten');
+    }
     this.calls.push({ kind: 'write', ...args });
     this.onWrite?.(args);
     if (args.rowIndex === this.failRow || this.failRows.has(args.rowIndex)) throw new Error('sensitive write error');
@@ -1342,6 +1351,66 @@ for (const direction of ['forward', 'reverse']) {
   });
 }
 
+for (const direction of ['forward', 'reverse']) {
+  test(`${direction}: RPC 已提交后人工填写时写前保护拒绝覆盖，重试不得伪报成功`, async () => {
+    const store = new BatchStore();
+    store.state = { roster: ['甲', '乙', '丙'] };
+    const businessType = direction === 'forward' ? '千川' : '本地推';
+    const fieldsFor = (id, row) => ({ ...item(id, row), business_type: businessType,
+      target_category: direction === 'forward' ? 'qianchuan' : 'local_promo', project_value: businessType });
+    const rows = new Array(20).fill(null).map(() => ['', '', '']);
+    const client = new BatchClient({ sheetRows: rows });
+    const assign = store.assign.bind(store);
+    store.assign = async (args) => {
+      const assigned = await assign(args);
+      if (args.requestId === 'late_manual_edit') rows[9] = ['2026-08-30', '人工已填', businessType];
+      return assigned;
+    };
+    const batchId = `late_guard_${direction}`;
+    const request = batchBody(batchId, [fieldsFor('late_manual_edit', 10), fieldsFor('after_late_edit', 11)]);
+    const first = await handleDispatchEvent(request, options(store, client));
+    await first.afterResponse();
+    const committed = store.assignments.get('late_manual_edit');
+    assert.ok(committed, '保留真实已提交账本，不倒退或删除');
+    assert.equal(rows[9][1], '人工已填');
+    assert.equal(client.calls.filter(({ kind, rowIndex }) => kind === 'write' && rowIndex === 10).length, 0);
+    assert.equal(store.getBatch('oc_allowed', batchId).results[0].errorCode, 'SHEET_TARGET_CHANGED');
+    assert.equal(store.getBatch('oc_allowed', batchId).status, 'PARTIAL');
+    assert.match(store.getBatch('oc_allowed', batchId).results[0].message, /人工核对/);
+
+    const retry = await handleDispatchEvent(request, options(store, client));
+    await retry.afterResponse();
+    assert.equal(rows[9][1], '人工已填');
+    assert.equal(store.assignments.get('late_manual_edit'), committed);
+    assert.equal(store.getBatch('oc_allowed', batchId).results[0].errorCode, 'SHEET_ASSIGNMENT_MISMATCH');
+    assert.equal(store.getBatch('oc_allowed', batchId).status, 'PARTIAL');
+    assert.equal(client.calls.filter(({ kind, rowIndex }) => kind === 'write' && rowIndex === 10).length, 0);
+  });
+}
+
+test('目标行实时读取失败时不能把失败解释为空行，不抢占、不写表', async () => {
+  const store = new BatchStore();
+  const client = new BatchClient();
+  client.readSheetAssignee = async () => { throw new LarkApiError('LARK_API_TIMEOUT', 'timeout'); };
+  const result = await handleDispatchEvent(batchBody('target_read_timeout', [item('must_not_assign', 10)]), options(store, client));
+  await result.afterResponse();
+  assert.equal(store.assignCalls, 0);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'write').length, 0);
+  assert.equal(store.getBatch('oc_allowed', 'target_read_timeout').results[0].errorCode, 'LARK_API_TIMEOUT');
+});
+
+test('目标行反复变化导致实时单元格与重读快照不一致时拒绝继续派单', async () => {
+  const store = new BatchStore();
+  const client = new BatchClient();
+  const values = ['第一次人工填写', '第二次人工填写'];
+  client.readSheetAssignee = async () => values.shift();
+  const result = await handleDispatchEvent(batchBody('unstable_target', [item('must_not_assign', 10)]), options(store, client));
+  await result.afterResponse();
+  assert.equal(store.assignCalls, 0);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'write').length, 0);
+  assert.equal(store.getBatch('oc_allowed', 'unstable_target').results[0].errorCode, 'SHEET_TARGET_CHANGED');
+});
+
 test('锚点与 state 读取期间并发提交 B/C，单条派单不得跳过下一圈 A', async () => {
   const store = new BatchStore();
   store.state = { roster: ['A', 'B', 'C'], version: 1, forward_version: 2 };
@@ -1500,3 +1569,46 @@ test('混合方向校准冲突使用新名单及新锚点，不能把旧锚点�
   assert.equal(batch.results[1].assignee, 'Z');
   assert.deepEqual(store.calibrations.map(({ assignee }) => assignee), ['A', 'Y']);
 });
+
+for (const direction of ['forward', 'reverse']) {
+  for (const injection of ['assignment_conflict', 'first_write']) {
+    for (const manualValue of ['人工已填', '乙']) {
+      test(`${direction}/${injection}/${manualValue}: 后续行的旧空快照不能覆盖新人工值`, async () => {
+        const store = new BatchStore();
+        store.state = { roster: ['甲', '乙', '丙'] };
+        const businessType = direction === 'forward' ? '千川' : '本地推';
+        const fieldsFor = (id, row) => ({ ...item(id, row), business_type: businessType,
+          target_category: direction === 'forward' ? 'qianchuan' : 'local_promo', project_value: businessType });
+        const rows = new Array(20).fill(null).map(() => ['', '', '']);
+        const fillSecond = () => { rows[10] = ['2026-08-30', manualValue, businessType]; };
+        const client = new BatchClient({ sheetRows: rows,
+          onWrite: injection === 'first_write' ? ({ rowIndex }) => { if (rowIndex === 10) fillSecond(); } : undefined });
+        const assign = store.assign.bind(store);
+        let raced = false;
+        store.assign = async (args) => {
+          if (injection === 'assignment_conflict' && !raced) {
+            raced = true;
+            fillSecond();
+            const error = new Error('first row CAS conflict');
+            error.code = 'ASSIGNMENT_CONFLICT';
+            throw error;
+          }
+          return assign(args);
+        };
+        const batchId = `later_target_${direction}_${injection}_${manualValue === '乙' ? 'roster' : 'external'}`;
+        const result = await handleDispatchEvent(batchBody(batchId, [
+          fieldsFor('first_racing_target', 10), fieldsFor('later_manual_target', 11),
+        ]), options(store, client));
+        assert.equal(typeof result.afterResponse, 'function', JSON.stringify(result.body));
+        await result.afterResponse();
+        const batch = store.getBatch('oc_allowed', batchId);
+        assert.equal(client.calls.filter(({ kind, rowIndex }) => kind === 'write' && rowIndex === 11).length, 0);
+        assert.equal(rows[10][1], manualValue);
+        assert.equal(store.assignments.has('later_manual_target'), false, '不得为已填后续行新建自动派单');
+        assert.equal(batch.status, 'SUCCESS');
+        assert.equal(batch.results[1].assignee, manualValue);
+        assert.equal(batch.results[1].replayed, true);
+      });
+    }
+  }
+}

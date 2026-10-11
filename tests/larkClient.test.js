@@ -350,3 +350,91 @@ test('物理 row_count 超过 20000 时立即 fail-closed 且不读取单元格'
     stub.restore();
   }
 });
+
+const guardedSheetTarget = {
+  sheetUrl: 'https://example.feishu.cn/sheets/spreadsheetToken', sheetId: 'sheet1',
+  rowIndex: 11, assigneeFieldId: 'B', assignee: '自动乙', requireEmpty: true,
+};
+
+function targetClient(handler) {
+  const calls = [];
+  const client = new LarkClient({
+    appId: 'cli_x', appSecret: 'test-only', baseUrl: 'https://open.feishu.test',
+    fetchImpl: async (url, options) => {
+      const call = { url: new URL(url), options };
+      calls.push(call);
+      return handler(call);
+    },
+  });
+  client.getTenantAccessToken = async () => 'test-token';
+  return { client, calls };
+}
+
+test('实时负责人读取只查单目标格；字段名配置先解析表头', async () => {
+  for (const byName of [false, true]) {
+    const { client, calls } = targetClient((call) => {
+      assert.equal(call.options.method, 'GET');
+      const range = decodeURIComponent(call.url.pathname.split('/values/')[1]);
+      return jsonResponse(200, { code: 0, data: { valueRange: {
+        values: range === 'sheet1!1:1' ? [['日期', '负责人']] : [[{ text: ' 人工已填 ' }]],
+      } } });
+    });
+    const fields = byName
+      ? { ...guardedSheetTarget, assigneeFieldId: undefined, assigneeFieldName: '负责人' }
+      : guardedSheetTarget;
+    assert.equal(await client.readSheetAssignee(fields), '人工已填');
+    assert.deepEqual(calls.map((call) => decodeURIComponent(call.url.pathname.split('/values/')[1])),
+      byName ? ['sheet1!1:1', 'sheet1!B11:B11'] : ['sheet1!B11:B11']);
+  }
+});
+
+for (const [label, values, expected] of [
+  ['空范围', [], ''], ['空行', [[]], ''], ['null', [[null]], ''],
+  ['数字', [[42]], '42'], ['value 对象', [[{ value: ' 人工已填 ' }]], '人工已填'],
+]) {
+  test(`实时负责人读取正确识别${label}`, async () => {
+    const { client } = targetClient(() => jsonResponse(200, { code: 0, data: { valueRange: { values } } }));
+    assert.equal(await client.readSheetAssignee(guardedSheetTarget), expected);
+  });
+}
+
+for (const [label, actual, expectedCode] of [
+  ['人工不同值', [['人工已填']], 'SHEET_TARGET_CHANGED'],
+  ['未知富文本', [[{ segments: ['人工'] }]], 'SHEET_TARGET_CHANGED'],
+  ['缺失 values', undefined, 'SHEET_TARGET_READ_INVALID'],
+  ['错误行结构', ['人工已填'], 'SHEET_TARGET_READ_INVALID'],
+  ['多行响应', [['人工'], ['其他']], 'SHEET_TARGET_READ_INVALID'],
+  ['多列响应', [['人工', '其他']], 'SHEET_TARGET_READ_INVALID'],
+]) {
+  test(`写前核验遇到${label}时不发出 PUT`, async () => {
+    const { client, calls } = targetClient(() => jsonResponse(200, { code: 0, data: { valueRange: { values: actual } } }));
+    await assert.rejects(() => client.writeSheetAssignee(guardedSheetTarget), (error) => error.code === expectedCode);
+    assert.deepEqual(calls.map((call) => call.options.method), ['GET']);
+  });
+}
+
+test('写前已是同一负责人时只回读，不再 PUT', async () => {
+  const { client, calls } = targetClient(() => jsonResponse(200, { code: 0, data: { valueRange: { values: [['自动乙']] } } }));
+  assert.equal((await client.writeSheetAssignee(guardedSheetTarget)).written, false);
+  assert.deepEqual(calls.map((call) => call.options.method), ['GET']);
+});
+
+test('空格核验成功后仅写一次，再回读确认', async () => {
+  let written = false;
+  const { client, calls } = targetClient((call) => {
+    if (call.options.method === 'PUT') {
+      assert.deepEqual(JSON.parse(call.options.body), { valueRange: { range: 'sheet1!B11:B11', values: [['自动乙']] } });
+      written = true;
+      return jsonResponse(200, { code: 0 });
+    }
+    return jsonResponse(200, { code: 0, data: { valueRange: { values: written ? [['自动乙']] : [] } } });
+  });
+  assert.equal((await client.writeSheetAssignee(guardedSheetTarget)).assignee, '自动乙');
+  assert.deepEqual(calls.map((call) => call.options.method), ['GET', 'PUT', 'GET']);
+});
+
+test('写前 GET 失败时不继续 PUT', async () => {
+  const { client, calls } = targetClient(() => jsonResponse(503, { code: 1, msg: 'Unavailable' }));
+  await assert.rejects(() => client.writeSheetAssignee(guardedSheetTarget), (error) => error instanceof LarkApiError);
+  assert.deepEqual(calls.map((call) => call.options.method), ['GET']);
+});
