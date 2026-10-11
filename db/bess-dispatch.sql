@@ -2,8 +2,9 @@
 --
 -- 执行顺序：
 --   1. 先执行本基础文件；2. 按文件名顺序执行 db/migrations/ 下全部迁移，必须包含
---      20261011_rpc_contract_hardening.sql；3. 再执行 db/bess-dispatch-verify.sql。
---   最终写 RPC 契约以 20261011 迁移为准：assign_next 9 参数、calibrate_cursor 7 参数、
+--      20261011_rpc_contract_hardening.sql 与 20261012_cursor_concurrency_hardening.sql；
+--      3. 再执行 db/bess-dispatch-verify.sql，并可执行 db/bess-dispatch-rpc-acceptance.sql。
+--   最终写 RPC 契约以 20261012 迁移为准：assign_next 9 参数、calibrate_cursor 7 参数、
 --   update_roster_status 4 参数；不要在只执行本基础文件后直接运行最新版验收。
 -- 幂等边界：
 --   * CREATE TABLE/COLUMN/INDEX 使用 IF [NOT] EXISTS；函数保持原 RPC 签名并使用

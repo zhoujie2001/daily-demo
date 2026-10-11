@@ -494,6 +494,27 @@ begin
     end if;
   end if;
 
+  -- PostgREST 写入口必须各只有一个最终签名（9/7/4）；任何漏清 overload 都失败。
+  foreach v_signature in array array[
+    'bess_assign_next:9',
+    'bess_calibrate_cursor:7',
+    'bess_update_roster_status:4'
+  ] loop
+    if (select count(*) from pg_catalog.pg_proc p
+         join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public' and p.proname = split_part(v_signature, ':', 1)) <> 1
+       or not exists (
+         select 1 from pg_catalog.pg_proc p
+         join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public'
+            and p.proname = split_part(v_signature, ':', 1)
+            and p.pronargs = split_part(v_signature, ':', 2)::integer
+       ) then
+      v_errors := array_append(v_errors, format('写 RPC 不是唯一的 %s 参数签名：%s',
+        split_part(v_signature, ':', 2), split_part(v_signature, ':', 1)));
+    end if;
+  end loop;
+
   -- 旧 overload 必须不存在；仅 revoke 仍会让 PostgREST 在参数解析时产生歧义。
   foreach v_signature in array array[
     'public.bess_assign_next(date,text,text,jsonb,timestamp with time zone,jsonb)',
