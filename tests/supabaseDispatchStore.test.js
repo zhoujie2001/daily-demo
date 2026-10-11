@@ -47,6 +47,29 @@ test('AD 派单状态与分配查询使用独立 scope', async () => {
   assert.match(calls[1].url, /scope=eq\.ad/);
 });
 
+test('dispatch snapshot uses one read-only composite-FK embedding with stable ledger ordering', async () => {
+  const assignments = [{ id: 2, assignee: 'B' }, { id: 1, assignee: 'A' }];
+  const state = { day_key: '2026-10-11', scope: 'ad_game', version: 1, forward_cursor: 2 };
+  const { store, calls } = setup([[{ ...state, assignments }]]);
+  assert.deepEqual(await store.getDispatchSnapshot('2026-10-11', 'ad_game', new Date('2026-10-11T00:00:00Z')),
+    { state, assignments });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.method, 'GET');
+  const url = new URL(calls[0].url);
+  assert.equal(url.searchParams.get('day_key'), 'eq.2026-10-11');
+  assert.equal(url.searchParams.get('scope'), 'eq.ad_game');
+  assert.equal(url.searchParams.get('expires_at'), 'gt.2026-10-11T00:00:00.000Z');
+  assert.equal(url.searchParams.get('select'), '*,assignments:bess_dispatch_assignments!bess_dispatch_assignments_day_scope_fkey(*)');
+  assert.equal(url.searchParams.get('assignments.order'), 'created_at.desc,id.desc');
+});
+
+test('dispatch snapshot returns empty expired state, but rejects malformed embeddings', async () => {
+  const { store, calls } = setup([[], [{ version: 1 }]]);
+  assert.deepEqual(await store.getDispatchSnapshot('2026-10-11'), { state: null, assignments: [] });
+  await assert.rejects(store.getDispatchSnapshot('2026-10-11'), { code: 'INVALID_DISPATCH_SNAPSHOT' });
+  assert.equal(calls.length, 2);
+});
+
 test('首次指定派单按 scope 原子初始化名单且不覆盖并发先写状态', async () => {
   const state = { day_key: '2026-09-24', scope: 'ad', roster: ['周杰', '张三'] };
   const { store, calls } = setup([null, [state]]);
