@@ -17,6 +17,7 @@ declare
     'bess_assign_next(date,text,text,jsonb,timestamptz,jsonb)',
     'bess_assign_next(date,text,text,text,jsonb,timestamptz,jsonb)',
     'bess_assign_next(date,text,text,text,jsonb,timestamptz,jsonb,bigint)',
+    'bess_calibrate_cursor(date,text,jsonb)',
     'bess_calibrate_cursor(date,text,text,jsonb)',
     'bess_calibrate_cursor(date,text,text,text,jsonb)',
     'bess_calibrate_cursor(date,text,text,text,jsonb,bigint)',

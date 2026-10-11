@@ -499,6 +499,7 @@ begin
     'public.bess_assign_next(date,text,text,jsonb,timestamp with time zone,jsonb)',
     'public.bess_assign_next(date,text,text,text,jsonb,timestamp with time zone,jsonb)',
     'public.bess_assign_next(date,text,text,text,jsonb,timestamp with time zone,jsonb,bigint)',
+    'public.bess_calibrate_cursor(date,text,jsonb)',
     'public.bess_calibrate_cursor(date,text,text,jsonb)',
     'public.bess_calibrate_cursor(date,text,text,text,jsonb)',
     'public.bess_calibrate_cursor(date,text,text,text,jsonb,bigint)',
