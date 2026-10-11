@@ -1184,3 +1184,53 @@ test('派生 profile 字段不改变旧批次 fingerprint，PROCESSING/PARTIAL/F
     );
   }
 });
+
+
+test('跨批次锚点扫描较旧时以更新的持久派单为准，F 到 G 不重复负责人', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['邱胤超', '张梦慧', '冯俊杰', '王晓凤', '吴红'] };
+  store.cursor = 4;
+  store.assignments.set('f_segment', {
+    id: 100,
+    assignee: '王晓凤',
+    request_context: {
+      sheetId: 'sheetA', businessType: 'AD', targetCategory: 'ad', rowIndex: 30,
+    },
+  });
+  const sheetRows = new Array(33).fill(null).map(() => ['', '', '']);
+  sheetRows[12] = ['2026-08-30', '冯俊杰', ''];
+  const client = new BatchClient({ sheetRows });
+  const gItem = {
+    ...item('g_first', 33),
+    business_type: 'AD', target_category: 'ad', date_field_id: 'J', assignee_field_id: 'B',
+    project_field_id: undefined, project_value: undefined,
+  };
+  const result = await handleDispatchEvent(batchBody('ad_g_cross_batch', [gItem]), options(store, client));
+  await result.afterResponse();
+  const write = client.calls.find((call) => call.kind === 'write' && call.rowIndex === 33);
+  assert.equal(write?.assignee, '吴红');
+  assert.equal(store.calibrations.at(-1)?.assignee, '王晓凤');
+});
+
+test('跨批次首条若游标异常返回上一负责人则 fail-closed 且不写表', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['邱胤超', '张梦慧', '冯俊杰', '王晓凤', '吴红'] };
+  store.calibrateCursor = async ({ dayKey, direction, assignee, roster }) => {
+    store.calibrations.push({ dayKey, direction, assignee, roster });
+    store.cursor = roster.indexOf(assignee);
+  };
+  const sheetRows = new Array(33).fill(null).map(() => ['', '', '']);
+  sheetRows[29] = ['2026-08-30', '王晓凤', ''];
+  const client = new BatchClient({ sheetRows });
+  const gItem = {
+    ...item('g_duplicate', 33),
+    business_type: 'AD', target_category: 'ad', date_field_id: 'J', assignee_field_id: 'B',
+    project_field_id: undefined, project_value: undefined,
+  };
+  const result = await handleDispatchEvent(batchBody('ad_g_duplicate_guard', [gItem]), options(store, client));
+  await result.afterResponse();
+  assert.equal(client.calls.some((call) => call.kind === 'write' && call.rowIndex === 33), false);
+  const completed = store.getBatch('oc_allowed', 'ad_g_duplicate_guard');
+  assert.equal(completed.status, 'FAILED');
+  assert.match(completed.results[0].message, /重复/);
+});

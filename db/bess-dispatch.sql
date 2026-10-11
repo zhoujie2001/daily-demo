@@ -1,7 +1,10 @@
 -- BESS P1 自动派单：可重复执行的结构迁移与权限加固（Supabase/PostgreSQL）。
 --
 -- 执行顺序：
---   1. 先执行本文件；2. 再执行 db/bess-dispatch-verify.sql。
+--   1. 先执行本基础文件；2. 按文件名顺序执行 db/migrations/ 下全部迁移，必须包含
+--      20261011_rpc_contract_hardening.sql；3. 再执行 db/bess-dispatch-verify.sql。
+--   最终写 RPC 契约以 20261011 迁移为准：assign_next 9 参数、calibrate_cursor 7 参数、
+--   update_roster_status 4 参数；不要在只执行本基础文件后直接运行最新版验收。
 -- 幂等边界：
 --   * CREATE TABLE/COLUMN/INDEX 使用 IF [NOT] EXISTS；函数保持原 RPC 签名并使用
 --     CREATE OR REPLACE；策略在同一事务内重建；权限先回收再按最小集合授予。
@@ -27,6 +30,9 @@ create table if not exists public.bess_dispatch_daily_state (
   off_duty jsonb not null default '[]'::jsonb
     check (jsonb_typeof(off_duty) = 'array'),
   version bigint not null default 1,
+  forward_version bigint not null default 1,
+  reverse_version bigint not null default 1,
+  assignment_seq bigint not null default 0,
   expires_at timestamptz not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -35,7 +41,10 @@ create table if not exists public.bess_dispatch_daily_state (
 -- 从早期版本升级时补充列；不覆盖已有行数据。
 alter table public.bess_dispatch_daily_state
   add column if not exists off_duty jsonb not null default '[]'::jsonb,
-  add column if not exists version bigint not null default 1;
+  add column if not exists version bigint not null default 1,
+  add column if not exists forward_version bigint not null default 1,
+  add column if not exists reverse_version bigint not null default 1,
+  add column if not exists assignment_seq bigint not null default 0;
 
 create table if not exists public.bess_dispatch_pending_forms (
   form_message_id text primary key,
@@ -60,6 +69,7 @@ create table if not exists public.bess_dispatch_assignments (
   request_id text not null,
   assignee text not null,
   direction text not null check (direction in ('forward', 'reverse')),
+  assignment_seq bigint,
   request_context jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   unique (day_key, request_id)

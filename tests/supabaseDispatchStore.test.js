@@ -60,6 +60,7 @@ test('首次指定派单按 scope 原子初始化名单且不覆盖并发先写�
   assert.deepEqual(JSON.parse(calls[0].options.body), {
     day_key: '2026-09-24', scope: 'ad', roster: ['周杰', '张三'],
     forward_cursor: 0, reverse_cursor: 0, off_duty: [], version: 1,
+    forward_version: 1, reverse_version: 1, assignment_seq: 0,
     expires_at: '2026-09-25T16:00:00.000Z',
   });
   assert.match(calls[1].url, /scope=eq\.ad/);
@@ -107,6 +108,7 @@ test('calibrateCursor 通过事务 RPC 仅校准指定方向游标', async () =>
   assert.deepEqual(JSON.parse(calls[0].options.body), {
     p_day_key: '2026-08-30', p_scope: 'default', p_direction: 'forward',
     p_assignee: '周杰', p_roster: ['张三', '周杰', '罗世坤'],
+    p_expected_version: null, p_expected_cursor_version: null,
   });
 });
 
@@ -212,7 +214,10 @@ test('calibrateCursor 在新 RPC 未部署时使用现有 daily_state CAS 且仅
       return response({ code: 'PGRST202', message: 'Could not find bess_calibrate_cursor' }, { ok: false, status: 404 });
     }
     if (options.method === 'GET') {
-      return response([{ day_key: '2026-08-30', roster: ['张三', '周杰', '罗世坤'], forward_cursor: 0, reverse_cursor: 0 }]);
+      return response([{
+        day_key: '2026-08-30', roster: ['张三', '周杰', '罗世坤'],
+        forward_cursor: 0, reverse_cursor: 0, version: 1, forward_version: 3, reverse_version: 2,
+      }]);
     }
     return response([{ day_key: '2026-08-30', roster: ['张三', '周杰', '罗世坤'], forward_cursor: 2, reverse_cursor: 2 }]);
   };
@@ -227,10 +232,11 @@ test('calibrateCursor 在新 RPC 未部署时使用现有 daily_state CAS 且仅
   assert.equal(calls.length, 3);
   assert.match(calls[1].url, /bess_dispatch_daily_state\?day_key=eq\.2026-08-30/);
   assert.equal(calls[2].options.method, 'PATCH');
-  assert.match(calls[2].url, /forward_cursor=eq\.0/);
-  assert.match(calls[2].url, /reverse_cursor=eq\.0/);
+  assert.match(calls[2].url, /version=eq\.1/);
+  assert.match(calls[2].url, /forward_version=eq\.3/);
   assert.deepEqual(JSON.parse(calls[2].options.body), {
-    forward_cursor: 2, updated_at: JSON.parse(calls[2].options.body).updated_at,
+    forward_cursor: 2, forward_version: 4,
+    updated_at: JSON.parse(calls[2].options.body).updated_at,
   });
   assert.equal(state.forward_cursor, 2);
 });
@@ -696,4 +702,41 @@ test('getIngestBatchStatuses 用一次 Supabase 请求返回逐项状态', async
   assert.equal(statuses[0].status, 'SENT');
   assert.equal(statuses[0].message_id, 'om_a');
   assert.deepEqual(statuses[1], { chat_id: 'oc_b', batch_id: 'batch_b', found: false });
+});
+
+
+test('assign 与 calibrateCursor 始终发送完整 9/7 参数 CAS 契约', async () => {
+  const { store, calls } = setup([[
+    { assignee: '周杰', roster: ['周杰'], direction: 'forward', replayed: false, assignment_seq: 7 },
+  ], [{ forward_cursor: 1 }]]);
+  await store.assign({
+    dayKey: '2026-10-11', scope: 'ad_review', requestId: 'r9', direction: 'forward',
+    roster: ['周杰'], expiresAt: '2026-10-12T16:00:00Z', context: {},
+    expectedVersion: 4, expectedCursorVersion: 8,
+  });
+  await store.calibrateCursor({
+    dayKey: '2026-10-11', scope: 'ad_review', direction: 'forward', assignee: '周杰',
+    roster: ['周杰'], expectedVersion: 4, expectedCursorVersion: 9,
+  });
+  assert.deepEqual(Object.keys(JSON.parse(calls[0].options.body)).sort(), [
+    'p_context', 'p_day_key', 'p_direction', 'p_expected_cursor_version', 'p_expected_version',
+    'p_expires_at', 'p_request_id', 'p_roster', 'p_scope',
+  ].sort());
+  assert.deepEqual(Object.keys(JSON.parse(calls[1].options.body)).sort(), [
+    'p_assignee', 'p_day_key', 'p_direction', 'p_expected_cursor_version',
+    'p_expected_version', 'p_roster', 'p_scope',
+  ].sort());
+});
+
+test('assign 与 calibrateCursor 将数据库 CAS mismatch 映射为 409', async () => {
+  for (const [method, expectedCode] of [['assign', 'ASSIGNMENT_CONFLICT'], ['calibrateCursor', 'CURSOR_CALIBRATION_CONFLICT']]) {
+    const store = createSupabaseDispatchStore({
+      url: 'https://example.supabase.co', serviceRoleKey: 'service-key', logger: {},
+      fetchImpl: async () => response({ code: 'P0001', message: 'CAS_FORWARD_CURSOR_MISMATCH' }, { ok: false, status: 400 }),
+    });
+    const args = method === 'assign'
+      ? { dayKey: '2026-10-11', requestId: 'r', direction: 'forward', context: {} }
+      : { dayKey: '2026-10-11', direction: 'forward', assignee: '周杰', roster: ['周杰'] };
+    await assert.rejects(store[method](args), (error) => error.code === expectedCode && error.status === 409);
+  }
 });
