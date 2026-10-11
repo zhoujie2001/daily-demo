@@ -353,7 +353,9 @@ test('后续派单从最新有效人工锚点轮转，并跳过空值、非当�
   const result = await handleDispatchEvent(body({ requestId: 'anchor_forward' }), options(store, client));
   assert.equal(result.body.toast.type, 'success');
   assert.equal(store.assignments.get('anchor_forward').assignee, '王五');
-  assert.deepEqual(store.calibrations, []);
+  assert.deepEqual(store.calibrations, [{
+    dayKey: '2026-08-30', direction: 'forward', assignee: '李四', roster: ['张三', '李四', '王五'],
+  }]);
   assert.equal(store.assignmentQueries, 1);
   assert.equal(client.calls.filter((item) => item.kind === 'readRows').length, 1);
 });
@@ -407,7 +409,9 @@ test('后续倒序派单选择锚点上一位并循环轮转', async () => {
   const client = new FakeClient({ sheetRows: [['2026-08-30 09:00:00', '张三']] });
   await handleDispatchEvent(body({ requestId: 'anchor_reverse', businessType: '本地推' }), options(store, client));
   assert.equal(store.assignments.get('anchor_reverse').assignee, '王五');
-  assert.deepEqual(store.calibrations, []);
+  assert.deepEqual(store.calibrations, [{
+    dayKey: '2026-08-30', direction: 'reverse', assignee: '张三', roster: ['张三', '李四', '王五'],
+  }]);
 });
 
 test('无有效锚点时忽略名单外负责人并沿用持久化游标', async () => {
@@ -434,7 +438,7 @@ test('同 request_id 重放返回原负责人且不再次校准或推进游标',
   assert.equal(store.forward, cursorAfterFirst);
   assert.equal(store.assignments.size, 1);
   assert.equal(store.assignmentQueries, 2);
-  assert.equal(store.calibrations.length, 0);
+  assert.equal(store.calibrations.length, 1);
 });
 
 test('锚点日期解析覆盖完整日期、短日期和飞书数值日期', () => {

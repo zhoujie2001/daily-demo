@@ -760,7 +760,7 @@ test('千川与本地推混合批次分别沿用各自锚点，并在结果卡�
   assert.equal(batch.results.find(({ requestId }) => requestId === 'mixed_q_auto').assignee, '王五');
   assert.equal(batch.results.find(({ requestId }) => requestId === 'mixed_l_anchor').assignee, '王五');
   assert.equal(batch.results.find(({ requestId }) => requestId === 'mixed_l_auto').assignee, '李四');
-  assert.equal(store.calibrations.length, 0, '混合方向不能用单一校准覆盖另一方向的锚点');
+  assert.equal(store.calibrations.length, 2, '两个方向各自用版本化校准，不得互相覆盖');
 
   const resultCard = client.calls.find((call) => call.kind === 'replyCard').card;
   const rosterColumns = resultCard.body.elements.find((element) => element.tag === 'column_set');
@@ -793,7 +793,7 @@ test('混合批次仅千川有锚点时不污染本地推原有倒序游标', as
   assert.equal(batch.status, 'SUCCESS');
   assert.equal(batch.results.find(({ requestId }) => requestId === 'mixed_only_q_anchor_q_auto').assignee, '王五');
   assert.equal(batch.results.find(({ requestId }) => requestId === 'mixed_only_q_anchor_local_auto').assignee, '王五');
-  assert.equal(store.calibrations.length, 0);
+  assert.equal(store.calibrations.length, 1);
 });
 
 test('混合批次首个锚定分配在持久化前失败时，下一项继续消费该方向锚点', async () => {
@@ -1233,4 +1233,43 @@ test('跨批次首条若游标异常返回上一负责人则 fail-closed 且不�
   const completed = store.getBatch('oc_allowed', 'ad_g_duplicate_guard');
   assert.equal(completed.status, 'FAILED');
   assert.match(completed.results[0].message, /重复/);
+});
+
+
+test('CAS 故障注入：冲突后重读 sheet/durable anchor，另一批已派乙则当前派丙', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['甲', '乙', '丙'] };
+  const sheetRows = new Array(20).fill(null).map(() => ['', '', '']);
+  sheetRows[8] = ['2026-08-30', '甲', '千川'];
+  const client = new BatchClient({ sheetRows });
+  const originalAssign = store.assign.bind(store);
+  let injected = false;
+  store.assign = async (args) => {
+    if (!injected) {
+      injected = true;
+      // 模拟另一批次在当前 CAS 快照后提交“乙”。
+      store.cursor = 2;
+      sheetRows[8][1] = '乙';
+      store.assignments.set('other_batch', {
+        id: 99, assignee: '乙', direction: 'forward',
+        request_context: { sheetId: 'sheetA', businessType: '千川', projectValue: '千川', rowIndex: 9 },
+      });
+      const error = new Error('injected CAS conflict');
+      error.code = 'ASSIGNMENT_CONFLICT';
+      throw error;
+    }
+    return originalAssign(args);
+  };
+
+  const result = await handleDispatchEvent(
+    batchBody('batch_cas_anchor_refresh', [item('cas_retry_current', 10)]),
+    options(store, client),
+  );
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'batch_cas_anchor_refresh');
+  assert.equal(batch.results[0].status, 'SUCCESS');
+  assert.equal(batch.results[0].assignee, '丙');
+  assert.ok(client.calls.filter((call) => call.kind === 'read').length >= 2,
+    '冲突重试必须重新读取 sheet 与 durable anchor');
 });
