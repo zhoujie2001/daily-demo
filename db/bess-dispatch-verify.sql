@@ -23,6 +23,9 @@ declare
     ['bess_dispatch_daily_state', 'reverse_cursor', 'bigint', 'NO'],
     ['bess_dispatch_daily_state', 'off_duty', 'jsonb', 'NO'],
     ['bess_dispatch_daily_state', 'version', 'bigint', 'NO'],
+    ['bess_dispatch_daily_state', 'forward_version', 'bigint', 'NO'],
+    ['bess_dispatch_daily_state', 'reverse_version', 'bigint', 'NO'],
+    ['bess_dispatch_daily_state', 'assignment_seq', 'bigint', 'NO'],
     ['bess_dispatch_daily_state', 'expires_at', 'timestamp with time zone', 'NO'],
     ['bess_dispatch_daily_state', 'created_at', 'timestamp with time zone', 'NO'],
     ['bess_dispatch_daily_state', 'updated_at', 'timestamp with time zone', 'NO'],
@@ -40,6 +43,7 @@ declare
     ['bess_dispatch_assignments', 'request_id', 'text', 'NO'],
     ['bess_dispatch_assignments', 'assignee', 'text', 'NO'],
     ['bess_dispatch_assignments', 'direction', 'text', 'NO'],
+    ['bess_dispatch_assignments', 'assignment_seq', 'bigint', 'YES'],
     ['bess_dispatch_assignments', 'request_context', 'jsonb', 'NO'],
     ['bess_dispatch_assignments', 'created_at', 'timestamp with time zone', 'NO'],
     ['bess_dispatch_person_status', 'day_key', 'date', 'NO'],
@@ -118,6 +122,18 @@ begin
      where table_schema = 'public' and table_name = 'bess_dispatch_daily_state'
        and column_name = 'version' and column_default = '1'
   ) then v_errors := array_append(v_errors, 'daily_state.version 缺少默认值 1'); end if;
+  foreach v_name in array array['forward_version', 'reverse_version'] loop
+    if not exists (
+      select 1 from information_schema.columns
+       where table_schema = 'public' and table_name = 'bess_dispatch_daily_state'
+         and column_name = v_name and column_default = '1'
+    ) then v_errors := array_append(v_errors, format('daily_state.%I 缺少默认值 1', v_name)); end if;
+  end loop;
+  if not exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'bess_dispatch_daily_state'
+       and column_name = 'assignment_seq' and column_default = '0'
+  ) then v_errors := array_append(v_errors, 'daily_state.assignment_seq 缺少默认值 0'); end if;
   if not exists (
     select 1 from information_schema.columns
      where table_schema = 'public' and table_name = 'bess_dispatch_daily_state'
@@ -345,9 +361,9 @@ begin
 
   -- 当前全部写 RPC：固定 search_path、SECURITY DEFINER，且仅 service_role 可执行。
   foreach v_signature in array array[
-    'public.bess_assign_next(date,text,text,text,jsonb,timestamp with time zone,jsonb)',
+    'public.bess_assign_next(date,text,text,text,jsonb,timestamp with time zone,jsonb,bigint,bigint)',
     'public.bess_assign_specific(date,text,text,text,jsonb)',
-    'public.bess_calibrate_cursor(date,text,text,text,jsonb)',
+    'public.bess_calibrate_cursor(date,text,text,text,jsonb,bigint,bigint)',
     'public.bess_update_roster_status(date,text,jsonb,bigint)',
     'public.bess_initialize_ad_rosters(date,jsonb,timestamp with time zone)',
     'public.bess_replace_ad_rosters(date,jsonb,bigint,bigint)'
@@ -386,31 +402,27 @@ begin
 
   -- scope-aware 签名、返回契约与双名单/rollback 语义。
   v_function := to_regprocedure(
-    'public.bess_assign_next(date,text,text,text,jsonb,timestamp with time zone,jsonb)'
+    'public.bess_assign_next(date,text,text,text,jsonb,timestamp with time zone,jsonb,bigint,bigint)'
   );
   if v_function is not null then
     if not exists (
       select 1 from pg_catalog.pg_proc p where p.oid = v_function
-       and p.proretset and p.prorettype = 'record'::regtype and p.pronargdefaults = 3
-       and regexp_replace(
-         pg_get_expr(p.proargdefaults, 0),
-         '[[:space:]]+',
-         ' ',
-         'g'
-       ) = 'NULL::jsonb, NULL::timestamp with time zone, ''{}''::jsonb'
+       and p.proretset and p.prorettype = 'record'::regtype and p.pronargdefaults = 5
        and p.proargnames = array[
          'p_day_key','p_scope','p_request_id','p_direction','p_roster','p_expires_at','p_context',
-         'assignee','roster','direction','replayed','original_message_id'
+         'p_expected_version','p_expected_cursor_version','assignee','roster','direction','replayed',
+         'original_message_id','version','forward_version','reverse_version','assignment_seq'
        ]
-       and p.proargmodes = array['i','i','i','i','i','i','i','t','t','t','t','t']::"char"[]
+       and p.proargmodes = array['i','i','i','i','i','i','i','i','i','t','t','t','t','t','t','t','t','t']::"char"[]
        and p.proallargtypes = array[
          'date'::regtype, 'text'::regtype, 'text'::regtype, 'text'::regtype,
-         'jsonb'::regtype, 'timestamptz'::regtype, 'jsonb'::regtype,
-         'text'::regtype, 'jsonb'::regtype, 'text'::regtype, 'boolean'::regtype,
-         'text'::regtype
+         'jsonb'::regtype, 'timestamptz'::regtype, 'jsonb'::regtype, 'bigint'::regtype,
+         'bigint'::regtype, 'text'::regtype, 'jsonb'::regtype, 'text'::regtype,
+         'boolean'::regtype, 'text'::regtype, 'bigint'::regtype, 'bigint'::regtype,
+         'bigint'::regtype, 'bigint'::regtype
        ]::oid[]
     ) then
-      v_errors := array_append(v_errors, 'scope-aware bess_assign_next 输入/默认值/五列返回契约不符');
+      v_errors := array_append(v_errors, 'bess_assign_next 9 参数/版本化返回契约不符');
     end if;
     v_definition := lower(pg_get_functiondef(v_function));
     if v_definition not like '%p_scope = ''ad''%legacy_ad_cursor_unrepresentable%'
@@ -421,7 +433,7 @@ begin
     end if;
   end if;
 
-  v_function := to_regprocedure('public.bess_calibrate_cursor(date,text,text,text,jsonb)');
+  v_function := to_regprocedure('public.bess_calibrate_cursor(date,text,text,text,jsonb,bigint,bigint)');
   if v_function is not null then
     v_definition := lower(pg_get_functiondef(v_function));
     if v_definition not like '%p_scope = ''ad''%legacy_ad_cursor_unrepresentable%'
@@ -482,25 +494,18 @@ begin
     end if;
   end if;
 
-  -- 旧入口可以保留供回滚，但所有应用角色必须已撤权。
+  -- 旧 overload 必须不存在；仅 revoke 仍会让 PostgREST 在参数解析时产生歧义。
   foreach v_signature in array array[
     'public.bess_assign_next(date,text,text,jsonb,timestamp with time zone,jsonb)',
+    'public.bess_assign_next(date,text,text,text,jsonb,timestamp with time zone,jsonb)',
+    'public.bess_assign_next(date,text,text,text,jsonb,timestamp with time zone,jsonb,bigint)',
+    'public.bess_calibrate_cursor(date,text,text,jsonb)',
+    'public.bess_calibrate_cursor(date,text,text,text,jsonb)',
+    'public.bess_calibrate_cursor(date,text,text,text,jsonb,bigint)',
     'public.bess_update_roster_status(date,jsonb,bigint)'
   ] loop
-    v_function := to_regprocedure(v_signature);
-    if v_function is not null and (
-      exists (
-        select 1 from pg_catalog.pg_proc p,
-          lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
-         where p.oid = v_function and acl.grantee = 0 and acl.privilege_type = 'EXECUTE'
-      )
-      or (exists (select 1 from pg_catalog.pg_roles where rolname = 'anon')
-          and has_function_privilege('anon', v_function, 'EXECUTE'))
-      or (exists (select 1 from pg_catalog.pg_roles where rolname = 'authenticated')
-          and has_function_privilege('authenticated', v_function, 'EXECUTE'))
-      or (v_role is not null and has_function_privilege('service_role', v_function, 'EXECUTE'))
-    ) then
-      v_errors := array_append(v_errors, format('旧 RPC %s 仍可被应用角色执行', v_signature));
+    if to_regprocedure(v_signature) is not null then
+      v_errors := array_append(v_errors, format('旧 RPC overload 未 DROP：%s', v_signature));
     end if;
   end loop;
 

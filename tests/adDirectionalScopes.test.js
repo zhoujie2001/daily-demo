@@ -5,6 +5,7 @@ import { createMemoryBatchStore } from '../lib/dispatch/memory-batch-store.js';
 import { enforceSingleBatchScope } from '../lib/dispatch/dispatch-service.js';
 
 const sql = readFileSync(new URL('../db/migrations/20261005_ad_directional_scopes.sql', import.meta.url), 'utf8');
+const hardeningSql = readFileSync(new URL('../db/migrations/20261011_rpc_contract_hardening.sql', import.meta.url), 'utf8');
 
 const verification = readFileSync(new URL('../db/bess-dispatch-verify.sql', import.meta.url), 'utf8');
 
@@ -110,11 +111,12 @@ test('验收脚本精确校验枚举域并保留基础 schema/序列契约', () 
   ]) assert.match(verification, new RegExp(contract.replace(/[()]/g, '\\$&'), 'i'));
 });
 
-test('assign_next 验收精确锁定三个默认表达式和五个 OUT 类型', () => {
-  assert.match(verification, /pg_get_expr\(p\.proargdefaults, 0\)[\s\S]*?NULL::jsonb, NULL::timestamp with time zone, ''\{\}''::jsonb/i);
-  assert.match(verification, /p\.proallargtypes = array\[[\s\S]*?'date'::regtype,[\s\S]*?'jsonb'::regtype, 'timestamptz'::regtype, 'jsonb'::regtype,[\s\S]*?'text'::regtype, 'jsonb'::regtype, 'text'::regtype, 'boolean'::regtype,[\s\S]*?'text'::regtype[\s\S]*?\]::oid\[\]/i);
-  assert.match(verification, /p\.proargmodes = array\['i','i','i','i','i','i','i','t','t','t','t','t'\]::"char"\[\]/i);
-  assert.match(verification, /'assignee','roster','direction','replayed','original_message_id'/i);
+test('assign_next 验收锁定 9 参数与版本化 OUT 契约', () => {
+  assert.match(verification, /bess_assign_next\(date,text,text,text,jsonb,timestamp with time zone,jsonb,bigint,bigint\)/i);
+  assert.match(verification, /'p_expected_version','p_expected_cursor_version','assignee','roster','direction','replayed'/i);
+  assert.match(verification, /'original_message_id','version','forward_version','reverse_version','assignment_seq'/i);
+  assert.match(verification, /p\.proargmodes = array\['i','i','i','i','i','i','i','i','i','t','t','t','t','t','t','t','t','t'\]::"char"\[\]/i);
+  assert.match(verification, /旧 RPC overload 未 DROP/i);
 });
 
 test('内存契约：双 scope 名单同序、游标和 assignment 隔离、离岗与恢复全局共享', async () => {
@@ -149,4 +151,50 @@ test('跨 scope 批次 fail-closed', () => {
     (error) => error.code === 'MIXED_DISPATCH_SCOPE',
   );
   assert.equal(enforceSingleBatchScope([{ dispatchScope: 'ad_review' }, { dispatchScope: 'ad_review' }]), 'ad_review');
+});
+
+
+test('20261011 迁移物理删除全部旧 overload 并保留 9/7/4 契约', () => {
+  for (const signature of [
+    'bess_assign_next(date,text,text,jsonb,timestamptz,jsonb)',
+    'bess_assign_next(date,text,text,text,jsonb,timestamptz,jsonb)',
+    'bess_assign_next(date,text,text,text,jsonb,timestamptz,jsonb,bigint)',
+    'bess_calibrate_cursor(date,text,text,jsonb)',
+    'bess_calibrate_cursor(date,text,text,text,jsonb)',
+    'bess_calibrate_cursor(date,text,text,text,jsonb,bigint)',
+    'bess_update_roster_status(date,jsonb,bigint)',
+  ]) {
+    assert.match(hardeningSql, new RegExp(`to_regprocedure\\('public\\.' \\|\\| v_sig\\)|${signature.replace(/[()]/g, '\\$&')}`, 'i'));
+  }
+  assert.match(hardeningSql, /revoke execute[\s\S]*drop function public\.%s/i);
+  assert.match(hardeningSql, /bess_assign_next\(date,text,text,text,jsonb,timestamptz,jsonb,bigint,bigint\)/i);
+  assert.match(hardeningSql, /bess_calibrate_cursor\(date,text,text,text,jsonb,bigint,bigint\)/i);
+  assert.match(hardeningSql, /assignment_seq bigint not null default 0/i);
+  assert.match(hardeningSql, /CAS_FORWARD_CURSOR_MISMATCH/i);
+  assert.match(hardeningSql, /CAS_REVERSE_CURSOR_MISMATCH/i);
+  const replaceStart = hardeningSql.indexOf('create or replace function public.bess_replace_ad_rosters(');
+  const replaceEnd = hardeningSql.indexOf('create or replace function public.bess_assign_next(', replaceStart);
+  const replaceSql = hardeningSql.slice(replaceStart, replaceEnd);
+  assert.match(replaceSql, /forward_version\s*=\s*state\.forward_version\s*\+\s*1/i);
+  assert.match(replaceSql, /reverse_version\s*=\s*state\.reverse_version\s*\+\s*1/i);
+});
+
+test('内存派单使用方向 CAS 并原子递增 assignment_seq', async () => {
+  const store = createMemoryBatchStore();
+  await store.initializeRoster({ dayKey: '2026-10-11', roster: ['甲', '乙'], expiresAt: '2026-10-12T16:00:00Z' });
+  const first = await store.assign({
+    dayKey: '2026-10-11', requestId: 'r1', direction: 'forward', context: {},
+    expectedVersion: 1, expectedCursorVersion: 1,
+  });
+  assert.equal(first.assignment_seq, 1);
+  assert.equal(first.forward_version, 2);
+  const second = await store.assign({
+    dayKey: '2026-10-11', requestId: 'r2', direction: 'forward', context: {},
+    expectedVersion: 1, expectedCursorVersion: 2,
+  });
+  assert.equal(second.assignment_seq, 2);
+  await assert.rejects(
+    store.assign({ dayKey: '2026-10-11', requestId: 'r3', direction: 'forward', context: {}, expectedVersion: 1, expectedCursorVersion: 1 }),
+    (error) => error.code === 'ASSIGNMENT_CONFLICT',
+  );
 });
