@@ -113,3 +113,34 @@ test('本地推 JJqR2d 接入未显式传字段时不再注入 H/J/C 旧版配�
   assert.equal(fields.projectFieldId, '');
   assert.equal(fields.projectFieldName, '');
 });
+
+
+test('千川 l1ztJV 旧卡按真实表头回退到 A/粘贴日期与 N/领取人', () => {
+  const fields = validateDispatchValue(action({
+    business_type: '千川', target_category: 'qianchuan', sheet_id: 'l1ztJV',
+    date_field_id: undefined, assignee_field_id: undefined,
+  }));
+  assert.equal(fields.dateFieldId, 'A');
+  assert.equal(fields.dateFieldName, '粘贴日期');
+  assert.equal(fields.assigneeFieldId, 'N');
+  assert.equal(fields.assigneeFieldName, '领取人');
+  assert.equal(fields.projectFieldId, '');
+  assert.equal(fields.projectFieldName, '');
+  assert.equal(fields.projectValue, '');
+});
+
+test('千川 l1ztJV 接入未显式传字段时不再注入 H/J/C 旧版配置', () => {
+  const { fields } = normalizeDispatchIngest({
+    chat_id: BESS_ADDITIONAL_CHAT_ID,
+    request_id: 'qianchuan_1', request_name: '千川测试',
+    business_type: '千川', target_category: 'qianchuan',
+    sheet_url: 'https://example.com/sheet', sheet_id: 'l1ztJV', row_index: 5784,
+  });
+  assert.equal(fields.dateFieldId, 'A');
+  assert.equal(fields.dateFieldName, '粘贴日期');
+  assert.equal(fields.assigneeFieldId, 'N');
+  assert.equal(fields.assigneeFieldName, '领取人');
+  assert.equal(fields.projectFieldId, '');
+  assert.equal(fields.projectFieldName, '');
+  assert.equal(fields.projectValue, '');
+});
