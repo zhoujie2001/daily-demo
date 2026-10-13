@@ -48,7 +48,7 @@ test('Runtime Cache 异常时 fail-open，不阻断 Supabase 回退', async () =
   }), false);
 });
 
-test('QUEUED 快照明确标记尚未物化且只短暂缓存', async () => {
+test('QUEUED 快照标记队列已接受并覆盖异步物化窗口', async () => {
   const writes = [];
   const statusCache = createDispatchStatusCache({
     cache: { async get() {}, async set(...args) { writes.push(args); } },
@@ -57,7 +57,7 @@ test('QUEUED 快照明确标记尚未物化且只短暂缓存', async () => {
   const value = queuedDispatchStatus({ operationId: 'op_queue', requestIds: ['r1'] });
   await statusCache.set({ chatId: 'oc_1', batchId: 'batch_1', value });
 
-  assert.equal(value.found, false);
+  assert.equal(value.found, true);
   assert.equal(value.transient, true);
-  assert.equal(writes[0][2].ttl, 15);
+  assert.equal(writes[0][2].ttl, 60);
 });
