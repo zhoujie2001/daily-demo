@@ -85,6 +85,64 @@ test('历史 AD/游戏卡片执行时强制写入 B/姓名', () => {
   }
 });
 
+test('服务端按「表 + 业态」强制锚点只扫描派单写入人员列', () => {
+  const cases = [
+    ['qianchuan_ad', 'Vp2A6O', 'F', '回扫人'],
+    ['ehc_emergency_ad', 'Vp2A6O', 'F', '回扫人'],
+    ['qianchuan', 'l1ztJV', 'N', '领取人'],
+    ['local_promo', 'JJqR2d', 'L', '领取人'],
+    ['qianchuan', '2liLZi', 'O', '领取人'],
+    ['local_promo', 'rRYSNv', 'M', '领取人'],
+    ['qianchuan', 'TQuzLA', 'J', '执行人'],
+    ['local_promo', 'TQuzLA', 'J', '执行人'],
+    ['ehc_emergency', 'NWVztk', 'I', '跟进方'],
+  ];
+  for (const [targetCategory, sheetId, fieldId, fieldName] of cases) {
+    const normalized = enforceAssigneeFieldContract({
+      targetCategory, sheetId, assigneeFieldId: 'Z', assigneeFieldName: '相邻协作列',
+    });
+    assert.equal(normalized.assigneeFieldId, fieldId, `${targetCategory}@${sheetId} 列`);
+    assert.equal(normalized.assigneeFieldName, fieldName, `${targetCategory}@${sheetId} 列名`);
+  }
+  // 非受控表的普通卡片保持调用方字段，不误伤其它链路。
+  const untouched = enforceAssigneeFieldContract({
+    targetCategory: 'qianchuan', sheetId: 'sheetA', assigneeFieldId: 'D', assigneeFieldName: '负责人',
+  });
+  assert.equal(untouched.assigneeFieldId, 'D');
+  // 批量上下文逐 item 生效。
+  const batch = enforceAssigneeFieldContract({
+    kind: 'batch',
+    items: [
+      { targetCategory: 'qianchuan', sheetId: 'l1ztJV', assigneeFieldId: 'P' },
+      { targetCategory: 'ad', sheetId: 'review', assigneeFieldId: 'G' },
+    ],
+  });
+  assert.deepEqual(batch.items.map((item) => item.assigneeFieldId), ['N', 'B']);
+});
+
+test('旧 1.0 复盘表历史卡片按真实表头回退字段且不注入项目过滤', () => {
+  const legacyQianchuan = validateDispatchValue(action({
+    business_type: '千川', target_category: 'qianchuan', sheet_id: '2liLZi',
+    date_field_id: undefined, assignee_field_id: undefined,
+  }));
+  assert.deepEqual(
+    [legacyQianchuan.dateFieldId, legacyQianchuan.dateFieldName,
+      legacyQianchuan.assigneeFieldId, legacyQianchuan.assigneeFieldName,
+      legacyQianchuan.projectValue],
+    ['B', '粘贴时间', 'O', '领取人', ''],
+  );
+  const legacyLocal = validateDispatchValue(action({
+    business_type: '本地推', target_category: 'local_promo', sheet_id: 'rRYSNv',
+    date_field_id: undefined, assignee_field_id: undefined,
+  }));
+  assert.deepEqual(
+    [legacyLocal.dateFieldId, legacyLocal.dateFieldName,
+      legacyLocal.assigneeFieldId, legacyLocal.assigneeFieldName,
+      legacyLocal.projectValue],
+    ['B', '处理日期', 'M', '领取人', ''],
+  );
+});
+
 test('本地推 JJqR2d 旧卡按真实表头回退到 A/处理日期与 L/领取人', () => {
   const fields = validateDispatchValue(action({
     business_type: '本地推', target_category: 'local_promo', sheet_id: 'JJqR2d',
