@@ -19,7 +19,7 @@ test('服务端按 targetCategory 将 AD 拆分为两个独立 scope，且两个
     const shared = ['qianchuan_ad', 'ehc_emergency_ad'].includes(targetCategory);
     assert.deepEqual(resolveDispatchProfile({
       dispatchProfile: 'ad', businessType: 'AD', targetCategory,
-      sheetId: shared ? '288afd' : 'review', dateFieldId: shared ? 'A' : 'J',
+      sheetId: shared ? 'Vp2A6O' : 'review', dateFieldId: shared ? 'A' : 'J',
       assigneeFieldId: shared ? 'F' : 'B',
     }), { name: 'ad', scope: 'ad_review', direction: 'forward' });
   }
@@ -35,16 +35,16 @@ test('服务端按 targetCategory 将 AD 拆分为两个独立 scope，且两个
 test('客户端不能指定 scope，分类与 sheet/字段冲突 fail-closed', () => {
   assert.equal(dispatchActionValue(validateDispatchValue(action())).dispatch_scope, undefined);
   for (const overrides of [
-    { target_category: 'game_agent', sheet_id: '288afd', date_field_id: 'A', assignee_field_id: 'F' },
+    { target_category: 'game_agent', sheet_id: 'Vp2A6O', date_field_id: 'A', assignee_field_id: 'F' },
     { target_category: 'qianchuan_ad', sheet_id: 'game', date_field_id: 'J', assignee_field_id: 'B' },
     { target_category: 'ad', sheet_id: 'review', date_field_id: 'J', assignee_field_id: 'B', dispatch_profile: 'default' },
     { target_category: 'ad', sheet_id: 'review', dispatch_profile: 'custom' },
   ]) assert.throws(() => validateDispatchValue(action(overrides)), /./);
 });
 
-test('历史 AD 卡仅在 288afd+A/F 能唯一推断 ad_review，含糊卡拒绝且不回退旧 ad', () => {
+test('历史 AD 卡仅在 Vp2A6O+A/F 能唯一推断 ad_review，含糊卡拒绝且不回退旧 ad', () => {
   const fields = validateDispatchValue(action({
-    target_category: undefined, dispatch_profile: 'ad', sheet_id: '288afd',
+    target_category: undefined, dispatch_profile: 'ad', sheet_id: 'Vp2A6O',
     date_field_id: 'A', assignee_field_id: 'F',
   }));
   assert.equal(fields.targetCategory, 'qianchuan_ad');
