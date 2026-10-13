@@ -202,6 +202,37 @@ test('缓存中的旧 QUEUED 缺失快照被降级为 NOT_FOUND 且不触发 Sup
   assert.equal(result.deferred.length, 0);
 });
 
+test('缓存中的已接受 QUEUED 快照返回瞬态 SENDING', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  let storeCreated = 0;
+  const result = await invoke(
+    { chat_id: 'oc_test', batch_id: 'batch_cached_accepted' },
+    {},
+    {
+      storeFactory() { storeCreated += 1; throw new Error('must not create store'); },
+      statusCache: {
+        async get() {
+          return {
+            found: true,
+            status: 'QUEUED',
+            transient: true,
+            operation_id: 'op_cached_accepted',
+            request_ids: ['r1'],
+          };
+        },
+      },
+    },
+  );
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.status, 'SENDING');
+  assert.equal(result.body.found, true);
+  assert.equal(result.body.transient, true);
+  assert.equal(result.body.operation_id, 'op_cached_accepted');
+  assert.equal(result.headers['X-Bess-Status-Source'], 'runtime-cache');
+  assert.equal(storeCreated, 0);
+});
+
 test('status 缓存未命中才读取 Supabase 并回填终态', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   const writes = [];

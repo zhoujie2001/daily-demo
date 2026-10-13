@@ -176,6 +176,28 @@ describe('automation-send', () => {
     assert.equal(data.body.status, 'QUEUED');
   });
 
+  it('rebuilds a missing QUEUED bridge on deduplicated automation replay', async () => {
+    const writes = [];
+    const handler = createHandler({
+      publishDispatch: async () => ({ message_id: '', deduplicated: true }),
+      statusCache: {
+        async get() { return null; },
+        async set(payload) { writes.push(payload); return true; },
+      },
+    });
+    const { res, data } = mockRes();
+    await handler(mockReq({
+      automation_token: TEST_SECRET,
+      dispatch_payload: VALID_DISPATCH_PAYLOAD,
+    }), res);
+
+    assert.equal(data.statusCode, 202);
+    assert.equal(data.body.reused, true);
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].value.found, true);
+    assert.equal(writes[0].value.status, 'QUEUED');
+  });
+
   it('dry_run validates but does not queue', async () => {
     let queueCalled = false;
     const handler = createHandler({
