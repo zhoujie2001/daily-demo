@@ -641,6 +641,11 @@ test('send 首次入队写入 QUEUED 热状态，幂等重放不覆盖既有终�
         : { message_id: '', deduplicated: true };
     },
     statusCache: {
+      async get() {
+        return writes.length > 0
+          ? { found: true, status: 'SENT', operation_id: 'op_terminal' }
+          : null;
+      },
       async set(payload) { writes.push(payload); return true; },
     },
   });
@@ -652,8 +657,28 @@ test('send 首次入队写入 QUEUED 热状态，幂等重放不覆盖既有终�
   assert.equal(replay.body.reused, true);
   assert.equal(writes.length, 1);
   assert.equal(writes[0].value.status, 'QUEUED');
-  assert.equal(writes[0].value.found, false);
+  assert.equal(writes[0].value.found, true);
   assert.deepEqual(writes[0].value.request_ids, ['715430']);
+});
+
+test('send 幂等重放在热状态缺失时重建 QUEUED 桥接', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const writes = [];
+  const targetHandler = createTestHandler({
+    async publishDispatch() { return { message_id: '', deduplicated: true }; },
+    statusCache: {
+      async get() { return null; },
+      async set(payload) { writes.push(payload); return true; },
+    },
+  });
+
+  const replay = await invoke(localBody, { targetHandler });
+
+  assert.equal(replay.status, 202);
+  assert.equal(replay.body.reused, true);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].value.found, true);
+  assert.equal(writes[0].value.status, 'QUEUED');
 });
 
 test('Queue 已接受后缓存写失败仍返回 202', async () => {
