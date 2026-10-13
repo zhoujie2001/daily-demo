@@ -10,8 +10,8 @@ const actionValue = {
   request_name: 'AD 指定负责人测试',
   business_type: 'AD',
   target_category: 'qianchuan_ad',
-  sheet_url: 'https://bytedance.larkoffice.com/wiki/FjEawQNFyiDUABkCc0yc5h19nGz?sheet=288afd',
-  sheet_id: '288afd',
+  sheet_url: 'https://bytedance.larkoffice.com/wiki/N7tlw50bliGg87kk3ZmciPECnKe?sheet=Vp2A6O',
+  sheet_id: 'Vp2A6O',
   row_index: 12,
   date_field_id: 'A',
   date_field_name: '需求创建时间',
@@ -110,8 +110,8 @@ const options = (store, client) => ({
 test('指定人员按钮复用派单字段校验并保留 AD 的 A/F 列绑定', () => {
   const fields = validateSpecifyAssigneeValue(actionValue);
   assert.equal(fields.businessType, 'AD');
-  assert.equal(fields.sheetId, '288afd');
-  assert.equal(fields.sheetUrl, 'https://bytedance.larkoffice.com/sheets/QcX5sFcY0hw8w2tXxPbczs6wnog');
+  assert.equal(fields.sheetId, 'Vp2A6O');
+  assert.equal(fields.sheetUrl, 'https://bytedance.larkoffice.com/sheets/YS8FsohUyhUfxhtNnKXc6vApnUb');
   assert.equal(fields.dateFieldId, 'A');
   assert.equal(fields.assigneeFieldId, 'F');
 });
@@ -169,7 +169,7 @@ test('指定人员：创建单条需求表单并写回 AD 回扫人列', async (
   assert.match(JSON.stringify(submitted.updatedCard), /已指定负责人/);
   const write = client.calls.find((call) => call.operation === 'write');
   assert.ok(write, JSON.stringify({ submitted, calls: client.calls }));
-  assert.equal(write.sheetId, '288afd');
+  assert.equal(write.sheetId, 'Vp2A6O');
   assert.equal(write.assigneeFieldId, 'F');
   assert.equal(write.rowIndex, 12);
   assert.equal(write.assignee, '周杰');

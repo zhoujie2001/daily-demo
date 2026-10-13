@@ -122,7 +122,7 @@ test('AD 群兼容 BESS AD 分类并严格绑定 AD 应急表 A/F 字段', () =>
       chat_id: AD_DISPATCH_CHAT_ID,
       business_type: 'AD',
       target_category: targetCategory,
-      sheet_id: '288afd',
+      sheet_id: 'Vp2A6O',
       date_field_id: 'A',
       date_field_name: '需求创建时间',
       assignee_field_id: 'F',
@@ -130,7 +130,7 @@ test('AD 群兼容 BESS AD 分类并严格绑定 AD 应急表 A/F 字段', () =>
     });
     assert.equal(normalized.chatId, AD_DISPATCH_CHAT_ID);
     assert.equal(normalized.fields.targetCategory, targetCategory);
-    assert.equal(normalized.fields.sheetId, '288afd');
+    assert.equal(normalized.fields.sheetId, 'Vp2A6O');
     assert.equal(normalized.fields.dateFieldId, 'A');
     assert.equal(normalized.fields.assigneeFieldId, 'F');
   }
@@ -140,7 +140,7 @@ test('AD 群兼容 BESS AD 分类并严格绑定 AD 应急表 A/F 字段', () =>
       chat_id: AD_DISPATCH_CHAT_ID,
       business_type: 'AD',
       target_category: 'ehc_emergency_ad',
-      sheet_id: '288afd',
+      sheet_id: 'Vp2A6O',
       date_field_id: 'J',
       assignee_field_id: 'G',
     }),
@@ -156,7 +156,7 @@ test('AD 群兼容 BESS AD 分类并严格绑定 AD 应急表 A/F 字段', () =>
       ...localBody,
       business_type: 'AD',
       target_category: 'ehc_emergency_ad',
-      sheet_id: '288afd',
+      sheet_id: 'Vp2A6O',
       date_field_id: 'A',
       date_field_name: '需求创建时间',
       assignee_field_id: 'F',
@@ -292,7 +292,7 @@ test('AD 附加群只允许 AD 分类写入 AD 应急表', () => {
       chat_id: BESS_AD_ADDITIONAL_CHAT_ID,
       business_type: 'AD',
       target_category: targetCategory,
-      sheet_id: '288afd',
+      sheet_id: 'Vp2A6O',
       date_field_id: 'A',
       date_field_name: '需求创建时间',
       assignee_field_id: 'F',
@@ -300,17 +300,20 @@ test('AD 附加群只允许 AD 分类写入 AD 应急表', () => {
     });
     assert.equal(normalized.fields.targetCategory, targetCategory);
     assert.equal(normalized.fields.businessType, 'AD');
-    assert.equal(normalized.fields.sheetId, '288afd');
+    assert.equal(normalized.fields.sheetId, 'Vp2A6O');
     assert.equal(normalized.fields.dateFieldId, 'A');
     assert.equal(normalized.fields.assigneeFieldId, 'F');
   }
 
   for (const [targetCategory, businessType, sheetId, dateFieldId, assigneeFieldId] of [
     ['qianchuan', '千川', 'TQuzLA'],
-    ['qianchuan_ad', '千川', '288afd'],
+    ['qianchuan_ad', '千川', 'Vp2A6O'],
     ['ehc_emergency_ad', 'AD', 'TQuzLA', 'A', 'F'],
-    ['qianchuan_ad', 'AD', '288afd', 'H', 'F'],
-    ['ehc_emergency_ad', 'AD', '288afd', 'A', 'J'],
+    ['qianchuan_ad', 'AD', 'Vp2A6O', 'H', 'F'],
+    ['ehc_emergency_ad', 'AD', 'Vp2A6O', 'A', 'J'],
+    // 旧应急表 288afd 已切换，应急分类再投旧表必须拒绝
+    ['qianchuan_ad', 'AD', '288afd', 'A', 'F'],
+    ['ehc_emergency_ad', 'AD', '288afd', 'A', 'F'],
   ]) {
     assert.throws(
       () => normalizeDispatchIngest({
