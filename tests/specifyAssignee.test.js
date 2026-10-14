@@ -133,7 +133,8 @@ test('指定人员首次操作：先录入对应 scope 在班名单，再继续�
   assert.equal(store.pending.get('om_specify_form').request_context.kind, 'specify_assignee');
   assert.equal(client.calls.filter((call) => call.kind === 'reply').length, 2);
   assert.match(JSON.stringify(continued.updatedCard), /AD 名单已保存/);
-  assert.match(JSON.stringify(continued.updatedCard), /指定人员/);
+  const specifyFormReply = client.calls.filter((call) => call.kind === 'reply').at(-1);
+  assert.match(JSON.stringify(specifyFormReply.card), /指定.*负责人/);
 });
 
 test('指定人员首次操作：后续指定表单创建失败时名单表单保持可重试', async () => {

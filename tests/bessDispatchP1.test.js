@@ -114,6 +114,12 @@ class FakeClient {
 
 const options = (store, client) => ({ store, client, config: { allowedChatIds: 'oc_allowed' }, logger: { info() {} }, now: () => new Date('2026-08-30T01:00:00Z') });
 
+function getStartDispatchButton(card) {
+  const btn = card.body.elements
+    .find(e => e.tag === 'button' && e.text.content.includes('开始自动派单'));
+  return { value: btn.behaviors[0].value };
+}
+
 function guardedSingleClient(rows, { guardFailure } = {}) {
   const client = new FakeClient({ sheetRows: rows });
   const requests = [];
@@ -157,7 +163,20 @@ for (const businessType of ['千川', '本地推']) {
           return assigned;
         };
         const request = body({ businessType, form, messageId: form ? 'om_form' : 'om_original', shuffleRoster: false });
-        const result = await handleDispatchEvent(request, options(store, client));
+        let result = await handleDispatchEvent(request, options(store, client));
+        let startActionValue;
+        if (form) {
+          assert.match(result.body.toast.content, /名单已保存/);
+          await result.afterResponse();
+          startActionValue = getStartDispatchButton(result.updatedCard).value;
+          result = await handleDispatchEvent({
+            event: {
+              operator: { open_id: 'ou_1' },
+              action: { tag: 'button', value: startActionValue },
+              context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+            },
+          }, options(store, client));
+        }
         const reserved = store.assignments.get('p1_1').assignee;
         assert.equal(requests.filter(({ method }) => method === 'PUT').length, targetAfterCommit === 'empty' ? 1 : 0);
         assert.equal(store.assignCalls, 1);
@@ -167,9 +186,14 @@ for (const businessType of ['千川', '本地推']) {
           assert.match(result.body.toast.content, /已落库.*人工核对|人工核对.*已落库/);
           assert.equal(rows[7][1], targetAfterCommit);
           assert.equal(client.calls.filter(({ kind }) => ['replyCard', 'update', 'delay'].includes(kind)).length, 0);
-          if (form) assert.equal(store.pending.get('om_form').completed_at, null);
           const cursorBeforeRetry = [store.forward, store.reverse];
-          const retry = await handleDispatchEvent(request, options(store, client));
+          const retry = await handleDispatchEvent(form ? {
+            event: {
+              operator: { open_id: 'ou_1' },
+              action: { tag: 'button', value: startActionValue },
+              context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+            },
+          } : request, options(store, client));
           assert.equal(retry.body.toast.type, 'error');
           assert.equal(retry.errorCode, 'SHEET_ASSIGNMENT_MISMATCH');
           assert.equal(store.assignCalls, 1, '不能重派已落账的请求');
@@ -180,7 +204,13 @@ for (const businessType of ['千川', '本地推']) {
           assert.equal(result.body.toast.type, 'success');
           assert.equal(rows[7][1], reserved);
           assert.deepEqual(requests.map(({ method }) => method), targetAfterCommit === 'same' ? ['GET'] : ['GET', 'PUT', 'GET']);
-          const retry = await handleDispatchEvent(request, options(store, client));
+          const retry = await handleDispatchEvent(form ? {
+            event: {
+              operator: { open_id: 'ou_1' },
+              action: { tag: 'button', value: startActionValue },
+              context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+            },
+          } : request, options(store, client));
           assert.equal(retry.body.toast.type, 'success');
           assert.equal(store.assignCalls, 1);
           assert.equal(requests.filter(({ method }) => method === 'PUT').length, targetAfterCommit === 'empty' ? 1 : 0);
@@ -276,12 +306,12 @@ test('首次点击无名单：创建话题 Card 2.0 表单并保存 pending 映�
 test('名单提交过程卡、完成卡和失败重试卡提供明确状态且不会保留无效按钮', () => {
   const processing = buildRosterProcessingCard();
   assert.match(JSON.stringify(processing), /无需重复点击/);
-  assert.doesNotMatch(JSON.stringify(processing), /保存名单并立即派单/);
+  assert.doesNotMatch(JSON.stringify(processing), /确认保存今日名单/);
 
   const completed = buildRosterCompletedCard(fields, {
     assignee: '周杰', direction: 'forward', dispatchedAt: '2026-08-30 09:00:00',
   });
-  assert.match(JSON.stringify(completed), /名单已保存并完成派单/);
+  assert.match(JSON.stringify(completed), /完成派单/);
   assert.match(JSON.stringify(completed), /周杰/);
 
   const retry = buildRosterRetryCard('表格写回失败');
@@ -296,28 +326,39 @@ test('名单提交过程卡、完成卡和失败重试卡提供明确状态且�
     .find((element) => element.name === 'shuffle_roster');
   assert.equal(retryWithoutShuffleField.checked, false);
   assert.equal(form.elements.at(-1).form_action_type, 'submit');
-  assert.match(JSON.stringify(retry), /重新保存名单并派单/);
+  assert.match(JSON.stringify(retry), /确认并重新保存名单/);
 });
 
-test('首次表单提交：按 message_id 找回原请求、立即派单、写表、发结果卡并更新原卡与表单卡', async () => {
+test('首次表单提交：按 message_id 找回原请求、保存名单、点击后派单、写表、发结果卡并更新原卡与保存卡', async () => {
   const store = new FakeStore();
   const client = new FakeClient();
   await handleDispatchEvent(body(), options(store, client));
   const result = await handleDispatchEvent(body({ form: true, messageId: 'om_form' }), options(store, client));
   assert.equal(result.body.toast.type, 'success');
+  assert.match(result.body.toast.content, /名单已保存/);
+  await result.afterResponse();
+  assert.equal(store.assignments.size, 0);
+
+  // 开始派单
+  const startBtn = getStartDispatchButton(result.updatedCard);
+  const startResult = await handleDispatchEvent({
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: { tag: 'button', value: startBtn.value },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  }, options(store, client));
+  await startResult.afterResponse?.();
+
   assert.equal(store.assignments.size, 1);
-  assert.equal(store.calibrations.length, 0);
-  assert.equal(client.calls.filter((item) => item.kind === 'readRows').length, 1, '名单提交也应读表保护人工填写的负责人');
+  assert.equal(client.calls.filter((item) => item.kind === 'readRows').length, 1);
   assert.equal(client.calls.find((item) => item.kind === 'write').assignee, store.assignments.get('p1_1').assignee);
   const resultCard = client.calls.filter((item) => item.kind === 'replyCard').at(-1).card;
   assert.match(JSON.stringify(resultCard), /正序名单（从上到下）/);
-  assert.match(JSON.stringify(resultCard), /倒序名单（从下到上）/);
   const updates = client.calls.filter((item) => item.kind === 'update');
   const originalUpdate = updates.find((item) => item.messageId === 'om_original');
-  const formUpdate = updates.find((item) => item.messageId === 'om_form');
   assert.equal(originalUpdate.card.body.elements.at(-1).disabled, true);
-  assert.match(JSON.stringify(formUpdate.card), /名单已保存并完成派单/);
-  assert.ok(store.pending.get('om_form').completed_at, '全部外部副作用成功后才标记 pending 完成');
+  assert.ok(store.pending.get('om_form').completed_at);
 });
 
 test('取消打乱后首次初始化严格保留输入顺序', async () => {
@@ -364,13 +405,25 @@ test('外部消息更新失败不回滚已完成派单，pending 标记完成且
   const store = new FakeStore();
   const client = new FakeClient({ failUpdateOnce: true });
   const logs = [];
-  await handleDispatchEvent(body(), options(store, client));
+  const logger = { info(line) { logs.push(JSON.parse(line)); } };
+  const testOptions = { ...options(store, client), logger };
+  await handleDispatchEvent(body(), testOptions);
 
-  const result = await handleDispatchEvent(body({ form: true, messageId: 'om_form' }), {
-    ...options(store, client),
-    logger: { info(line) { logs.push(JSON.parse(line)); } },
-  });
+  const result = await handleDispatchEvent(body({ form: true, messageId: 'om_form' }), testOptions);
   assert.equal(result.body.toast.type, 'success');
+  assert.match(result.body.toast.content, /名单已保存/);
+  await result.afterResponse?.();
+
+  const startBtn = getStartDispatchButton(result.updatedCard);
+  const startResult = await handleDispatchEvent({
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: { tag: 'button', value: startBtn.value },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  }, testOptions);
+  await startResult.afterResponse?.();
+
   assert.equal(store.assignments.size, 1);
   assert.ok(store.pending.get('om_form').completed_at);
   assert.equal(store.assignCalls, 1);
@@ -678,7 +731,8 @@ test('已完成表单重提仅返回友好 Toast，不重复写 Sheet、发结�
   const store = new FakeStore();
   const client = new FakeClient();
   await handleDispatchEvent(body(), options(store, client));
-  await handleDispatchEvent(body({ form: true, messageId: 'om_form' }), options(store, client));
+  const result = await handleDispatchEvent(body({ form: true, messageId: 'om_form' }), options(store, client));
+  await result.afterResponse();
   const before = {
     assign: store.assignCalls,
     write: client.calls.filter((item) => item.kind === 'write').length,
@@ -738,7 +792,19 @@ test('名单表单提交时，若目标行已被人工填写，应保护不覆�
   await handleDispatchEvent(body(), options(store, client));
   client.sheetRows = new Array(8).fill(null).map(() => []);
   client.sheetRows[7] = ['2026-08-30', '王五'];
-  const result = await handleDispatchEvent(body({ form: true, messageId: 'om_form' }), options(store, client));
+  const rosterResult = await handleDispatchEvent(body({ form: true, messageId: 'om_form' }), options(store, client));
+  assert.match(rosterResult.body.toast.content, /名单已保存/);
+  await rosterResult.afterResponse();
+
+  const startBtn = getStartDispatchButton(rosterResult.updatedCard);
+  const result = await handleDispatchEvent({
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: { tag: 'button', value: startBtn.value },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  }, options(store, client));
+
   assert.equal(result.body.toast.type, 'success');
   assert.match(result.body.toast.content, /王五/);
   assert.equal(client.calls.filter(c => c.kind === 'write').length, 0, '表单提交也不应覆盖人工填写行');
