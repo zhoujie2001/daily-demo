@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { parseRoster, resolveShuffleRoster, secureShuffle, shanghaiDay, nextShanghaiMidnight, dispatchDirection, dispatchScope, RosterValidationError } from '../lib/dispatch/roster.js';
 import { buildRosterFormCard, buildRosterProcessingCard, buildRosterCompletedCard, buildRosterRetryCard, buildDispatchResultCard } from '../lib/lark/card-renderer.js';
 import { handleDispatchEvent } from '../lib/dispatch/dispatch-service.js';
+import { createMemoryBatchStore } from '../lib/dispatch/memory-batch-store.js';
 import { LarkApiError, LarkClient } from '../lib/lark/client.js';
 import { latestDailyAnchor, projectMatches, sheetDateDay } from '../lib/dispatch/sheet-anchor.js';
 import { validateDispatchValue } from '../lib/lark/card-actions.js';
@@ -185,7 +186,7 @@ for (const businessType of ['千川', '本地推']) {
           assert.equal(result.errorCode, 'SHEET_TARGET_CHANGED');
           assert.match(result.body.toast.content, /已落库.*人工核对|人工核对.*已落库/);
           assert.equal(rows[7][1], targetAfterCommit);
-          assert.equal(client.calls.filter(({ kind }) => ['replyCard', 'update', 'delay'].includes(kind)).length, 0);
+          assert.equal(client.calls.filter(({ kind }) => ['replyCard', 'update', 'delay'].includes(kind)).length, form ? 1 : 0);
           const cursorBeforeRetry = [store.forward, store.reverse];
           const retry = await handleDispatchEvent(form ? {
             event: {
@@ -403,7 +404,7 @@ test('打乱选项异常时拒绝初始化且保留待提交表单', async () =>
 
 test('外部消息更新失败不回滚已完成派单，pending 标记完成且记录失败操作', async () => {
   const store = new FakeStore();
-  const client = new FakeClient({ failUpdateOnce: true });
+  const client = new FakeClient();
   const logs = [];
   const logger = { info(line) { logs.push(JSON.parse(line)); } };
   const testOptions = { ...options(store, client), logger };
@@ -414,6 +415,7 @@ test('外部消息更新失败不回滚已完成派单，pending 标记完成且
   assert.match(result.body.toast.content, /名单已保存/);
   await result.afterResponse?.();
 
+  client.failUpdateOnce = true;
   const startBtn = getStartDispatchButton(result.updatedCard);
   const startResult = await handleDispatchEvent({
     event: {
@@ -1064,4 +1066,180 @@ test('目标行名单外负责人不覆盖也不持久化，下一条按上一�
   nextRequest.event.action.value.row_index = 9;
   await handleDispatchEvent(nextRequest, options(store, client));
   assert.equal(store.assignments.get('729644').assignee, '罗世坤');
+});
+
+// --- Roster Save Fix Tests (Merged) ---
+
+class RosterSaveFixFakeClient {
+  constructor() {
+    this.calls = [];
+  }
+  async updateMessageCard(id, card) {
+    this.calls.push({ kind: 'update', id, card });
+    if (this.failUpdate) throw new Error('Update failed');
+  }
+  async replyInteractiveCard(args) {
+    this.calls.push({ kind: 'replyCard', ...args });
+    return { message_id: 'om_reply' };
+  }
+  async getMessage() { return { msg_type: 'interactive', body: { content: '{}' } }; }
+  async readSheetDispatchRows(args) { return args.selectLatest([], 1); }
+  async readSheetAssignee() { return ''; }
+  async initializeRoster(args) { return { roster: args.roster, version: 1 }; }
+}
+
+const rosterSaveFixOptions = (store, client) => ({
+  store,
+  client,
+  config: { allowedChatIds: 'oc_allowed', featureEnabled: 'true' },
+  logger: {
+    info: (msg) => {
+      try {
+        const fields = JSON.parse(msg);
+        client.calls.push({ kind: 'log', ...fields });
+      } catch {
+        client.calls.push({ kind: 'log_raw', msg });
+      }
+    }
+  },
+  now: () => new Date('2026-09-03T01:00:00Z'),
+});
+
+const rosterSaveFixValidRequestContext = {
+  requestId: 'req_1',
+  requestName: '需求1',
+  businessType: '千川',
+  sheetUrl: 'https://lark.cn/sheet1',
+  sheetId: 's1',
+  rowIndex: 10,
+  dateFieldId: 'H',
+  assigneeFieldId: 'J'
+};
+
+test('名单保存修复：快路径回调包含卡片', async () => {
+  const store = createMemoryBatchStore();
+  const client = new RosterSaveFixFakeClient();
+
+  // 模拟待处理表单
+  await store.savePending({
+    form_message_id: 'om_form', request_id: 'req_1',
+    original_message_id: 'om_original', chat_id: 'oc_allowed',
+    request_context: rosterSaveFixValidRequestContext, expires_at: '2026-09-04T00:00:00Z'
+  });
+
+  const event = {
+    header: { event_id: 'evt_1' },
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: {
+        form_value: { roster_names: '张三,李四', shuffle_roster: false },
+        tag: 'dispatch_roster_form',
+      },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  };
+
+  const result = await handleDispatchEvent(event, rosterSaveFixOptions(store, client));
+  assert.equal(result.httpStatus, 200);
+  assert.ok(result.body.card, '快路径 body 应包含卡片数据');
+  assert.equal(result.body.card.type, 'raw');
+  assert.ok(result.body.card.data, '卡片数据不能为空');
+});
+
+test('名单保存修复：慢路径 afterResponse 更新表单消息', async () => {
+  const store = createMemoryBatchStore();
+  const client = new RosterSaveFixFakeClient();
+
+  await store.savePending({
+    form_message_id: 'om_form', request_id: 'req_1',
+    original_message_id: 'om_original', chat_id: 'oc_allowed',
+    request_context: rosterSaveFixValidRequestContext, expires_at: '2026-09-04T00:00:00Z'
+  });
+
+  const event = {
+    header: { event_id: 'evt_1' },
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: {
+        form_value: { roster_names: '张三,李四', shuffle_roster: false },
+        tag: 'dispatch_roster_form',
+      },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  };
+
+  const result = await handleDispatchEvent(event, rosterSaveFixOptions(store, client));
+  assert.ok(result.afterResponse, '应返回 afterResponse');
+  await result.afterResponse();
+
+  const updateCall = client.calls.find(c => c.kind === 'update');
+  assert.ok(updateCall, 'afterResponse 应触发卡片更新');
+  assert.equal(updateCall.id, 'om_form', '应更新 event.messageId 指向的表单消息');
+
+  const pending = await store.getPending('om_form', new Date('2026-09-03T01:00:00Z'), { includeCompleted: true });
+  assert.ok(pending.completed_at, '表单应被标记为已完成');
+});
+
+test('名单保存修复：更新失败时仍标记 pending 完成', async () => {
+  const store = createMemoryBatchStore();
+  const client = new RosterSaveFixFakeClient();
+  client.failUpdate = true;
+
+  await store.savePending({
+    form_message_id: 'om_form', request_id: 'req_1',
+    original_message_id: 'om_original', chat_id: 'oc_allowed',
+    request_context: rosterSaveFixValidRequestContext, expires_at: '2026-09-04T00:00:00Z'
+  });
+
+  const event = {
+    header: { event_id: 'evt_1' },
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: {
+        form_value: { roster_names: '张三,李四' },
+        tag: 'dispatch_roster_form',
+      },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  };
+
+  const result = await handleDispatchEvent(event, rosterSaveFixOptions(store, client));
+  await result.afterResponse();
+
+  const logCall = client.calls.find(c => c.kind === 'log' && c.stage === 'roster_saved_card_update_failed');
+  assert.ok(logCall, '更新失败应被记录');
+
+  const pending = await store.getPending('om_form', new Date('2026-09-03T01:00:00Z'), { includeCompleted: true });
+  assert.ok(pending.completed_at, '即使更新失败，表单也应被标记为已完成');
+});
+
+test('名单保存修复：批量名单保存流程', async () => {
+  const store = createMemoryBatchStore();
+  const client = new RosterSaveFixFakeClient();
+
+  // 模拟批量表单的 pending 状态
+  await store.savePending({
+    form_message_id: 'om_batch_form', request_id: 'batch_b1',
+    original_message_id: 'om_original', chat_id: 'oc_allowed',
+    request_context: { batchId: 'b1', items: [rosterSaveFixValidRequestContext], kind: 'batch' }, expires_at: '2026-09-04T00:00:00Z'
+  });
+
+  const event = {
+    header: { event_id: 'evt_batch' },
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: {
+        form_value: { roster_names: '王五,赵六' },
+        tag: 'dispatch_roster_form',
+      },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_batch_form' },
+    },
+  };
+
+  const result = await handleDispatchEvent(event, rosterSaveFixOptions(store, client));
+  assert.ok(result.body.card, '批量快路径 body 应包含卡片');
+
+  await result.afterResponse();
+  const updateCall = client.calls.find(c => c.kind === 'update' && c.id === 'om_batch_form');
+  assert.ok(updateCall, '批量慢路径应更新表单卡片');
 });

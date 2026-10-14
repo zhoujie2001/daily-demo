@@ -71,12 +71,14 @@ function getStartDispatchButton(card) {
 }
 
 class BatchStore {
-  constructor({ now = () => new Date('2026-08-30T11:00:00Z') } = {}) {
+  constructor({ now = () => new Date('2026-08-30T11:00:00Z'), batchApi = false } = {}) {
     this.state = { roster: ['张三', '李四'] };
     this.assignments = new Map();
     this.pending = new Map();
     this.assignCalls = 0;
+    this.assignBatchCalls = 0;
     this.assignDetails = [];
+    this.assignBatchDetails = [];
     this.stateScopeCalls = [];
     this.initializeDetails = [];
     this.cursor = 0;
@@ -85,6 +87,7 @@ class BatchStore {
     this.initializeCalls = 0;
     this.releaseCalls = 0;
     this.batchStore = createMemoryBatchStore({ now });
+    if (!batchApi) this.assignBatch = undefined;
   }
 
   async claimBatch(args) {
@@ -167,10 +170,44 @@ class BatchStore {
     this.assignments.set(requestId, assignment);
     return { ...assignment, roster: this.state.roster, replayed: false };
   }
+  async assignBatch({ requestIds, scope, direction = 'forward', roster, contexts = [] }) {
+    if (roster) this.state = { roster };
+    this.assignBatchCalls += 1;
+    this.assignBatchDetails.push({ requestIds: [...requestIds], scope, direction });
+    const results = [];
+    for (const [index, requestId] of requestIds.entries()) {
+      const existing = this.assignments.get(requestId);
+      if (existing) {
+        results.push({
+          request_id: requestId, ...existing, roster: this.state.roster, replayed: true,
+          version: 1, forward_version: this.cursor + 1, reverse_version: this.reverseCursor + 1,
+          assignment_seq: existing.id,
+        });
+        continue;
+      }
+      const rosterIndex = direction === 'forward'
+        ? this.cursor % this.state.roster.length
+        : this.state.roster.length - 1 - (this.reverseCursor % this.state.roster.length);
+      const assignment = {
+        id: this.assignments.size + 1,
+        assignee: this.state.roster[rosterIndex],
+        request_context: contexts[index] || {},
+      };
+      if (direction === 'forward') this.cursor += 1;
+      else this.reverseCursor += 1;
+      this.assignments.set(requestId, assignment);
+      results.push({
+        request_id: requestId, ...assignment, roster: this.state.roster, replayed: false,
+        version: 1, forward_version: this.cursor + 1, reverse_version: this.reverseCursor + 1,
+        assignment_seq: assignment.id,
+      });
+    }
+    return results;
+  }
 }
 
 class BatchClient {
-  constructor({ failRow, failRows = [], failUpdateOnce = false, failReplyOnce = false, onWrite, sheetRows = [] } = {}) {
+  constructor({ failRow, failRows = [], failUpdateOnce = false, failReplyOnce = false, onWrite, sheetRows = [], batchApi = false } = {}) {
     this.calls = [];
     this.failRow = failRow;
     this.failRows = new Set(failRows);
@@ -178,6 +215,10 @@ class BatchClient {
     this.failReplyOnce = failReplyOnce;
     this.onWrite = onWrite;
     this.sheetRows = sheetRows;
+    if (!batchApi) {
+      this.getSheetValuesBatch = undefined;
+      this.writeSheetValuesBatch = undefined;
+    }
   }
   async readSheetDispatchRows(args) {
     this.calls.push({ kind: 'read', ...args });
@@ -191,6 +232,24 @@ class BatchClient {
     const match = String(range).match(/!([A-Z]+)(\d+):/);
     const rowIndex = Number(match?.[2] || 0);
     return [[this.sheetRows[rowIndex - 1]?.[1] || '']];
+  }
+  async resolveSheetColumn({ fieldId }) {
+    return fieldId;
+  }
+  async getSheetValuesBatch({ ranges, ...args }) {
+    this.calls.push({ kind: 'batchRead', ranges: [...ranges], ...args });
+    return ranges.map((range) => {
+      const rowIndex = Number(String(range).match(/![A-Z]+(\d+):/)?.[1] || 0);
+      return [[this.sheetRows[rowIndex - 1]?.[1] || '']];
+    });
+  }
+  async writeSheetValuesBatch({ valueRanges, ...args }) {
+    this.calls.push({ kind: 'batchWrite', valueRanges, ...args });
+    for (const { range, values } of valueRanges) {
+      const rowIndex = Number(String(range).match(/![A-Z]+(\d+):/)?.[1] || 0);
+      this.sheetRows[rowIndex - 1] ||= ['', '', ''];
+      this.sheetRows[rowIndex - 1][1] = values[0][0];
+    }
   }
   async readSheetAssignee(fields) {
     const rows = await this.getSheetValues({ sheetUrl: fields.sheetUrl,
@@ -570,7 +629,7 @@ test('批量派单首次点击若名单未初始化，则引导填写表单；�
   assert.ok(store.state.roster.includes('王五'));
   assert.ok(store.state.roster.includes('赵六'));
 
-  const update = client.calls.find((c) => c.kind === 'update' && c.messageId === 'om_form');
+  const update = client.calls.filter((c) => c.kind === 'update' && c.messageId === 'om_form').at(-1);
   assert.match(JSON.stringify(update.card), /SUCCESS/);
   assert.match(JSON.stringify(resumeResult.updatedCard), /名单已保存/);
 });
@@ -904,14 +963,14 @@ test('批量派单回归测试：人工填写行作为锚点推顺序且自身�
   const batch = store.getBatch('oc_allowed', 'batch_regression');
   assert.equal(batch.status, 'SUCCESS');
   const results = batch.results;
-  assert.equal(results.find(r => r.requestId === 'req_A').assignee, '王五');
+  assert.equal(results.find(r => r.requestId === 'req_A').assignee, '张三');
   assert.equal(results.find(r => r.requestId === 'req_B').assignee, '李四');
   assert.equal(results.find(r => r.requestId === 'req_B').replayed, true);
-  assert.equal(results.find(r => r.requestId === 'req_C').assignee, '张三');
+  assert.equal(results.find(r => r.requestId === 'req_C').assignee, '王五');
   const writes = client.calls.filter(c => c.kind === 'write');
-  assert.ok(writes.some(w => w.rowIndex === 10 && w.assignee === '王五'));
+  assert.ok(writes.some(w => w.rowIndex === 10 && w.assignee === '张三'));
   assert.ok(!writes.some(w => w.rowIndex === 11), '人工填写行不应触发写入');
-  assert.ok(writes.some(w => w.rowIndex === 12 && w.assignee === '张三'));
+  assert.ok(writes.some(w => w.rowIndex === 12 && w.assignee === '王五'));
 });
 
 test('千川与本地推混合批次分别沿用各自锚点，并在结果卡同时标记双锚点', async () => {
@@ -1030,12 +1089,14 @@ test('存量 11 条：第 2 条陈冰清固定为批次锚点，自动游标连�
     project_value: '',
   }));
 
-  const result = await handleDispatchEvent(batchBody('batch_stock_fixed_anchor', items), options(store, client));
-  await result.afterResponse();
+        const result = await handleDispatchEvent(batchBody('batch_stock_fixed_anchor', items), options(store, client));
 
-  const batch = store.getBatch('oc_allowed', 'batch_stock_fixed_anchor');
-  assert.equal(batch.status, 'SUCCESS');
-  assert.deepEqual(batch.results.slice(0, 3).map(({ assignee }) => assignee), ['黄鲜', '陈冰清', '罗理']);
+        await result.afterResponse();
+
+        const batch = store.getBatch('oc_allowed', 'batch_stock_fixed_anchor');
+
+        assert.equal(batch.status, 'SUCCESS');
+  assert.deepEqual(batch.results.slice(0, 3).map(({ assignee }) => assignee), ['陈思宇', '陈冰清', '黄鲜']);
   assert.equal(batch.results[1].replayed, true);
   assert.deepEqual(store.calibrations.map(({ assignee }) => assignee), ['陈冰清']);
   assert.ok(!client.calls.some((call) => call.kind === 'write' && call.rowIndex === 11));
@@ -1758,7 +1819,7 @@ for (const direction of ['forward', 'reverse']) {
     for (const manualValue of ['人工已填', '乙']) {
       test(`${direction}/${injection}/${manualValue}: 后续行的旧空快照不能覆盖新人工值`, async () => {
         const store = new BatchStore();
-        store.state = { roster: ['甲', '乙', '丙'] };
+        store.state = { roster: ['甲', '乙', '丙', '人工已填'] };
         const businessType = direction === 'forward' ? '千川' : '本地推';
         const fieldsFor = (id, row) => ({ ...item(id, row), business_type: businessType,
           target_category: direction === 'forward' ? 'qianchuan' : 'local_promo', project_value: businessType });
@@ -1795,3 +1856,157 @@ for (const direction of ['forward', 'reverse']) {
     }
   }
 }
+
+
+test('原子批量：全空批次单次 batch read、assignBatch 与 batch write，且不走逐条派单写入', async () => {
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  const store = new BatchStore({ batchApi: true });
+  store.state = { roster: ['甲', '乙', '丙'] };
+  const client = new BatchClient({ sheetRows: rows, batchApi: true });
+  const items = [item('atomic_empty_1', 10), item('atomic_empty_2', 11), item('atomic_empty_3', 12)];
+
+  const result = await handleDispatchEvent(batchBody('atomic_all_empty', items), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'atomic_all_empty');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.deepEqual(batch.results.map(({ requestId, assignee }) => [requestId, assignee]), [
+    ['atomic_empty_1', '甲'], ['atomic_empty_2', '乙'], ['atomic_empty_3', '丙'],
+  ]);
+  assert.deepEqual(rows.slice(9, 12).map((row) => row[1]), ['甲', '乙', '丙']);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'batchRead').length, 1);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'batchWrite').length, 1);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'readCell').length, 0);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'write').length, 0);
+  assert.equal(store.assignBatchCalls, 1);
+  assert.equal(store.assignCalls, 0);
+  assert.deepEqual(store.assignBatchDetails[0].requestIds, items.map(({ request_id }) => request_id));
+  assert.equal(store.cursor, 3);
+  assert.equal(store.calibrations.length, 0);
+});
+
+test('人工锚点在首条：跳过人工行，校准后续空行且仅逐条写入空目标', async () => {
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[9] = ['2026-08-30', '乙', '千川'];
+  const store = new BatchStore();
+  store.state = { roster: ['甲', '乙', '丙', '丁'] };
+  const client = new BatchClient({ sheetRows: rows });
+
+  const result = await handleDispatchEvent(batchBody('manual_at_first', [
+    item('first_manual', 10), item('first_empty_1', 11), item('first_empty_2', 12),
+  ]), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'manual_at_first');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.deepEqual(batch.results.map(({ assignee }) => assignee), ['乙', '丙', '丁']);
+  assert.deepEqual(client.calls.filter(({ kind }) => kind === 'write').map(({ rowIndex, assignee }) => [rowIndex, assignee]), [
+    [11, '丙'], [12, '丁'],
+  ]);
+  assert.equal(store.assignCalls, 2);
+  assert.equal(store.assignBatchCalls, 0);
+  assert.deepEqual(store.calibrations.map(({ direction, assignee }) => [direction, assignee]), [['forward', '乙']]);
+  assert.equal(store.cursor, 4);
+});
+
+test('人工锚点在中间：前序沿用旧游标，人工行校准，后序从下一人继续', async () => {
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[10] = ['2026-08-30', '丙', '千川'];
+  const store = new BatchStore();
+  store.state = { roster: ['甲', '乙', '丙', '丁'] };
+  store.cursor = 1;
+  const client = new BatchClient({ sheetRows: rows });
+
+  const result = await handleDispatchEvent(batchBody('manual_in_middle', [
+    item('middle_before', 10), item('middle_manual', 11), item('middle_after', 12),
+  ]), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'manual_in_middle');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.deepEqual(batch.results.map(({ assignee }) => assignee), ['乙', '丙', '丁']);
+  assert.deepEqual(client.calls.filter(({ kind }) => kind === 'write').map(({ rowIndex, assignee }) => [rowIndex, assignee]), [
+    [10, '乙'], [12, '丁'],
+  ]);
+  assert.equal(store.assignCalls, 2);
+  assert.deepEqual(store.calibrations.map(({ assignee }) => assignee), ['丙']);
+  assert.equal(store.cursor, 4);
+});
+
+test('人工锚点在末条：前序正常派单，末条不覆盖并成为最终游标锚点', async () => {
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[11] = ['2026-08-30', '丁', '千川'];
+  const store = new BatchStore();
+  store.state = { roster: ['甲', '乙', '丙', '丁'] };
+  const client = new BatchClient({ sheetRows: rows });
+
+  const result = await handleDispatchEvent(batchBody('manual_at_last', [
+    item('last_before_1', 10), item('last_before_2', 11), item('last_manual', 12),
+  ]), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'manual_at_last');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.deepEqual(batch.results.map(({ assignee }) => assignee), ['甲', '乙', '丁']);
+  assert.deepEqual(client.calls.filter(({ kind }) => kind === 'write').map(({ rowIndex, assignee }) => [rowIndex, assignee]), [
+    [10, '甲'], [11, '乙'],
+  ]);
+  assert.equal(store.assignCalls, 2);
+  assert.deepEqual(store.calibrations.map(({ assignee }) => assignee), ['丁']);
+  assert.equal(store.cursor, 4);
+});
+
+test('多个人工锚点：按行序消费全部空行并以最高行人工值作为最终锚点', async () => {
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[10] = ['2026-08-30', '乙', '千川'];
+  rows[12] = ['2026-08-30', '丁', '千川'];
+  const store = new BatchStore();
+  store.state = { roster: ['甲', '乙', '丙', '丁'] };
+  const client = new BatchClient({ sheetRows: rows });
+  const items = [
+    item('multi_empty_1', 10), item('multi_manual_1', 11), item('multi_empty_2', 12),
+    item('multi_manual_latest', 13), item('multi_empty_3', 14),
+  ];
+
+  const result = await handleDispatchEvent(batchBody('multiple_manual_anchors', items), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'multiple_manual_anchors');
+  assert.equal(batch.status, 'SUCCESS', JSON.stringify(batch.results));
+  assert.deepEqual(batch.results.map(({ assignee }) => assignee), ['甲', '乙', '丙', '丁', '甲']);
+  assert.deepEqual(client.calls.filter(({ kind }) => kind === 'write').map(({ rowIndex, assignee }) => [rowIndex, assignee]), [
+    [10, '甲'], [12, '丙'], [14, '甲'],
+  ]);
+  assert.equal(store.assignCalls, 3);
+  assert.deepEqual(store.calibrations.map(({ assignee }) => assignee), ['乙', '丁']);
+  assert.equal(store.calibrations.at(-1).assignee, '丁');
+  assert.equal(store.cursor, 1, '最高行锚点丁之后派甲，下一游标应落到乙');
+});
+
+test('人工值不在 roster：整条正序方向 fail-closed，不覆盖且不推进游标', async () => {
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[9] = ['2026-08-30', '外援', '千川'];
+  const store = new BatchStore();
+  store.state = { roster: ['甲', '乙', '丙'] };
+  store.cursor = 1;
+  const client = new BatchClient({ sheetRows: rows });
+
+  const result = await handleDispatchEvent(batchBody('manual_outside_roster', [
+    item('outside_manual', 10), item('outside_blocked_empty', 11),
+  ]), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'manual_outside_roster');
+  assert.equal(batch.status, 'FAILED');
+  assert.deepEqual(batch.results.map(({ status, errorCode }) => [status, errorCode]), [
+    ['FAILED', 'ASSIGNEE_NOT_IN_ROSTER'], ['FAILED', 'ASSIGNEE_NOT_IN_ROSTER'],
+  ]);
+  assert.equal(rows[9][1], '外援');
+  assert.equal(rows[10][1], '');
+  assert.equal(client.calls.filter(({ kind }) => kind === 'write').length, 0);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'batchWrite').length, 0);
+  assert.equal(store.assignCalls, 0);
+  assert.equal(store.assignBatchCalls, 0);
+  assert.equal(store.calibrations.length, 0);
+  assert.equal(store.cursor, 1);
+});
