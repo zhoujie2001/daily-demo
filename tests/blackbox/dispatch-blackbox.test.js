@@ -22,7 +22,7 @@ const cases = [
   ['TC-015', 'tests/bessDispatchP1.test.js', '同 request_id 重放返回原负责人'],
   ['TC-016', 'tests/batchDispatch.test.js', '同 batch_id 并发重复点击不重复派单'],
   ['TC-017', 'tests/batchDispatch.test.js', '重放只跳过 SUCCESS，FAILED 使用既有 assignment 重试'],
-  ['TC-018', 'tests/batchDispatch.test.js', '名单表单 FAILED 显示红色结果且不完成 pending'],
+  ['TC-018', 'tests/batchDispatch.test.js', '保存名单后开始派单 FAILED 显示红色结果'],
   ['TC-019', 'tests/batchDispatch.test.js', 'PARTIAL→SUCCESS 重试更新同一话题结果卡'],
   ['TC-020', 'tests/batchDispatch.test.js', '旧话题结果卡更新失败时补发最终结果卡'],
   ['TC-021', 'tests/bessDispatchP1.test.js', '电子表格按列字母写入后 GET 回读，不一致即失败'],

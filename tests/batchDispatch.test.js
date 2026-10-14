@@ -64,6 +64,12 @@ function specifyBody(fields, { submit = false, assignee = '周杰' } = {}) {
   };
 }
 
+function getStartDispatchButton(card) {
+  const btn = card.body.elements
+    .find(e => e.tag === 'button' && e.text.content.includes('开始自动派单'));
+  return { value: btn.behaviors[0].value };
+}
+
 class BatchStore {
   constructor({ now = () => new Date('2026-08-30T11:00:00Z') } = {}) {
     this.state = { roster: ['张三', '李四'] };
@@ -544,18 +550,29 @@ test('批量派单首次点击若名单未初始化，则引导填写表单；�
   };
   const resumeResult = await handleDispatchEvent(formBody, options(store, client));
   assert.equal(resumeResult.httpStatus, 200);
-  assert.match(resumeResult.body.toast.content, /受理/);
-
+  assert.match(resumeResult.body.toast.content, /名单已保存/);
   await resumeResult.afterResponse();
-  assert.equal(store.assignCalls, 2);
+  assert.equal(store.assignCalls, 0);
   assert.equal(store.state.roster.length, 2);
+
+  // 3. Start Dispatch
+  const startBtn = getStartDispatchButton(resumeResult.updatedCard);
+  const startResult = await handleDispatchEvent({
+    event: {
+      operator: { open_id: 'ou_operator' },
+      action: { tag: 'button', value: startBtn.value },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  }, options(store, client));
+  await startResult.afterResponse();
+
+  assert.equal(store.assignCalls, 2);
   assert.ok(store.state.roster.includes('王五'));
   assert.ok(store.state.roster.includes('赵六'));
 
-  const update = client.calls.find((c) => c.kind === 'update' && c.messageId === 'om_batch');
+  const update = client.calls.find((c) => c.kind === 'update' && c.messageId === 'om_form');
   assert.match(JSON.stringify(update.card), /SUCCESS/);
-  const formUpdate = client.calls.find((c) => c.kind === 'update' && c.messageId === 'om_form');
-  assert.match(JSON.stringify(formUpdate.card), /名单已保存并完成派单/);
+  assert.match(JSON.stringify(resumeResult.updatedCard), /名单已保存/);
 });
 
 
@@ -576,7 +593,17 @@ test('首次名单提交遇到人工已派单行时先初始化名单，再校�
       context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
     },
   }, options(store, client));
+  assert.match(result.body.toast.content, /名单已保存/);
   await result.afterResponse();
+  const startBtn = getStartDispatchButton(result.updatedCard);
+  const startResult = await handleDispatchEvent({
+    event: {
+      operator: { open_id: 'ou_operator' },
+      action: { tag: 'button', value: startBtn.value },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  }, options(store, client));
+  await startResult.afterResponse();
 
   const batch = store.getBatch('oc_allowed', 'batch_manual_first_init');
   assert.equal(batch.status, 'SUCCESS');
@@ -613,64 +640,212 @@ test('重复 roster callback 复用既有 batch pending/form，不重复回复�
   assert.equal(store.pending.size, 1);
 });
 
-test('名单表单 PARTIAL 显示橙色真实结果且保持 pending，重试只执行失败项并在 SUCCESS 后完成', async () => {
+test('保存名单后开始派单 PARTIAL 显示橙色真实结果，重试只执行失败项并在 SUCCESS 后更新卡片', async () => {
+
   const store = new BatchStore();
+
   store.state = null;
+
   const client = new BatchClient({ failRow: 11 });
-  const body = batchBody('batch_form_partial');
+
+  const body = batchBody('batch_flow_partial');
+
   await handleDispatchEvent(body, options(store, client));
+
   const formBody = {
+
     header: { event_id: 'evt_partial_form' },
+
     event: {
+
       operator: { open_id: 'ou_operator' },
+
       action: { tag: 'dispatch_roster_submit', form_value: { roster_names: '王五, 赵六' } },
+
       context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+
     },
+
   };
-  const first = await handleDispatchEvent(formBody, options(store, client));
-  await first.afterResponse();
+
+    const first = await handleDispatchEvent(formBody, options(store, client));
+
+    assert.match(first.body.toast.content, /名单已保存/);
+
+    await first.afterResponse();
+
+    assert.ok(store.pending.get('om_form').completed_at, '表单提交后即完成');
+
+
+
+
+
+  // 开始派单
+
+  const startBtn = getStartDispatchButton(first.updatedCard);
+
+  const startResult = await handleDispatchEvent({
+
+    event: {
+
+      operator: { open_id: 'ou_operator' },
+
+      action: { tag: 'button', value: startBtn.value },
+
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+
+    },
+
+  }, options(store, client));
+
+  await startResult.afterResponse();
+
+
+
   const partialCard = client.calls.filter((call) => call.kind === 'update' && call.messageId === 'om_form').at(-1).card;
+
   assert.equal(partialCard.header.template, 'orange');
+
   assert.match(JSON.stringify(partialCard), /PARTIAL/);
-  assert.doesNotMatch(JSON.stringify(partialCard), /派单结果已写回台账|批量处理完成/);
-  assert.equal(store.pending.get('om_form').completed_at, undefined);
+
   assert.equal(store.assignCalls, 2);
 
+
+
+  // 重试失败项
   client.failRow = undefined;
-  const retry = await handleDispatchEvent(formBody, options(store, client));
-  await retry.afterResponse();
-  const successCard = client.calls.filter((call) => call.kind === 'update' && call.messageId === 'om_form').at(-1).card;
-  assert.equal(successCard.header.template, 'green');
-  assert.match(JSON.stringify(successCard), /派单结果已写回台账/);
-  assert.ok(store.pending.get('om_form').completed_at);
-  assert.equal(store.assignCalls, 3);
-});
-
-
-test('名单表单 FAILED 显示红色结果且不完成 pending', async () => {
-  const store = new BatchStore();
-  store.state = null;
-  const client = new BatchClient({ failRows: [10, 11] });
-  await handleDispatchEvent(batchBody('batch_form_failed'), options(store, client));
-  const result = await handleDispatchEvent({
-    header: { event_id: 'evt_failed_form' },
+  const retryBtn = partialCard.body.elements.find(e => e.tag === 'button' && e.text.content.includes('重试失败项'));
+  const retryResult = await handleDispatchEvent({
     event: {
       operator: { open_id: 'ou_operator' },
-      action: { tag: 'dispatch_roster_submit', form_value: { roster_names: '王五, 赵六' } },
+      action: { tag: 'button', value: retryBtn.value },
       context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
     },
   }, options(store, client));
-  await result.afterResponse();
-  const card = client.calls.filter((call) => call.kind === 'update' && call.messageId === 'om_form').at(-1).card;
-  assert.equal(card.header.template, 'red');
-  assert.match(JSON.stringify(card), /FAILED/);
-  assert.doesNotMatch(JSON.stringify(card), /派单结果已写回台账|批量处理完成/);
-  const retryButton = card.body.elements.at(-1);
-  assert.equal(retryButton.disabled, false);
-  assert.equal(retryButton.value.batch_id, 'batch_form_failed');
-  assert.match(retryButton.text.content, /重试失败项/);
-  assert.equal(store.pending.get('om_form').completed_at, undefined);
+
+
+
+
+
+  await retryResult.afterResponse();
+
+
+
+    const successCard = client.calls.filter((call) => call.kind === 'update' && call.messageId === 'om_form').at(-1).card;
+
+
+
+    assert.equal(successCard.header.template, 'green');
+
+
+
+        assert.match(JSON.stringify(successCard), /SUCCESS/);
+
+
+
+        assert.equal(store.assignCalls, 3, '重试失败项会增加一次 assignCall');
+
+
+
+
+
+
+
+
+
 });
+
+
+
+test('保存名单后开始派单 FAILED 显示红色结果，重试更新同一张卡片', async () => {
+
+  const store = new BatchStore();
+
+  store.state = null;
+
+  const client = new BatchClient({ failRows: [10, 11] });
+
+  await handleDispatchEvent(batchBody('batch_flow_failed'), options(store, client));
+
+    const rosterResult = await handleDispatchEvent({
+
+      header: { event_id: 'evt_failed_form' },
+
+      event: {
+
+        operator: { open_id: 'ou_operator' },
+
+        action: { tag: 'dispatch_roster_submit', form_value: { roster_names: '王五, 赵六' } },
+
+        context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+
+      },
+
+    }, options(store, client));
+
+    await rosterResult.afterResponse();
+
+
+
+    const startBtn = getStartDispatchButton(rosterResult.updatedCard);
+
+
+
+  const startResult = await handleDispatchEvent({
+
+    event: {
+
+      operator: { open_id: 'ou_operator' },
+
+      action: { tag: 'button', value: startBtn.value },
+
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+
+    },
+
+  }, options(store, client));
+
+  await startResult.afterResponse();
+
+
+
+    const card = client.calls.filter((call) => call.kind === 'update' && call.messageId === 'om_form').at(-1).card;
+
+
+
+    assert.equal(card.header.template, 'red');
+
+
+
+    assert.match(JSON.stringify(card), /FAILED/);
+
+
+
+    const retryButton = card.body.elements.find(e => e.tag === 'button' && e.text.content.includes('重试失败项'));
+
+
+
+    assert.ok(retryButton);
+
+
+
+    assert.equal(retryButton.disabled, false);
+
+
+
+    assert.equal(retryButton.value.batch_id, 'batch_flow_failed');
+
+
+
+  });
+
+
+
+
+
+
+
+
 
 test('飞书错误日志脱敏 Token、Secret、邮箱和手机号', () => {
   const message = 'Bearer abc/DEF+ghi==TAIL token=tok_123 secret:sec_456 user@example.com 13800138000';
@@ -1161,7 +1336,15 @@ test('旧 pending 批次表单恢复时逐项规范化 profile：AD 游戏使用
         context: { open_chat_id: 'oc_allowed', open_message_id: `om_legacy_${entry.label}` },
       },
     }, options(store, client));
-    await result.afterResponse();
+    const startBtn = getStartDispatchButton(result.updatedCard);
+    const startResult = await handleDispatchEvent({
+      event: {
+        operator: { open_id: 'ou_operator' },
+        action: { tag: 'button', value: startBtn.value },
+        context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+      },
+    }, options(store, client));
+    await startResult.afterResponse();
 
     assert.equal(store.initializeDetails[0].scope, entry.expectedScope, `${entry.label} 初始化 scope`);
     assert.deepEqual(
