@@ -240,7 +240,11 @@ describe('P1 Reliability & Handoff Recovery', () => {
   it('9. Base pull：默认 disabled 且应具备日期隔离', async () => {
     const { res, data } = mockRes();
     process.env.BESS_BASE_PULL_ENABLED = 'false';
-    await pullHandler(mockReq({}), res);
+    process.env.CRON_SECRET = 'test-cron-secret';
+    const req = mockReq({});
+    req.method = 'GET';
+    req.headers.authorization = 'Bearer test-cron-secret';
+    await pullHandler(req, res);
     assert.equal(data.body.message, 'disabled');
   });
 
