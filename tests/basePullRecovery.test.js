@@ -63,28 +63,28 @@ test('FAILED 只有可证明无 HTTP 回执且所有回执字段为空才 eligib
     'AUTO_RETRY_REARM_AFTER_HTTP_NO_RESPONSE',
   ]) {
     assert.deepEqual(basePullEligibility(record({
-      Status: 'FAILED', error_detail: errorDetail, operation_id: '', http_status: '', items_accepted: '',
+      automation_status: 'FAILED', error_detail: errorDetail, operation_id: '', http_status: '', items_accepted: '',
     })), { eligible: true, status: 'FAILED', recoveryReason: errorDetail });
   }
-  assert.equal(basePullEligibility(record({ Status: 'FAILED', error_detail: 'BUSINESS_REJECTED' })).eligible, false);
+  assert.equal(basePullEligibility(record({ automation_status: 'FAILED', error_detail: 'BUSINESS_REJECTED' })).eligible, false);
   assert.equal(basePullEligibility(record({
-    Status: 'FAILED', error_detail: 'HTTP_HANDOFF_TIMEOUT_AFTER_SINGLE_RETRY', http_status: 500,
+    automation_status: 'FAILED', error_detail: 'HTTP_HANDOFF_TIMEOUT_AFTER_SINGLE_RETRY', http_status: 500,
   })).eligible, false);
   assert.equal(basePullEligibility(record({
-    Status: 'FAILED', error_detail: 'HTTP_HANDOFF_TIMEOUT_AFTER_SINGLE_RETRY', items_accepted: 0,
+    automation_status: 'FAILED', error_detail: 'HTTP_HANDOFF_TIMEOUT_AFTER_SINGLE_RETRY', items_accepted: 0,
   })).eligible, false);
   assert.equal(basePullEligibility(record({
-    Status: 'FAILED', error_detail: 'HTTP_HANDOFF_TIMEOUT_AFTER_SINGLE_RETRY', operation_id: 'existing-op',
+    automation_status: 'FAILED', error_detail: 'HTTP_HANDOFF_TIMEOUT_AFTER_SINGLE_RETRY', operation_id: 'existing-op',
   })).eligible, false);
-  assert.equal(basePullEligibility(record({ Status: 'PENDING', DispatchOperationID: 'existing-op' })).eligible, false);
+  assert.equal(basePullEligibility(record({ automation_status: 'PENDING', operation_id: 'existing-op' })).eligible, false);
 });
 
 test('Base query 包含严格 FAILED timeout 候选，普通 FAILED 与已有 operation 二次过滤跳过', async () => {
   let queryFilter = '';
   let registrations = 0;
   const records = [
-    record({ Status: 'FAILED', error_detail: 'BUSINESS_REJECTED' }),
-    { ...record({ Status: 'FAILED', error_detail: 'HTTP_HANDOFF_TIMEOUT_AFTER_SINGLE_RETRY', operation_id: 'op-old' }), record_id: 'rec-op' },
+    record({ automation_status: 'FAILED', error_detail: 'BUSINESS_REJECTED' }),
+    { ...record({ automation_status: 'FAILED', error_detail: 'HTTP_HANDOFF_TIMEOUT_AFTER_SINGLE_RETRY', operation_id: 'op-old' }), record_id: 'rec-op' },
   ];
   const result = await runBasePull({
     enabled: true, appToken: 'app', tableId: 'table',
@@ -95,8 +95,8 @@ test('Base query 包含严格 FAILED timeout 候选，普通 FAILED 与已有 op
     } },
     storeFactory: () => ({ async registerDispatchHandoff() { registrations += 1; } }),
   });
-  assert.match(queryFilter, /Status\]="PENDING"/);
-  assert.match(queryFilter, /Status\]="FAILED"/);
+  assert.match(queryFilter, /automation_status\]="PENDING"/);
+  assert.match(queryFilter, /automation_status\]="FAILED"/);
   assert.match(queryFilter, /HTTP_HANDOFF_TIMEOUT_AFTER_SINGLE_RETRY/);
   assert.equal(registrations, 0);
   assert.deepEqual(result.body.results.map((item) => item.reason), [
@@ -120,7 +120,7 @@ test('FAILED timeout 恢复复用原 chat/batch/record 与确定 operation，同
   const client = { async request(method, path, options) {
     if (method === 'PATCH') { patches.push({ path, options }); return {}; }
     return { data: { items: [record({
-      Status: 'FAILED', error_detail: 'HTTP_HANDOFF_TIMEOUT_AFTER_SINGLE_RETRY',
+      automation_status: 'FAILED', error_detail: 'HTTP_HANDOFF_TIMEOUT_AFTER_SINGLE_RETRY',
       operation_id: '', http_status: '', items_accepted: '',
     })] } };
   } };
@@ -156,7 +156,7 @@ test('同一 Base record 并发仅 publish claim 获得者处理', async () => {
   };
   const client = { async request(method) {
     if (method === 'PATCH') return {};
-    return { data: { items: [record({ Status: 'PENDING' })] } };
+    return { data: { items: [record({ automation_status: 'PENDING' })] } };
   } };
   const options = {
     enabled: true, appToken: 'app', tableId: 'table', client, storeFactory: () => store,
@@ -173,7 +173,7 @@ test('UNKNOWN handoff 不回写 Base；只有 QUEUED/SENT 可写 INGESTED', asyn
       enabled: true, appToken: 'app', tableId: 'table',
       client: { async request(method) {
         if (method === 'PATCH') { patches += 1; return {}; }
-        return { data: { items: [record({ Status: 'PENDING' })] } };
+        return { data: { items: [record({ automation_status: 'PENDING' })] } };
       } },
       storeFactory: () => ({
         async registerDispatchHandoff() { return { outcome: 'REUSED', status }; },
