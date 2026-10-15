@@ -531,6 +531,36 @@ test('failIngestBatch 以租约 CAS 持久化 FAILED', async () => {
   assert.equal(body.request_context.errorCode, 'LARK_TIMEOUT');
 });
 
+test('registerDispatchHandoff 通过 RPC 原子登记意图', async () => {
+  const { store, calls } = setup([[{ outcome: 'ACCEPTED', status: 'HANDOFF_PENDING', operation_id: 'op1' }]]);
+  const result = await store.registerDispatchHandoff({
+    chatId: 'c1', batchId: 'b1', fingerprint: 'f1', requestIds: ['r1'], operationId: 'op1',
+    source: 'src', expiresAt: '2026-10-22T00:00:00Z', now: new Date('2026-10-15T00:00:00Z'),
+  });
+  assert.equal(result.outcome, 'ACCEPTED');
+  assert.match(calls[0].url, /rpc\/bess_register_dispatch_handoff$/);
+  const body = JSON.parse(calls[0].options.body);
+  assert.equal(body.p_fingerprint, 'f1');
+});
+
+test('markDispatchHandoffUnknown 更新状态为 ACCEPTED_UNKNOWN', async () => {
+  const { store, calls } = setup([[]]);
+  await store.markDispatchHandoffUnknown({
+    chatId: 'c1', batchId: 'b1', now: new Date('2026-10-15T00:00:00Z'),
+    nextReconcileAt: new Date('2026-10-15T00:01:00Z'),
+  });
+  assert.match(calls[0].url, /rpc\/bess_mark_dispatch_handoff_unknown$/);
+  const body = JSON.parse(calls[0].options.body);
+  assert.equal(body.p_next_reconcile_at, '2026-10-15T00:01:00.000Z');
+});
+
+test('confirmDispatchHandoff 更新状态为 QUEUED', async () => {
+  const { store, calls } = setup([[]]);
+  await store.confirmDispatchHandoff({
+    chatId: 'c1', batchId: 'b1', operationId: 'op1', now: new Date('2026-10-15T00:00:00Z'),
+  });
+  assert.match(calls[0].url, /rpc\/bess_confirm_dispatch_handoff$/);
+});
 
 test('outbox store 通过 RPC 入队、claim、complete 和 retry', async () => {
   const { store, calls } = setup([
