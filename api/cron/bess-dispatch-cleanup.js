@@ -14,7 +14,7 @@ function matches(actual, expected) {
 export function createDispatchRecoveryHandler({
   storeFactory = () => createSupabaseDispatchStore(),
   cleanup = (store, now) => store.cleanupExpired(now),
-  recoverBasePull = async (store) => (await runBasePull({ store })).body,
+  recoverBasePull = async (store) => (await runBasePull({ store, enforceHistoryIsolation: true })).body,
   recoverHandoffs = (store) => runHandoffReconciliation({ store, limit: 20 }),
   recoverOutbox = (store) => runDispatchOutbox({ store, limit: 3 }),
   recoverWritebacks = (store) => runPendingWritebacks({ store, limit: 20 }),
