@@ -1,59 +1,81 @@
 import process from 'node:process';
+import { Buffer } from 'node:buffer';
+import { timingSafeEqual, randomUUID } from 'node:crypto';
 import { createSupabaseDispatchStore } from '../../lib/dispatch/supabase-store.js';
 import { LarkClient } from '../../lib/lark/client.js';
 
-const larkClient = new LarkClient({
-  appId: () => process.env.LARK_APP_ID,
-  appSecret: () => process.env.LARK_APP_SECRET,
-});
+function authorized(req, secret) {
+  const actual = String(req?.headers?.authorization || '').replace(/^Bearer\s+/i, '');
+  const left = Buffer.from(actual);
+  const right = Buffer.from(String(secret || ''));
+  return right.length > 0 && left.length === right.length && timingSafeEqual(left, right);
+}
 
-export default async function handler(req, res) {
-  const store = createSupabaseDispatchStore();
-  const now = new Date();
-  
-  const appToken = process.env.BESS_BASE_APP_TOKEN;
-  const tableId = process.env.BESS_BASE_TABLE_ID;
-  if (!appToken || !tableId) {
-    return res.status(500).json({ ok: false, error: 'BESS_BASE_APP_TOKEN or BESS_BASE_TABLE_ID not configured' });
-  }
+function retryDelayMs(attempt) {
+  return Math.min(6 * 60 * 60_000, 5 * 60_000 * (2 ** Math.max(0, Number(attempt || 0))));
+}
 
-  try {
-    // 1. Scan for pending writebacks
-    // We'll use a Supabase query to find rows with pendingWritebacks in request_context
-    // Since we don't have a specific RPC to list these yet, we use a raw request if possible
-    // Or we just scan recent pending forms.
-    const rows = await store.listHandoffsToReconcile({ now, limit: 100 });
-    const writebackTargets = rows.filter(r => r.context.pendingWritebacks && Object.keys(r.context.pendingWritebacks).length > 0);
-    
-    const results = [];
-    for (const target of writebackTargets) {
-      const { context } = target;
-      const { pendingWritebacks } = context;
-      
-      for (const [recordId, _info] of Object.entries(pendingWritebacks)) {
+export function createWritebackRetryHandler({
+  storeFactory = () => createSupabaseDispatchStore(),
+  client = new LarkClient({
+    appId: () => process.env.LARK_APP_ID,
+    appSecret: () => process.env.LARK_APP_SECRET,
+  }),
+  secret = process.env.CRON_SECRET,
+  appToken = process.env.BESS_BASE_APP_TOKEN,
+  tableId = process.env.BESS_BASE_TABLE_ID,
+  now = () => new Date(),
+} = {}) {
+  return async function handler(req, res) {
+    if (req?.method !== 'GET') {
+      res.setHeader('Allow', 'GET');
+      return res.status(405).json({ ok: false, error: 'Method not allowed' });
+    }
+    if (!authorized(req, secret)) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    if (!appToken || !tableId) {
+      return res.status(500).json({ ok: false, error: 'Base writeback is not configured' });
+    }
+
+    const store = storeFactory();
+    const current = now();
+    const workerToken = randomUUID();
+    try {
+      const tasks = await store.claimPendingWritebacks({
+        workerToken, now: current, leaseSeconds: 60, limit: 100,
+      });
+      const results = [];
+      for (const task of tasks) {
+        const { formMessageId, recordId, operationId, attempt } = task;
         try {
-          // Attempt writeback to Base
-          await larkClient.request('PATCH', `/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/records/${recordId}`, {
+          await client.request('PATCH', `/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/records/${recordId}`, {
             body: {
               fields: {
                 Status: 'INGESTED',
-                DispatchOperationID: context.operationId
-              }
-            }
+                DispatchOperationID: operationId,
+              },
+            },
           });
-          
-          // Clear pending writeback in store
-          // We need a way to clear it. For now, we'll just log success.
-          // In a real app, you'd call a 'clearWritebackFailure' RPC.
-          results.push({ recordId, ok: true });
-        } catch (e) {
-          results.push({ recordId, ok: false, error: e.message });
+          const completed = await store.completeWriteback({ formMessageId, recordId, workerToken });
+          results.push({ recordId, ok: true, reused: completed.reused === true });
+        } catch (error) {
+          const failure = await store.failClaimedWriteback({
+            formMessageId, recordId, workerToken,
+            errorCode: error?.code || 'BASE_WRITEBACK_FAILED',
+            now: current,
+            nextRetryAt: new Date(current.getTime() + retryDelayMs(attempt)),
+          });
+          results.push({
+            recordId, ok: false,
+            ownership_lost: failure.ownershipLost === true,
+            error_code: error?.code || 'BASE_WRITEBACK_FAILED',
+          });
         }
       }
+      return res.status(200).json({ ok: true, claimed: tasks.length, results });
+    } catch (error) {
+      return res.status(503).json({ ok: false, error_code: error?.code || 'WRITEBACK_RETRY_UNAVAILABLE' });
     }
-
-    return res.status(200).json({ ok: true, results });
-  } catch (error) {
-    return res.status(500).json({ ok: false, error: error.message });
-  }
+  };
 }
+
+export default createWritebackRetryHandler();
