@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createAutomationSendHandler } from '../lib/dispatch/api/automation-send.js';
-import pullHandler from '../api/cron/bess-pull-base.js';
+import pullHandler from '../lib/dispatch/api/pull-base.js';
 import { createSupabaseDispatchStore } from '../lib/dispatch/supabase-store.js';
 
 const TEST_SECRET = 'test-secret';

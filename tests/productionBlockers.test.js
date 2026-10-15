@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { createHash, createHmac } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import test from 'node:test';
-import { createHandoffReconcileHandler } from '../api/cron/bess-handoff-reconcile.js';
-import { createBasePullHandler } from '../api/cron/bess-pull-base.js';
-import { createWritebackRetryHandler } from '../api/cron/bess-writeback-retry.js';
+import dispatchActionHandler from '../api/dispatch/[action].js';
+import { createHandoffReconcileHandler } from '../lib/dispatch/api/handoff-reconcile.js';
+import { createBasePullHandler } from '../lib/dispatch/api/pull-base.js';
+import { createWritebackRetryHandler } from '../lib/dispatch/api/writeback-retry.js';
 import { createAutomationSendHandler } from '../lib/dispatch/api/automation-send.js';
 import { createDispatchStatusHandler } from '../lib/dispatch/api/status.js';
 import { createSupabaseDispatchStore } from '../lib/dispatch/supabase-store.js';
@@ -23,6 +24,29 @@ function response() {
 function cronRequest(secret = '') {
   return { method: 'GET', headers: secret ? { authorization: `Bearer ${secret}` } : {} };
 }
+
+test('cron 动作复用 dispatch 动态函数且部署函数数不超过 Hobby 限额', async () => {
+  for (const action of ['pull-base', 'handoff-reconcile', 'writeback-retry']) {
+    const { result, res } = response();
+    await dispatchActionHandler({ ...cronRequest(), query: { action } }, res);
+    assert.equal(result.status, 401, `${action} 必须继续 fail-closed`);
+  }
+
+  const apiFiles = (await readdir(new URL('../api', import.meta.url), { recursive: true }))
+    .map((file) => String(file).replaceAll('\\', '/'))
+    .filter((file) => file.endsWith('.js'));
+  const ignored = (await readFile(new URL('../.vercelignore', import.meta.url), 'utf8'))
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('api/') && line.endsWith('.js'))
+    .map((line) => line.slice('api/'.length));
+  const deployedFunctions = apiFiles.filter((file) => !ignored.includes(file));
+
+  assert.equal(apiFiles.includes('cron/bess-pull-base.js'), false);
+  assert.equal(apiFiles.includes('cron/bess-handoff-reconcile.js'), false);
+  assert.equal(apiFiles.includes('cron/bess-writeback-retry.js'), false);
+  assert.ok(deployedFunctions.length <= 12, `Vercel functions=${deployedFunctions.length}, expected <= 12`);
+});
 
 test('Base pull 强制 GET 与 CRON_SECRET，缺 secret 时 fail-closed', async () => {
   const handler = createBasePullHandler({ secret: '', enabled: false });
@@ -426,7 +450,11 @@ test('迁移会 materialize handoff、校验 operation 并安全解析 JSON 时�
   }
   assert.match(p1, /bess_safe_timestamptz\((?:v_)?entry\.value ->> 'nextRetryAt'\)/i);
   const vercel = JSON.parse(vercelText);
-  assert.equal(vercel.crons.some((entry) => entry.path === '/api/cron/bess-writeback-retry'), false);
+  assert.equal(vercel.functions['api/dispatch/[action].js'].maxDuration, 60);
+  for (const name of ['bess-pull-base', 'bess-handoff-reconcile', 'bess-writeback-retry']) {
+    assert.equal(vercel.functions[`api/cron/${name}.js`], undefined);
+    assert.equal(vercel.crons.some((entry) => entry.path === `/api/cron/${name}`), false);
+  }
 });
 
 
