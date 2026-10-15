@@ -3,6 +3,7 @@ import { createHash, createHmac } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import test from 'node:test';
 import dispatchActionHandler from '../api/dispatch/[action].js';
+import { createDispatchRecoveryHandler } from '../api/cron/bess-dispatch-cleanup.js';
 import { createHandoffReconcileHandler } from '../lib/dispatch/api/handoff-reconcile.js';
 import { createBasePullHandler } from '../lib/dispatch/api/pull-base.js';
 import { createWritebackRetryHandler } from '../lib/dispatch/api/writeback-retry.js';
@@ -46,6 +47,28 @@ test('cron 动作复用 dispatch 动态函数且部署函数数不超过 Hobby �
   assert.equal(apiFiles.includes('cron/bess-handoff-reconcile.js'), false);
   assert.equal(apiFiles.includes('cron/bess-writeback-retry.js'), false);
   assert.ok(deployedFunctions.length <= 12, `Vercel functions=${deployedFunctions.length}, expected <= 12`);
+
+  const vercel = JSON.parse(await readFile(new URL('../vercel.json', import.meta.url), 'utf8'));
+  const recoveryCrons = vercel.crons.filter((entry) => entry.path === '/api/cron/bess-dispatch-cleanup');
+  assert.deepEqual(recoveryCrons, [{ path: '/api/cron/bess-dispatch-cleanup', schedule: '10 16 * * *' }]);
+  assert.equal(vercel.crons.some((entry) => entry.path.includes('pull-base')), false, 'Base pull 不得自动调度');
+});
+
+test('每日聚合恢复 cron 真实执行 handoff、outbox、writeback 且阶段互不遮蔽', async () => {
+  const calls = [];
+  const handler = createDispatchRecoveryHandler({
+    secret: 'cron', storeFactory: () => ({ id: 'shared-store' }),
+    cleanup: async (store) => { calls.push(['cleanup', store.id]); return { ok: true }; },
+    recoverHandoffs: async (store) => { calls.push(['handoffs', store.id]); return { ok: true }; },
+    recoverOutbox: async (store) => { calls.push(['outbox', store.id]); throw Object.assign(new Error('down'), { code: 'OUTBOX_DOWN' }); },
+    recoverWritebacks: async (store) => { calls.push(['writebacks', store.id]); return { ok: true }; },
+  });
+  const { result, res } = response();
+  await handler(cronRequest('cron'), res);
+  assert.equal(result.status, 207);
+  assert.deepEqual(calls.map(([name]) => name), ['cleanup', 'handoffs', 'outbox', 'writebacks']);
+  assert.equal(result.body.recovery.outbox.error_code, 'OUTBOX_DOWN');
+  assert.equal(result.body.recovery.writebacks.ok, true);
 });
 
 test('Base pull 强制 GET 与 CRON_SECRET，缺 secret 时 fail-closed', async () => {
@@ -247,24 +270,56 @@ test('handoff reconcile 缺 CRON_SECRET 时 fail-closed', async () => {
   assert.equal(result.status, 401);
 });
 
-test('ACCEPTED_UNKNOWN 无权威拒绝证据时只推进对账时间，不重投', async () => {
-  let published = 0;
-  let marked = 0;
-  const store = {
-    async listHandoffsToReconcile() {
-      return [{ chatId: 'oc_1', context: { batchId: 'b1', operationId: 'op1', fingerprint: 'fp1', status: 'ACCEPTED_UNKNOWN' } }];
+test('ACCEPTED_UNKNOWN 使用持久化的同 operation 消息有界重放', async () => {
+  const published = [];
+  let claimed;
+  const context = {
+    batchId: 'b1', operationId: 'op1', fingerprint: 'fp1', status: 'ACCEPTED_UNKNOWN',
+    reconcileAttempt: 2, card: { schema: '2.0' },
+    queueMessage: {
+      schema_version: 1, kind: 'dispatch', chat_id: 'oc_1', batch_id: 'b1',
+      fingerprint: 'fp1', request_ids: ['r1'], operation_id: 'op1', card: { schema: '2.0' },
     },
+  };
+  const store = {
+    async listHandoffsToReconcile() { return [{ chatId: 'oc_1', context }]; },
     async getIngestBatchStatus() { return { found: true, status: 'ACCEPTED_UNKNOWN', operation_id: 'op1' }; },
-    async markDispatchHandoffUnknown() { marked += 1; },
+    async claimDispatchHandoffPublish(value) {
+      claimed = value;
+      return { claimed: true, workerToken: 'lease-1', queueMessage: context.queueMessage };
+    },
+    async confirmDispatchHandoff() { return { updated: true }; },
   };
   const { result, res } = response();
   await createHandoffReconcileHandler({
-    secret: 'cron', storeFactory: () => store, publishDispatch: async () => { published += 1; },
+    secret: 'cron', storeFactory: () => store, publishDispatch: async (message) => published.push(message),
   })(cronRequest('cron'), res);
   assert.equal(result.status, 200);
-  assert.equal(marked, 1);
-  assert.equal(published, 0);
-  assert.equal(result.body.results[0].republished, false);
+  assert.equal(published.length, 1);
+  assert.equal(published[0], context.queueMessage);
+  assert.equal(published[0].operation_id, 'op1');
+  assert.equal(claimed.operationId, 'op1');
+  assert.equal(claimed.maxReconcileAttempts, 6);
+});
+
+test('ACCEPTED_UNKNOWN 超过有界次数进入可追踪 reconciliation dead-letter', async () => {
+  let dead;
+  const context = {
+    batchId: 'b1', operationId: 'op1', fingerprint: 'fp1', status: 'ACCEPTED_UNKNOWN',
+    reconcileAttempt: 6, card: { schema: '2.0' }, queueMessage: { operation_id: 'op1' },
+  };
+  const store = {
+    async listHandoffsToReconcile() { return [{ chatId: 'oc_1', context }]; },
+    async getIngestBatchStatus() { return { found: true, status: 'ACCEPTED_UNKNOWN', operation_id: 'op1' }; },
+    async markDispatchHandoffReconciliationDead(value) { dead = value; },
+    async claimDispatchHandoffPublish() { assert.fail('exhausted UNKNOWN must not publish'); },
+  };
+  const { result, res } = response();
+  await createHandoffReconcileHandler({ secret: 'cron', storeFactory: () => store })(cronRequest('cron'), res);
+  assert.equal(result.body.results[0].status, 'RECONCILIATION_DEAD');
+  assert.equal(result.body.results[0].dead_letter, true);
+  assert.equal(dead.operationId, 'op1');
+  assert.equal(dead.errorCode, 'HANDOFF_RECONCILE_ATTEMPTS_EXHAUSTED');
 });
 
 test('只有同 operation/fingerprint 的权威 non-acceptance 才安全重投', async () => {
@@ -348,6 +403,30 @@ test('writeback retry 失败只由持有 lease 的 worker 条件更新', async (
   assert.ok(failure.nextRetryAt > current);
 });
 
+test('writeback 达最大次数或永久错误进入 dead-letter，不再无限重试', async () => {
+  for (const scenario of [
+    { attempt: 7, error: Object.assign(new Error('temporary'), { code: 'BASE_DOWN' }) },
+    { attempt: 0, error: Object.assign(new Error('gone'), { code: 'LARK_API_404', httpStatus: 404 }) },
+  ]) {
+    let failure;
+    const handler = createWritebackRetryHandler({
+      secret: 'cron', appToken: 'app', tableId: 'table', maxAttempts: 8,
+      storeFactory: () => ({
+        async claimPendingWritebacks(options) {
+          assert.equal(options.maxAttempts, 8);
+          return [{ formMessageId: 'bi_1', recordId: 'rec1', operationId: 'op1', attempt: scenario.attempt }];
+        },
+        async failClaimedWriteback(value) { failure = value; return { updated: true }; },
+      }),
+      client: { async request() { throw scenario.error; } },
+    });
+    const { result, res } = response();
+    await handler(cronRequest('cron'), res);
+    assert.equal(failure.dead, true);
+    assert.equal(result.body.results[0].dead_letter, true);
+  }
+});
+
 test('writeback 失败 worker 丢失 lease 后不得复活已完成项', async () => {
   let legacyFailureCalled = false;
   const handler = createWritebackRetryHandler({
@@ -417,14 +496,15 @@ test('迁移会 materialize handoff、校验 operation 并安全解析 JSON 时�
     '已执行的 20260915 历史迁移必须与 origin/main 原文保持一致',
   );
   assert.match(p0, /create or replace function public\.bess_enqueue_dispatch_outbox\(/i);
-  assert.match(p0, /status' IN \('HANDOFF_PENDING', 'ACCEPTED_UNKNOWN'\)[\s\S]*?SET request_context = v_context/i);
+  assert.match(p0, /status' IN \('HANDOFF_PENDING', 'ACCEPTED_UNKNOWN', 'RECONCILIATION_DEAD'\)[\s\S]*?SET request_context = v_context/i);
   assert.match(p0, /operationId'\) IS DISTINCT FROM p_operation_id/i);
   assert.match(p0, /create or replace function public\.bess_claim_dispatch_outbox\([\s\S]*?bess_safe_timestamptz\(pending\.request_context ->> 'nextRetryAt'\)/i);
   assert.match(p0, /create or replace function public\.bess_nudge_dispatch_outbox\([\s\S]*?bess_safe_timestamptz\(pending\.request_context ->> 'leaseExpiresAt'\)/i);
   assert.doesNotMatch(p0, /registeredAt'\)::timestamptz/i);
   assert.match(p0, /status' IN \('QUEUED', 'PROCESSING', 'SENT'\)/i);
   assert.match(p0, /'card', p_card,[\s\S]*?'queueMessage', p_queue_message/i);
-  assert.match(p0, /status' = 'ACCEPTED_UNKNOWN'[\s\S]*?authoritativeNonAcceptance'[\s\S]*?publishWorkerToken', p_worker_token/i);
+  assert.match(p0, /status' = 'ACCEPTED_UNKNOWN'[\s\S]*?nextReconcileAt'[\s\S]*?reconcileAttempt'/i);
+  assert.match(p0, /bess_claim_dispatch_handoff_publish\([\s\S]*?'publishWorkerToken', p_worker_token[\s\S]*?'reconcileAttempt'/i);
   assert.match(p0, /bess_confirm_dispatch_handoff\([\s\S]*?publishWorkerToken' = p_worker_token/i);
   assert.match(p0, /bess_mark_dispatch_handoff_unknown\([\s\S]*?publishWorkerToken' = p_worker_token/i);
   assert.match(p1, /bess_mark_dispatch_handoff_rejected\([\s\S]*?publishWorkerToken' = p_worker_token/i);
@@ -440,6 +520,7 @@ test('迁移会 materialize handoff、校验 operation 并安全解析 JSON 时�
   }
   for (const name of [
     'bess_list_handoffs_to_reconcile',
+    'bess_dead_letter_dispatch_handoff',
     'bess_mark_dispatch_handoff_rejected',
     'bess_record_writeback_failure',
     'bess_claim_pending_writebacks',
@@ -449,6 +530,9 @@ test('迁移会 materialize handoff、校验 operation 并安全解析 JSON 时�
     assert.match(p1, new RegExp(`REVOKE ALL ON FUNCTION public\\.${name}[\\s\\S]*?FROM public, anon, authenticated, service_role`, 'i'));
   }
   assert.match(p1, /bess_safe_timestamptz\((?:v_)?entry\.value ->> 'nextRetryAt'\)/i);
+  assert.match(p1, /bess_claim_pending_writebacks\([\s\S]*?p_max_attempts[\s\S]*?attempt[\s\S]*?< p_max_attempts/i);
+  assert.match(p1, /bess_fail_claimed_writeback\([\s\S]*?p_dead boolean[\s\S]*?'DEAD'/i);
+  assert.match(p1, /bess_dead_letter_dispatch_handoff\([\s\S]*?'RECONCILIATION_DEAD'/i);
   const vercel = JSON.parse(vercelText);
   assert.equal(vercel.functions['api/dispatch/[action].js'].maxDuration, 60);
   for (const name of ['bess-pull-base', 'bess-handoff-reconcile', 'bess-writeback-retry']) {
@@ -525,6 +609,36 @@ test('Base pull publish 成功但 confirm 失败只标 unknown，且不回写 IN
   assert.equal(unknown.batchId, dispatchPayload.batch_id);
   assert.equal(patched, 0);
   assert.equal(rejected, 0);
+});
+
+
+test('Base pull 已有 ACCEPTED_UNKNOWN 不得提前回写 INGESTED', async () => {
+  const dispatchPayload = {
+    chat_id: 'oc_2ecc53a432a03f6f81f6a18babe8cda1', batch_id: 'base-reused-unknown', time_segment: 'A',
+    items: [{
+      request_id: 'base-reused-r1', request_name: 'unknown', business_type: '千川',
+      target_category: 'qianchuan', sheet_url: 'https://example.com', sheet_id: 's1', row_index: 1,
+    }],
+  };
+  let patched = 0;
+  const handler = createBasePullHandler({
+    secret: 'cron', enabled: true, appToken: 'app', tableId: 'table',
+    client: { async request(method) {
+      if (method === 'PATCH') { patched += 1; return {}; }
+      return { data: { items: [{ record_id: 'rec-reused-unknown', fields: { dispatch_payload: dispatchPayload } }] } };
+    } },
+    storeFactory: () => ({
+      async registerDispatchHandoff() {
+        return { outcome: 'REUSED', status: 'ACCEPTED_UNKNOWN', operation_id: 'same-op' };
+      },
+    }),
+    publishDispatch: async () => assert.fail('unknown reuse must await reconciler'),
+  });
+  const { result, res } = response();
+  await handler(cronRequest('cron'), res);
+  assert.equal(result.body.results[0].status, 'ACCEPTED_UNKNOWN');
+  assert.equal(result.body.results[0].acceptedUnknown, true);
+  assert.equal(patched, 0);
 });
 
 

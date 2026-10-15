@@ -36,6 +36,37 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.bess_dead_letter_dispatch_handoff(
+  p_form_message_id text,
+  p_operation_id text,
+  p_error_code text,
+  p_now timestamptz
+)
+RETURNS TABLE (updated boolean)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  RETURN QUERY
+  WITH changed AS (
+    UPDATE public.bess_dispatch_pending_forms f
+    SET request_context = f.request_context || jsonb_build_object(
+      'status', 'RECONCILIATION_DEAD',
+      'errorCode', left(coalesce(p_error_code, 'HANDOFF_RECONCILIATION_DEAD'), 100),
+      'deadLetteredAt', to_char(p_now at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+      'publishWorkerToken', null,
+      'publishLeaseExpiresAt', null
+    )
+    WHERE f.form_message_id = p_form_message_id
+      AND f.request_context ->> 'kind' = 'dispatch_ingest'
+      AND f.request_context ->> 'operationId' = p_operation_id
+      AND f.request_context ->> 'status' IN ('HANDOFF_PENDING', 'ACCEPTED_UNKNOWN')
+    RETURNING 1
+  ) SELECT exists(SELECT 1 FROM changed);
+END;
+$$;
+
 -- A synchronous queue rejection is authoritative non-acceptance. Timeouts must
 -- use bess_mark_dispatch_handoff_unknown instead and can never set this proof.
 DROP FUNCTION IF EXISTS public.bess_mark_dispatch_handoff_rejected(text, text, text, text, jsonb, timestamptz, timestamptz);
@@ -123,11 +154,13 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.bess_claim_pending_writebacks(text, timestamptz, int, int);
 CREATE OR REPLACE FUNCTION public.bess_claim_pending_writebacks(
   p_worker_token text,
   p_now timestamptz,
   p_lease_seconds int DEFAULT 60,
-  p_limit int DEFAULT 100
+  p_limit int DEFAULT 100,
+  p_max_attempts int DEFAULT 8
 )
 RETURNS TABLE (
   form_message_id text,
@@ -149,7 +182,8 @@ DECLARE
 BEGIN
   IF nullif(btrim(p_worker_token), '') IS NULL
      OR p_lease_seconds < 5 OR p_lease_seconds > 600
-     OR p_limit < 1 OR p_limit > 500 THEN
+     OR p_limit < 1 OR p_limit > 500
+     OR p_max_attempts < 1 OR p_max_attempts > 50 THEN
     RAISE EXCEPTION USING errcode = '22023', message = 'invalid writeback claim';
   END IF;
 
@@ -161,12 +195,16 @@ BEGIN
       AND EXISTS (
         SELECT 1
         FROM jsonb_each(f.request_context -> 'pendingWritebacks') e
-        WHERE (
-          coalesce(e.value ->> 'state', 'PENDING') IN ('PENDING', 'RETRY')
-          AND coalesce(public.bess_safe_timestamptz(e.value ->> 'nextRetryAt'), '-infinity') <= p_now
-        ) OR (
-          e.value ->> 'state' = 'PROCESSING'
-          AND coalesce(public.bess_safe_timestamptz(e.value ->> 'leaseExpiresAt'), '-infinity') <= p_now
+        WHERE CASE WHEN coalesce(e.value ->> 'attempt', '') ~ '^[0-9]+$'
+          THEN (e.value ->> 'attempt')::int ELSE 0 END < p_max_attempts
+        AND (
+          (
+            coalesce(e.value ->> 'state', 'PENDING') IN ('PENDING', 'RETRY')
+            AND coalesce(public.bess_safe_timestamptz(e.value ->> 'nextRetryAt'), '-infinity') <= p_now
+          ) OR (
+            e.value ->> 'state' = 'PROCESSING'
+            AND coalesce(public.bess_safe_timestamptz(e.value ->> 'leaseExpiresAt'), '-infinity') <= p_now
+          )
         )
       )
     ORDER BY f.created_at
@@ -192,6 +230,9 @@ BEGIN
           THEN (v_entry.value ->> 'attempt')::int
         ELSE 0
       END;
+      IF v_attempt >= p_max_attempts THEN
+        CONTINUE;
+      END IF;
       v_context := jsonb_set(
         v_context,
         ARRAY['pendingWritebacks', v_entry.key],
@@ -219,13 +260,15 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.bess_fail_claimed_writeback(text, text, text, text, timestamptz, timestamptz);
 CREATE OR REPLACE FUNCTION public.bess_fail_claimed_writeback(
   p_form_message_id text,
   p_record_id text,
   p_worker_token text,
   p_error_code text,
   p_now timestamptz,
-  p_next_retry_at timestamptz
+  p_next_retry_at timestamptz,
+  p_dead boolean DEFAULT false
 )
 RETURNS TABLE (updated boolean)
 LANGUAGE plpgsql
@@ -240,7 +283,7 @@ BEGIN
       f.request_context,
       ARRAY['pendingWritebacks', p_record_id],
       (f.request_context #> ARRAY['pendingWritebacks', p_record_id]) || jsonb_build_object(
-        'state', 'RETRY',
+        'state', CASE WHEN p_dead THEN 'DEAD' ELSE 'RETRY' END,
         'workerToken', null,
         'leaseExpiresAt', null,
         'errorCode', left(coalesce(p_error_code, 'WRITEBACK_FAILED'), 100),
@@ -292,14 +335,16 @@ $$;
 
 REVOKE ALL ON FUNCTION public.bess_list_handoffs_to_reconcile(timestamptz, int) FROM public, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.bess_list_handoffs_to_reconcile(timestamptz, int) TO service_role;
+REVOKE ALL ON FUNCTION public.bess_dead_letter_dispatch_handoff(text, text, text, timestamptz) FROM public, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.bess_dead_letter_dispatch_handoff(text, text, text, timestamptz) TO service_role;
 REVOKE ALL ON FUNCTION public.bess_mark_dispatch_handoff_rejected(text, text, text, text, jsonb, text, timestamptz, timestamptz) FROM public, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.bess_mark_dispatch_handoff_rejected(text, text, text, text, jsonb, text, timestamptz, timestamptz) TO service_role;
 REVOKE ALL ON FUNCTION public.bess_record_writeback_failure(text, text, text, timestamptz, timestamptz) FROM public, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.bess_record_writeback_failure(text, text, text, timestamptz, timestamptz) TO service_role;
-REVOKE ALL ON FUNCTION public.bess_claim_pending_writebacks(text, timestamptz, int, int) FROM public, anon, authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.bess_claim_pending_writebacks(text, timestamptz, int, int) TO service_role;
-REVOKE ALL ON FUNCTION public.bess_fail_claimed_writeback(text, text, text, text, timestamptz, timestamptz) FROM public, anon, authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.bess_fail_claimed_writeback(text, text, text, text, timestamptz, timestamptz) TO service_role;
+REVOKE ALL ON FUNCTION public.bess_claim_pending_writebacks(text, timestamptz, int, int, int) FROM public, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.bess_claim_pending_writebacks(text, timestamptz, int, int, int) TO service_role;
+REVOKE ALL ON FUNCTION public.bess_fail_claimed_writeback(text, text, text, text, timestamptz, timestamptz, boolean) FROM public, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.bess_fail_claimed_writeback(text, text, text, text, timestamptz, timestamptz, boolean) TO service_role;
 REVOKE ALL ON FUNCTION public.bess_complete_writeback(text, text, text) FROM public, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.bess_complete_writeback(text, text, text) TO service_role;
 
