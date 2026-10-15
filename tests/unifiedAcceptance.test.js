@@ -39,6 +39,9 @@ function pullOptions({ record = baseRecord(), store = acceptedStore(), client: s
         patches.push({ path, options: requestOptions });
         return {};
       }
+      if (path.endsWith(`/records/${encodeURIComponent(record.record_id)}`)) {
+        return { data: { record } };
+      }
       return { data: { items: [record] } };
     },
   };
