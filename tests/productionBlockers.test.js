@@ -426,7 +426,7 @@ test('迁移会 materialize handoff、校验 operation 并安全解析 JSON 时�
   }
   assert.match(p1, /bess_safe_timestamptz\((?:v_)?entry\.value ->> 'nextRetryAt'\)/i);
   const vercel = JSON.parse(vercelText);
-  assert.ok(vercel.crons.some((entry) => entry.path === '/api/cron/bess-writeback-retry'));
+  assert.equal(vercel.crons.some((entry) => entry.path === '/api/cron/bess-writeback-retry'), false);
 });
 
 
