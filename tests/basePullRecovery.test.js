@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { basePullEligibility, createBasePullHandler, runBasePull } from '../lib/dispatch/api/pull-base.js';
+import { basePullEligibility, createBasePullHandler, runBasePull as runBasePullWithIsolation } from '../lib/dispatch/api/pull-base.js';
+
+const runBasePull = (options) => runBasePullWithIsolation({ enforceHistoryIsolation: false, ...options });
 
 const payload = {
   chat_id: 'oc_2ecc53a432a03f6f81f6a18babe8cda1',
@@ -77,6 +79,9 @@ test('FAILED 只有可证明无 HTTP 回执且所有回执字段为空才 eligib
     automation_status: 'FAILED', error_detail: 'HTTP_HANDOFF_TIMEOUT_AFTER_SINGLE_RETRY', operation_id: 'existing-op',
   })).eligible, false);
   assert.equal(basePullEligibility(record({ automation_status: 'PENDING', operation_id: 'existing-op' })).eligible, false);
+  assert.deepEqual(basePullEligibility(record({ automation_status: 'PENDING', message_id: 'existing-message' })), {
+    eligible: false, reason: 'EXISTING_MESSAGE',
+  });
 });
 
 test('Base query 包含严格 FAILED timeout 候选，普通 FAILED 与已有 operation 二次过滤跳过', async () => {

@@ -850,3 +850,20 @@ test('原部分过滤批次现在按原顺序全部入队', async () => {
   assert.deepEqual(response.body.skipped_request_ids, []);
   assert.deepEqual(queued.request_ids, ['blocked_inflight', 'allowed_inflight']);
 });
+
+
+test('/send 契约接受签名 body/source context 的 source_record_id 并透传队列', async () => {
+  let queued;
+  const targetHandler = createTestHandler({
+    async publishDispatch(message) { queued = message; return { message_id: 'q_source' }; },
+  });
+  const body = {
+    ...localBody,
+    source_context: { source: 'skill-signature-fast-path', source_record_id: 'recSendSource' },
+  };
+  const result = await invoke(body, { targetHandler });
+  assert.equal(result.status, 202);
+  assert.equal(result.body.source_record_id, 'recSendSource');
+  assert.equal(queued.source_record_id, 'recSendSource');
+  assert.equal(queued.source, 'skill-signature-fast-path');
+});
