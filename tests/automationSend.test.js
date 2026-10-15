@@ -51,6 +51,11 @@ const noop = () => {};
 const noopPublish = async () => ({ message_id: 'test-msg-id', deduplicated: false });
 const noopEnrich = async () => [];
 const noopStatusCache = { get: noop, set: noop };
+const mockStore = {
+  registerDispatchHandoff: async () => ({ outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }),
+  confirmDispatchHandoff: async () => {},
+  markDispatchHandoffUnknown: async () => {},
+};
 
 function createHandler(opts = {}) {
   return createAutomationSendHandler({
@@ -62,6 +67,7 @@ function createHandler(opts = {}) {
     publishTimeoutMs: 5000,
     defer: noop,
     statusCache: noopStatusCache,
+    storeFactory: () => mockStore,
     now: () => new Date('2026-09-17T07:00:00Z'),
     ...opts,
   });

@@ -8,24 +8,14 @@
     "SUPABASE_REGION": "ap-northeast-1"
   },
   "functions": {
-    "api/book-search.js": {
-      "maxDuration": 10
-    },
-    "api/book-cover.js": {
-      "maxDuration": 10
-    },
-    "api/alisha/memory/*.js": {
-      "maxDuration": 10
-    },
-    "api/lark/callback.js": {
-      "maxDuration": 300
-    },
-    "api/dispatch/[action].js": {
-      "maxDuration": 30
-    },
-    "api/cron/bess-dispatch-cleanup.js": {
-      "maxDuration": 60
-    },
+    "api/book-search.js": { "maxDuration": 10 },
+    "api/book-cover.js": { "maxDuration": 10 },
+    "api/alisha/memory/*.js": { "maxDuration": 10 },
+    "api/lark/callback.js": { "maxDuration": 300 },
+    "api/dispatch/[action].js": { "maxDuration": 30 },
+    "api/cron/bess-dispatch-cleanup.js": { "maxDuration": 60 },
+    "api/cron/bess-handoff-reconcile.js": { "maxDuration": 60 },
+    "api/cron/bess-writeback-retry.js": { "maxDuration": 60 },
     "api/cron/bess-dispatch-outbox.js": {
       "maxDuration": 60,
       "experimentalTriggers": [
@@ -39,14 +29,11 @@
     }
   },
   "crons": [
-    {
-      "path": "/api/alisha/memory/cleanup",
-      "schedule": "15 3 * * *"
-    },
-    {
-      "path": "/api/cron/bess-dispatch-cleanup",
-      "schedule": "10 16 * * *"
-    }
+    { "path": "/api/alisha/memory/cleanup", "schedule": "15 3 * * *" },
+    { "path": "/api/cron/bess-dispatch-cleanup", "schedule": "10 16 * * *" },
+    { "path": "/api/cron/bess-pull-base", "schedule": "*/10 * * * *" },
+    { "path": "/api/cron/bess-handoff-reconcile", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/bess-writeback-retry", "schedule": "*/5 * * * *" }
   ],
   "rewrites": [
     {
@@ -58,28 +45,19 @@
     {
       "source": "/",
       "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "no-cache, no-store, must-revalidate"
-        }
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
       ]
     },
     {
       "source": "/index.html",
       "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "no-cache, no-store, must-revalidate"
-        }
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
       ]
     },
     {
       "source": "/alisha.config.json",
       "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "no-cache, no-store, must-revalidate"
-        }
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
       ]
     }
   ]
