@@ -3,6 +3,7 @@ import { createSupabaseDispatchStore } from '../../lib/dispatch/supabase-store.j
 import { runDispatchOutbox } from '../../lib/dispatch/outbox-worker.js';
 import { runHandoffReconciliation } from '../../lib/dispatch/api/handoff-reconcile.js';
 import { runPendingWritebacks } from '../../lib/dispatch/api/writeback-retry.js';
+import { runBasePull } from '../../lib/dispatch/api/pull-base.js';
 
 function matches(actual, expected) {
   const a = Buffer.from(String(actual || ''));
@@ -13,6 +14,7 @@ function matches(actual, expected) {
 export function createDispatchRecoveryHandler({
   storeFactory = () => createSupabaseDispatchStore(),
   cleanup = (store, now) => store.cleanupExpired(now),
+  recoverBasePull = async (store) => (await runBasePull({ store })).body,
   recoverHandoffs = (store) => runHandoffReconciliation({ store, limit: 20 }),
   recoverOutbox = (store) => runDispatchOutbox({ store, limit: 3 }),
   recoverWritebacks = (store) => runPendingWritebacks({ store, limit: 20 }),
@@ -33,6 +35,7 @@ export function createDispatchRecoveryHandler({
     // independently bounded so one failure does not suppress later recovery.
     for (const [name, run] of [
       ['cleanup', () => cleanup(store, now())],
+      ['basePull', () => recoverBasePull(store)],
       ['handoffs', () => recoverHandoffs(store)],
       ['outbox', () => recoverOutbox(store)],
       ['writebacks', () => recoverWritebacks(store)],

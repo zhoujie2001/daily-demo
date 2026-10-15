@@ -54,11 +54,12 @@ test('cron 动作复用 dispatch 动态函数且部署函数数不超过 Hobby �
   assert.equal(vercel.crons.some((entry) => entry.path.includes('pull-base')), false, 'Base pull 不得自动调度');
 });
 
-test('每日聚合恢复 cron 真实执行 handoff、outbox、writeback 且阶段互不遮蔽', async () => {
+test('每日聚合恢复 cron 真实执行 pull、handoff、outbox、writeback 且阶段互不遮蔽', async () => {
   const calls = [];
   const handler = createDispatchRecoveryHandler({
     secret: 'cron', storeFactory: () => ({ id: 'shared-store' }),
     cleanup: async (store) => { calls.push(['cleanup', store.id]); return { ok: true }; },
+    recoverBasePull: async (store) => { calls.push(['basePull', store.id]); throw Object.assign(new Error('bad config'), { code: 'BASE_PULL_CONFIG' }); },
     recoverHandoffs: async (store) => { calls.push(['handoffs', store.id]); return { ok: true }; },
     recoverOutbox: async (store) => { calls.push(['outbox', store.id]); throw Object.assign(new Error('down'), { code: 'OUTBOX_DOWN' }); },
     recoverWritebacks: async (store) => { calls.push(['writebacks', store.id]); return { ok: true }; },
@@ -66,7 +67,8 @@ test('每日聚合恢复 cron 真实执行 handoff、outbox、writeback 且阶�
   const { result, res } = response();
   await handler(cronRequest('cron'), res);
   assert.equal(result.status, 207);
-  assert.deepEqual(calls.map(([name]) => name), ['cleanup', 'handoffs', 'outbox', 'writebacks']);
+  assert.deepEqual(calls.map(([name]) => name), ['cleanup', 'basePull', 'handoffs', 'outbox', 'writebacks']);
+  assert.equal(result.body.recovery.basePull.error_code, 'BASE_PULL_CONFIG');
   assert.equal(result.body.recovery.outbox.error_code, 'OUTBOX_DOWN');
   assert.equal(result.body.recovery.writebacks.ok, true);
 });
@@ -111,7 +113,7 @@ test('启用 Base pull 会构建完整卡片并发布队列，重放不重复 pu
     secret: 'cron', enabled: true, appToken: 'app', tableId: 'table', storeFactory: () => store,
     client: { async request(method, path, options) {
       if (method === 'PATCH') { patched.push({ path, options }); return {}; }
-      return { data: { items: [{ record_id: 'rec1', fields: { dispatch_payload: dispatchPayload } }] } };
+      return { data: { items: [{ record_id: 'rec1', fields: { Status: 'PENDING', dispatch_payload: dispatchPayload } }] } };
     } },
     publishDispatch: async (message) => {
       publishes += 1;
@@ -151,8 +153,8 @@ test('Base pull 遍历分页快照并回写后续页，避免第一页饥饿', a
       if (method === 'PATCH') { patched.push(path); return {}; }
       requestedTokens.push(options.query.page_token || null);
       return options.query.page_token
-        ? { data: { items: [{ record_id: 'rec2', fields: { dispatch_payload: payload('2') } }], has_more: false } }
-        : { data: { items: [{ record_id: 'rec1', fields: { dispatch_payload: payload('1') } }], has_more: true, page_token: 'page-2' } };
+        ? { data: { items: [{ record_id: 'rec2', fields: { Status: 'PENDING', dispatch_payload: payload('2') } }], has_more: false } }
+        : { data: { items: [{ record_id: 'rec1', fields: { Status: 'PENDING', dispatch_payload: payload('1') } }], has_more: true, page_token: 'page-2' } };
     },
   };
   const handler = createBasePullHandler({
@@ -184,7 +186,7 @@ test('Base pull publish 成功但 Base 回写失败时进入 pendingWritebacks',
     secret: 'cron', enabled: true, appToken: 'app', tableId: 'table',
     client: { async request(method) {
       if (method === 'PATCH') throw Object.assign(new Error('down'), { code: 'BASE_DOWN' });
-      return { data: { items: [{ record_id: 'rec1', fields: { dispatch_payload: dispatchPayload } }] } };
+      return { data: { items: [{ record_id: 'rec1', fields: { Status: 'PENDING', dispatch_payload: dispatchPayload } }] } };
     } },
     storeFactory: () => ({
       async registerDispatchHandoff() { return { outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }; },
@@ -591,7 +593,7 @@ test('Base pull publish 成功但 confirm 失败只标 unknown，且不回写 IN
     secret: 'cron', enabled: true, appToken: 'app', tableId: 'table',
     client: { async request(method) {
       if (method === 'PATCH') { patched += 1; return {}; }
-      return { data: { items: [{ record_id: 'rec-confirm-unknown', fields: { dispatch_payload: dispatchPayload } }] } };
+      return { data: { items: [{ record_id: 'rec-confirm-unknown', fields: { Status: 'PENDING', dispatch_payload: dispatchPayload } }] } };
     } },
     storeFactory: () => ({
       async registerDispatchHandoff() { return { outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }; },
@@ -625,7 +627,7 @@ test('Base pull 已有 ACCEPTED_UNKNOWN 不得提前回写 INGESTED', async () =
     secret: 'cron', enabled: true, appToken: 'app', tableId: 'table',
     client: { async request(method) {
       if (method === 'PATCH') { patched += 1; return {}; }
-      return { data: { items: [{ record_id: 'rec-reused-unknown', fields: { dispatch_payload: dispatchPayload } }] } };
+      return { data: { items: [{ record_id: 'rec-reused-unknown', fields: { Status: 'PENDING', dispatch_payload: dispatchPayload } }] } };
     } },
     storeFactory: () => ({
       async registerDispatchHandoff() {
@@ -657,7 +659,7 @@ test('Base pull publish 超时保持 ACCEPTED_UNKNOWN，不写权威拒绝', asy
     secret: 'cron', enabled: true, appToken: 'app', tableId: 'table',
     client: { async request(method) {
       if (method === 'PATCH') { patched += 1; return {}; }
-      return { data: { items: [{ record_id: 'rec-timeout', fields: { dispatch_payload: dispatchPayload } }] } };
+      return { data: { items: [{ record_id: 'rec-timeout', fields: { Status: 'PENDING', dispatch_payload: dispatchPayload } }] } };
     } },
     storeFactory: () => ({
       async registerDispatchHandoff() { return { outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }; },
