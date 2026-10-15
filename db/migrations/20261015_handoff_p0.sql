@@ -131,6 +131,7 @@ $$;
 
 -- Atomically lease queue publication. Registration itself deliberately does not
 -- claim: a crash between registration and publish must remain recoverable.
+DROP FUNCTION IF EXISTS public.bess_claim_dispatch_handoff_publish(text, text, text, text, jsonb, timestamptz, int);
 CREATE OR REPLACE FUNCTION public.bess_claim_dispatch_handoff_publish(
   p_form_message_id text,
   p_operation_id text,
@@ -138,7 +139,8 @@ CREATE OR REPLACE FUNCTION public.bess_claim_dispatch_handoff_publish(
   p_worker_token text,
   p_card jsonb,
   p_now timestamptz,
-  p_lease_seconds int DEFAULT 120
+  p_lease_seconds int DEFAULT 120,
+  p_max_reconcile_attempts int DEFAULT 6
 )
 RETURNS TABLE (claimed boolean, current_status text, lease_expires_at timestamptz, queue_message jsonb)
 LANGUAGE plpgsql
@@ -162,11 +164,20 @@ BEGIN
     RETURN;
   END IF;
 
+  IF p_max_reconcile_attempts < 1 OR p_max_reconcile_attempts > 20 THEN
+    RAISE EXCEPTION USING errcode = '22023', message = 'invalid reconcile attempt limit';
+  END IF;
+
   IF NOT (
        v_row.request_context ->> 'status' = 'HANDOFF_PENDING'
        OR (
          v_row.request_context ->> 'status' = 'ACCEPTED_UNKNOWN'
-         AND v_row.request_context ->> 'authoritativeNonAcceptance' = 'true'
+         AND coalesce(public.bess_safe_timestamptz(v_row.request_context ->> 'nextReconcileAt'), '-infinity') <= p_now
+         AND CASE
+           WHEN coalesce(v_row.request_context ->> 'reconcileAttempt', '') ~ '^[0-9]+$'
+             THEN (v_row.request_context ->> 'reconcileAttempt')::int
+           ELSE 0
+         END < p_max_reconcile_attempts
        )
      )
      OR jsonb_typeof(v_row.request_context -> 'queueMessage') IS DISTINCT FROM 'object'
@@ -183,7 +194,14 @@ BEGIN
   SET request_context = f.request_context || jsonb_build_object(
     'publishClaimedAt', to_char(p_now at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
     'publishLeaseExpiresAt', to_char(v_lease_expires_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
-    'publishWorkerToken', p_worker_token
+    'publishWorkerToken', p_worker_token,
+    'reconcileAttempt', CASE
+      WHEN v_row.request_context ->> 'status' = 'ACCEPTED_UNKNOWN' THEN
+        CASE WHEN coalesce(v_row.request_context ->> 'reconcileAttempt', '') ~ '^[0-9]+$'
+          THEN (v_row.request_context ->> 'reconcileAttempt')::int + 1 ELSE 1 END
+      ELSE CASE WHEN coalesce(v_row.request_context ->> 'reconcileAttempt', '') ~ '^[0-9]+$'
+        THEN (v_row.request_context ->> 'reconcileAttempt')::int ELSE 0 END
+    END
   )
   WHERE f.form_message_id = p_form_message_id;
 
@@ -344,7 +362,7 @@ BEGIN
     RETURN;
   END IF;
 
-  IF v_row.request_context ->> 'status' IN ('HANDOFF_PENDING', 'ACCEPTED_UNKNOWN')
+  IF v_row.request_context ->> 'status' IN ('HANDOFF_PENDING', 'ACCEPTED_UNKNOWN', 'RECONCILIATION_DEAD')
      OR jsonb_typeof(v_row.request_context -> 'card') IS DISTINCT FROM 'object' THEN
     UPDATE public.bess_dispatch_pending_forms pending
        SET request_context = v_context,
@@ -443,8 +461,8 @@ $$;
 REVOKE ALL ON FUNCTION public.bess_safe_timestamptz(text) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.bess_register_dispatch_handoff(text, text, text, text, text, jsonb, text, jsonb, jsonb, text, timestamptz, timestamptz) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.bess_register_dispatch_handoff(text, text, text, text, text, jsonb, text, jsonb, jsonb, text, timestamptz, timestamptz) TO service_role;
-REVOKE ALL ON FUNCTION public.bess_claim_dispatch_handoff_publish(text, text, text, text, jsonb, timestamptz, int) FROM PUBLIC, anon, authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.bess_claim_dispatch_handoff_publish(text, text, text, text, jsonb, timestamptz, int) TO service_role;
+REVOKE ALL ON FUNCTION public.bess_claim_dispatch_handoff_publish(text, text, text, text, jsonb, timestamptz, int, int) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.bess_claim_dispatch_handoff_publish(text, text, text, text, jsonb, timestamptz, int, int) TO service_role;
 REVOKE ALL ON FUNCTION public.bess_mark_dispatch_handoff_unknown(text, text, timestamptz, timestamptz) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.bess_mark_dispatch_handoff_unknown(text, text, timestamptz, timestamptz) TO service_role;
 REVOKE ALL ON FUNCTION public.bess_confirm_dispatch_handoff(text, text, text, timestamptz) FROM PUBLIC, anon, authenticated, service_role;
