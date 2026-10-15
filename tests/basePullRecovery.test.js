@@ -84,28 +84,63 @@ test('FAILED 只有可证明无 HTTP 回执且所有回执字段为空才 eligib
   });
 });
 
-test('Base query 包含严格 FAILED timeout 候选，普通 FAILED 与已有 operation 二次过滤跳过', async () => {
-  let queryFilter = '';
-  let registrations = 0;
-  const records = [
-    record({ automation_status: 'FAILED', error_detail: 'BUSINESS_REJECTED' }),
-    { ...record({ automation_status: 'FAILED', error_detail: 'HTTP_HANDOFF_TIMEOUT_AFTER_SINGLE_RETRY', operation_id: 'op-old' }), record_id: 'rec-op' },
+test('allowlist 仅逐条精确 GET，不调用列表接口或携带 filter', async () => {
+  const calls = [];
+  const ids = ['rec-one', 'rec/two'];
+  const result = await runBasePullWithIsolation({
+    enabled: true, appToken: 'app', tableId: 'table', recordAllowlist: ids.join(','),
+    client: { async request(method, path, options) {
+      calls.push({ method, path, options });
+      const id = decodeURIComponent(path.split('/').at(-1));
+      return { data: { record: { ...record({ automation_status: 'PENDING', dry_run: true }), record_id: id } } };
+    } },
+    storeFactory: () => ({}),
+  });
+  assert.deepEqual(calls.map(({ method }) => method), ['GET', 'GET']);
+  assert.deepEqual(calls.map(({ path }) => path), [
+    '/open-apis/bitable/v1/apps/app/tables/table/records/rec-one',
+    '/open-apis/bitable/v1/apps/app/tables/table/records/rec%2Ftwo',
+  ]);
+  assert.equal(calls.every(({ options }) => options.query === undefined), true);
+  assert.deepEqual(result.body.results.map(({ recordId }) => recordId), ids);
+  assert.equal(result.body.results.every(({ status }) => status === 'DRY_RUN_OK'), true);
+});
+
+test('非 allowlist 使用无 filter 有界分页并在本地执行 eligibility 与 history isolation', async () => {
+  const queries = [];
+  const eligiblePayload = { ...payload, batch_id: '20261016-new' };
+  const oldPayload = { ...payload, batch_id: '20261014-old' };
+  const pages = [
+    [
+      record({ automation_status: 'FAILED', error_detail: 'BUSINESS_REJECTED' }),
+      { ...record({ automation_status: 'PENDING', operation_id: 'op-old' }), record_id: 'rec-op' },
+    ],
+    [
+      { ...record({ automation_status: 'PENDING', dispatch_payload: oldPayload }), record_id: 'rec-old' },
+      { ...record({ automation_status: 'PENDING', dispatch_payload: eligiblePayload, dry_run: true }), record_id: 'rec-new' },
+    ],
   ];
-  const result = await runBasePull({
-    enabled: true, appToken: 'app', tableId: 'table',
+  const result = await runBasePullWithIsolation({
+    enabled: true, appToken: 'app', tableId: 'table', minBatchId: '20261015-start', maxPages: 2,
     client: { async request(method, path, options) {
       assert.equal(method, 'GET');
-      queryFilter = options.query.filter;
-      return { data: { items: records } };
+      assert.equal(path, '/open-apis/bitable/v1/apps/app/tables/table/records');
+      queries.push(options.query);
+      const index = queries.length - 1;
+      return { data: { items: pages[index], has_more: true, page_token: `next-${index}` } };
     } },
-    storeFactory: () => ({ async registerDispatchHandoff() { registrations += 1; } }),
+    storeFactory: () => ({}),
   });
-  assert.match(queryFilter, /automation_status\]="PENDING"/);
-  assert.match(queryFilter, /automation_status\]="FAILED"/);
-  assert.match(queryFilter, /HTTP_HANDOFF_TIMEOUT_AFTER_SINGLE_RETRY/);
-  assert.equal(registrations, 0);
-  assert.deepEqual(result.body.results.map((item) => item.reason), [
-    'FAILED_NOT_PROVEN_NO_HTTP_RECEIPT', 'EXISTING_OPERATION',
+  assert.equal(queries.length, 2);
+  assert.equal(queries.every((query) => !Object.hasOwn(query, 'filter')), true);
+  assert.deepEqual(queries.map((query) => query.page_token), [undefined, 'next-0']);
+  assert.equal(result.body.pages, 2);
+  assert.equal(result.body.truncated, true);
+  assert.deepEqual(result.body.results.map(({ reason, status }) => reason || status), [
+    'FAILED_NOT_PROVEN_NO_HTTP_RECEIPT',
+    'EXISTING_OPERATION',
+    'BATCH_OUTSIDE_CONFIGURED_WINDOW',
+    'DRY_RUN_OK',
   ]);
 });
 
