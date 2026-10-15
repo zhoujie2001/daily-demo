@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createAutomationSendHandler } from '../lib/dispatch/api/automation-send.js';
-import pullHandler from '../api/cron/bess-pull-base.js';
+import pullHandler from '../lib/dispatch/api/pull-base.js';
 import { createSupabaseDispatchStore } from '../lib/dispatch/supabase-store.js';
 
 /**
@@ -234,8 +234,12 @@ describe('P1 Handoff Reliability', () => {
   // 9. Base pull 默认 disabled，且不会触碰今天历史记录
   it('Scenario 9: Base pull 默认 disabled', async () => {
     delete process.env.BESS_BASE_PULL_ENABLED;
+    process.env.CRON_SECRET = 'test-cron-secret';
     const { res, data } = mockRes();
-    await pullHandler(mockReq({}), res);
+    const req = mockReq({});
+    req.method = 'GET';
+    req.headers.authorization = 'Bearer test-cron-secret';
+    await pullHandler(req, res);
     assert.equal(data.body.message, 'disabled');
   });
 
