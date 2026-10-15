@@ -47,6 +47,11 @@ export function createDispatchRecoveryHandler({
       }
     }
     const ok = Object.values(results).every((result) => result?.ok !== false);
+    console.info(JSON.stringify({
+      event: 'dispatch_recovery_summary',
+      ok,
+      recovery: results,
+    }));
     return res.status(ok ? 200 : 207).json({ ok, recovery: results });
   };
 }
