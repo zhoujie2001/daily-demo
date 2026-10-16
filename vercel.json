@@ -7,7 +7,7 @@
   "env": {
     "SUPABASE_REGION": "ap-northeast-1",
     "BESS_BASE_PULL_ENABLED": "true",
-    "BESS_BASE_PULL_RECORD_ALLOWLIST": "reczz28Nrj9VUc7X",
+    "BESS_BASE_PULL_MIN_BATCH_ID": "20261015-B",
     "BESS_BASE_APP_TOKEN": "Pe2MbbTgiaUXWzspUJScdjTpnOe",
     "BESS_BASE_TABLE_ID": "tblDPXWJJEwSkhrZ"
   },
