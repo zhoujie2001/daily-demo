@@ -35,7 +35,7 @@ function pullOptions({ record = baseRecord(), store = acceptedStore(), client: s
   const patches = [];
   const client = suppliedClient || {
     async request(method, path, requestOptions) {
-      if (method === 'PATCH') {
+      if (method === 'PUT') {
         patches.push({ path, options: requestOptions });
         return {};
       }

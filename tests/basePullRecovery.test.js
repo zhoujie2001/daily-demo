@@ -158,7 +158,7 @@ test('FAILED timeout 恢复复用原 chat/batch/record 与确定 operation，同
     async confirmDispatchHandoff() { return { updated: true }; },
   };
   const client = { async request(method, path, options) {
-    if (method === 'PATCH') { patches.push({ path, options }); return {}; }
+    if (method === 'PUT') { patches.push({ path, options }); return {}; }
     return { data: { items: [record({
       automation_status: 'FAILED', error_detail: 'HTTP_HANDOFF_TIMEOUT_AFTER_SINGLE_RETRY',
       operation_id: '', http_status: '', items_accepted: '',
@@ -195,7 +195,7 @@ test('同一 Base record 并发仅 publish claim 获得者处理', async () => {
     async confirmDispatchHandoff() { return { updated: true }; },
   };
   const client = { async request(method) {
-    if (method === 'PATCH') return {};
+    if (method === 'PUT') return {};
     return { data: { items: [record({ automation_status: 'PENDING' })] } };
   } };
   const options = {
@@ -212,7 +212,7 @@ test('UNKNOWN handoff 不回写 Base；只有 QUEUED/SENT 可写 INGESTED', asyn
     const result = await runBasePull({
       enabled: true, appToken: 'app', tableId: 'table',
       client: { async request(method) {
-        if (method === 'PATCH') { patches += 1; return {}; }
+        if (method === 'PUT') { patches += 1; return {}; }
         return { data: { items: [record({ automation_status: 'PENDING' })] } };
       } },
       storeFactory: () => ({
