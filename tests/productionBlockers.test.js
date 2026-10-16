@@ -50,7 +50,7 @@ test('cron 动作复用 dispatch 动态函数且部署函数数不超过 Hobby �
 
   const vercel = JSON.parse(await readFile(new URL('../vercel.json', import.meta.url), 'utf8'));
   const recoveryCrons = vercel.crons.filter((entry) => entry.path === '/api/cron/bess-dispatch-cleanup');
-  assert.deepEqual(recoveryCrons, [{ path: '/api/cron/bess-dispatch-cleanup', schedule: '*/10 * * * *' }]);
+  assert.deepEqual(recoveryCrons, [{ path: '/api/cron/bess-dispatch-cleanup', schedule: '10 16 * * *' }]);
   assert.equal(vercel.env.BESS_BASE_PULL_RECORD_ALLOWLIST, undefined);
   assert.equal(vercel.env.BESS_BASE_PULL_MIN_BATCH_ID, '20261015-B');
   assert.equal(vercel.crons.some((entry) => entry.path.includes('pull-base')), false, 'Base pull 不得单独调度');

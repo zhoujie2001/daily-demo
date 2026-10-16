@@ -32,7 +32,7 @@
   },
   "crons": [
     { "path": "/api/alisha/memory/cleanup", "schedule": "15 3 * * *" },
-    { "path": "/api/cron/bess-dispatch-cleanup", "schedule": "*/10 * * * *" }
+    { "path": "/api/cron/bess-dispatch-cleanup", "schedule": "10 16 * * *" }
   ],
   "rewrites": [
     {
