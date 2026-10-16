@@ -106,7 +106,7 @@ test('allowlist 仅逐条精确 GET，不调用列表接口或携带 filter', as
   assert.equal(result.body.results.every(({ status }) => status === 'DRY_RUN_OK'), true);
 });
 
-test('非 allowlist 通过 batch_id 倒序搜索分页并在本地执行 eligibility 与 history isolation', async () => {
+test('非 allowlist 仅搜索未受理记录并按 batch_id 倒序分页，再执行本地 eligibility 与历史隔离', async () => {
   const queries = [];
   const bodies = [];
   const eligiblePayload = { ...payload, batch_id: '20261016-new' };
@@ -135,10 +135,14 @@ test('非 allowlist 通过 batch_id 倒序搜索分页并在本地执行 eligibi
   });
   assert.equal(queries.length, 2);
   assert.deepEqual(queries.map((query) => query.page_token), [undefined, 'next-0']);
-  assert.deepEqual(bodies, [
-    { sort: [{ field_name: 'batch_id', desc: true }] },
-    { sort: [{ field_name: 'batch_id', desc: true }] },
-  ]);
+  const expectedBody = {
+    filter: {
+      conjunction: 'and',
+      conditions: [{ field_name: 'operation_id', operator: 'isEmpty', value: [] }],
+    },
+    sort: [{ field_name: 'batch_id', desc: true }],
+  };
+  assert.deepEqual(bodies, [expectedBody, expectedBody]);
   assert.equal(result.body.pages, 2);
   assert.equal(result.body.truncated, true);
   assert.deepEqual(result.body.results.map(({ reason, status }) => reason || status), [
