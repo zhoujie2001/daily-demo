@@ -199,6 +199,7 @@ test('Base pull publish 成功但 Base 回写失败时进入 pendingWritebacks',
   await handler(cronRequest('cron'), res);
   assert.equal(result.status, 200);
   assert.equal(result.body.results[0].writebackPending, true);
+  assert.equal(result.body.results[0].writebackErrorCode, 'BASE_DOWN');
   assert.equal(pending.chatId, dispatchPayload.chat_id);
   assert.equal(pending.batchId, 'writeback-b1');
   assert.equal(pending.recordId, 'rec1');
@@ -366,7 +367,14 @@ test('writeback retry 鉴权、claim 后成功删除 pendingWritebacks', async (
     },
     async completeWriteback(value) { completed = value; return { completed: true }; },
   };
-  const client = { async request() { return {}; } };
+  let writebackToken;
+  const client = {
+    async getTenantAccessToken() { return 'tenant-token'; },
+    async request(method, path, options) {
+      writebackToken = options.token;
+      return {};
+    },
+  };
   const handler = createWritebackRetryHandler({
     secret: 'cron', appToken: 'app', tableId: 'table', storeFactory: () => store, client,
   });
@@ -380,6 +388,7 @@ test('writeback retry 鉴权、claim 后成功删除 pendingWritebacks', async (
   assert.equal(completed.formMessageId, 'bi_1');
   assert.equal(completed.recordId, 'rec1');
   assert.ok(completed.workerToken);
+  assert.equal(writebackToken, 'tenant-token');
 });
 
 test('writeback retry 失败只由持有 lease 的 worker 条件更新', async () => {
@@ -394,7 +403,10 @@ test('writeback retry 失败只由持有 lease 的 worker 条件更新', async (
   };
   const handler = createWritebackRetryHandler({
     secret: 'cron', appToken: 'app', tableId: 'table', storeFactory: () => store,
-    client: { async request() { throw Object.assign(new Error('down'), { code: 'BASE_DOWN' }); } },
+    client: {
+      async getTenantAccessToken() { return 'tenant-token'; },
+      async request() { throw Object.assign(new Error('down'), { code: 'BASE_DOWN' }); },
+    },
     now: () => current,
   });
   const { result, res } = response();
@@ -420,7 +432,10 @@ test('writeback 达最大次数或永久错误进入 dead-letter，不再无限�
         },
         async failClaimedWriteback(value) { failure = value; return { updated: true }; },
       }),
-      client: { async request() { throw scenario.error; } },
+      client: {
+        async getTenantAccessToken() { return 'tenant-token'; },
+        async request() { throw scenario.error; },
+      },
     });
     const { result, res } = response();
     await handler(cronRequest('cron'), res);
@@ -440,7 +455,10 @@ test('writeback 失败 worker 丢失 lease 后不得复活已完成项', async (
       async failClaimedWriteback() { return { updated: false, ownershipLost: true }; },
       async recordWritebackFailure() { legacyFailureCalled = true; },
     }),
-    client: { async request() { throw new Error('late failure'); } },
+    client: {
+      async getTenantAccessToken() { return 'tenant-token'; },
+      async request() { throw new Error('late failure'); },
+    },
   });
   const { result, res } = response();
   await handler(cronRequest('cron'), res);
