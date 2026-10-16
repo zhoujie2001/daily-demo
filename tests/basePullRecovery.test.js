@@ -111,6 +111,8 @@ test('非 allowlist 仅搜索未受理记录并按 batch_id 倒序分页，再�
   const bodies = [];
   const eligiblePayload = { ...payload, batch_id: '20261016-new' };
   const oldPayload = { ...payload, batch_id: '20261014-old' };
+  const encodedEligiblePayload = Buffer.from(JSON.stringify(eligiblePayload)).toString('base64');
+  const payloadSplit = Math.floor(encodedEligiblePayload.length / 2);
   const pages = [
     [
       record({ automation_status: 'FAILED', error_detail: 'BUSINESS_REJECTED' }),
@@ -118,7 +120,17 @@ test('非 allowlist 仅搜索未受理记录并按 batch_id 倒序分页，再�
     ],
     [
       { ...record({ automation_status: 'PENDING', dispatch_payload: oldPayload }), record_id: 'rec-old' },
-      { ...record({ automation_status: 'PENDING', dispatch_payload: eligiblePayload, dry_run: true }), record_id: 'rec-new' },
+      {
+        ...record({
+          automation_status: 'PENDING',
+          dispatch_payload: [
+            { type: 'text', text: encodedEligiblePayload.slice(0, payloadSplit) },
+            { type: 'text', text: encodedEligiblePayload.slice(payloadSplit) },
+          ],
+          dry_run: true,
+        }),
+        record_id: 'rec-new',
+      },
     ],
   ];
   const result = await runBasePullWithIsolation({
