@@ -106,8 +106,9 @@ test('allowlist 仅逐条精确 GET，不调用列表接口或携带 filter', as
   assert.equal(result.body.results.every(({ status }) => status === 'DRY_RUN_OK'), true);
 });
 
-test('非 allowlist 使用无 filter 有界分页并在本地执行 eligibility 与 history isolation', async () => {
+test('非 allowlist 通过 batch_id 倒序搜索分页并在本地执行 eligibility 与 history isolation', async () => {
   const queries = [];
+  const bodies = [];
   const eligiblePayload = { ...payload, batch_id: '20261016-new' };
   const oldPayload = { ...payload, batch_id: '20261014-old' };
   const pages = [
@@ -123,17 +124,21 @@ test('非 allowlist 使用无 filter 有界分页并在本地执行 eligibility 
   const result = await runBasePullWithIsolation({
     enabled: true, appToken: 'app', tableId: 'table', minBatchId: '20261015-start', maxPages: 2,
     client: { async request(method, path, options) {
-      assert.equal(method, 'GET');
-      assert.equal(path, '/open-apis/bitable/v1/apps/app/tables/table/records');
+      assert.equal(method, 'POST');
+      assert.equal(path, '/open-apis/bitable/v1/apps/app/tables/table/records/search');
       queries.push(options.query);
+      bodies.push(options.body);
       const index = queries.length - 1;
       return { data: { items: pages[index], has_more: true, page_token: `next-${index}` } };
     } },
     storeFactory: () => ({}),
   });
   assert.equal(queries.length, 2);
-  assert.equal(queries.every((query) => !Object.hasOwn(query, 'filter')), true);
   assert.deepEqual(queries.map((query) => query.page_token), [undefined, 'next-0']);
+  assert.deepEqual(bodies, [
+    { sort: [{ field_name: 'batch_id', desc: true }] },
+    { sort: [{ field_name: 'batch_id', desc: true }] },
+  ]);
   assert.equal(result.body.pages, 2);
   assert.equal(result.body.truncated, true);
   assert.deepEqual(result.body.results.map(({ reason, status }) => reason || status), [

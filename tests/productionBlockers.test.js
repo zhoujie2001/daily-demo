@@ -153,6 +153,9 @@ test('Base pull 遍历分页快照并回写后续页，避免第一页饥饿', a
   const client = {
     async request(method, path, options) {
       if (method === 'PUT') { patched.push(path); return {}; }
+      assert.equal(method, 'POST');
+      assert.equal(path, '/open-apis/bitable/v1/apps/app/tables/table/records/search');
+      assert.deepEqual(options.body.sort, [{ field_name: 'batch_id', desc: true }]);
       requestedTokens.push(options.query.page_token || null);
       return options.query.page_token
         ? { data: { items: [{ record_id: 'rec2', fields: { automation_status: 'PENDING', dispatch_payload: payload('2') } }], has_more: false } }
