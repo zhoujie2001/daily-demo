@@ -61,7 +61,7 @@ test('单条派单卡底部附带唯一的对应工作表入口', () => {
   const card = buildInitialDispatchCard(fields, { action: 'bess_auto_dispatch' });
   const buttons = sheetButtons(card);
   assert.equal(buttons.length, 1);
-  assert.equal(buttons[0].text.content, '查看写入表格');
+  assert.equal(buttons[0].text.content, '📊 查看对应表格');
   assert.equal(buttons[0].behaviors[0].default_url,
     'https://bytedance.larkoffice.com/sheets/token?from=dispatch&sheet=NWVztk');
   assert.equal(card.body.elements.at(-1), buttons[0]);
