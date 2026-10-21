@@ -108,9 +108,15 @@ test('端到端：/send 保留全部需求并跳过拒绝理由回查', async ()
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   const fakeClient = createFakeClient(['【团购】涉及保证产品/服务效果']);
   let queued;
+  const mockStore = {
+    registerDispatchHandoff: async () => ({ outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }),
+    confirmDispatchHandoff: async () => {},
+    markDispatchHandoffUnknown: async () => {},
+  };
   const targetHandler = createDispatchSendHandler({
     client: fakeClient,
     async publishDispatch(message) { queued = message; return { message_id: 'q_dispatch' }; },
+    storeFactory: () => mockStore,
   });
   const body = {
     chat_id: LOCAL_CHAT,
