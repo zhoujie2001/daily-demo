@@ -27,7 +27,7 @@ function cronRequest(secret = '') {
 }
 
 test('cron 动作复用 dispatch 动态函数且部署函数数不超过 Hobby 限额', async () => {
-  for (const action of ['pull-base', 'handoff-reconcile', 'writeback-retry']) {
+  for (const action of ['pull-base', 'handoff-reconcile', 'handoff-recovery', 'writeback-retry']) {
     const { result, res } = response();
     await dispatchActionHandler({ ...cronRequest(), query: { action } }, res);
     assert.equal(result.status, 401, `${action} 必须继续 fail-closed`);
@@ -284,7 +284,7 @@ test('handoff reconcile 缺 CRON_SECRET 时 fail-closed', async () => {
   assert.equal(result.status, 401);
 });
 
-test('ACCEPTED_UNKNOWN 使用持久化的同 operation 消息有界重放', async () => {
+test('ACCEPTED_UNKNOWN 即使持久化消息完整也不得在无未接收证据时盲重放', async () => {
   const published = [];
   let claimed;
   const context = {
@@ -309,14 +309,14 @@ test('ACCEPTED_UNKNOWN 使用持久化的同 operation 消息有界重放', asyn
     secret: 'cron', storeFactory: () => store, publishDispatch: async (message) => published.push(message),
   })(cronRequest('cron'), res);
   assert.equal(result.status, 200);
-  assert.equal(published.length, 1);
-  assert.equal(published[0], context.queueMessage);
-  assert.equal(published[0].operation_id, 'op1');
-  assert.equal(claimed.operationId, 'op1');
-  assert.equal(claimed.maxReconcileAttempts, 6);
+  assert.equal(published.length, 0);
+  assert.equal(claimed, undefined);
+  assert.equal(result.body.results[0].recovery, 'NEEDS_RECONCILIATION');
+  assert.equal(result.body.results[0].republished, false);
+  assert.equal(result.body.results[0].operation_id, 'op1');
 });
 
-test('ACCEPTED_UNKNOWN 超过有界次数进入可追踪 reconciliation dead-letter', async () => {
+test('未对账的 ACCEPTED_UNKNOWN 达重试阈值也保留审计状态而不伪造 dead-letter', async () => {
   let dead;
   const context = {
     batchId: 'b1', operationId: 'op1', fingerprint: 'fp1', status: 'ACCEPTED_UNKNOWN',
@@ -330,10 +330,10 @@ test('ACCEPTED_UNKNOWN 超过有界次数进入可追踪 reconciliation dead-let
   };
   const { result, res } = response();
   await createHandoffReconcileHandler({ secret: 'cron', storeFactory: () => store })(cronRequest('cron'), res);
-  assert.equal(result.body.results[0].status, 'RECONCILIATION_DEAD');
-  assert.equal(result.body.results[0].dead_letter, true);
-  assert.equal(dead.operationId, 'op1');
-  assert.equal(dead.errorCode, 'HANDOFF_RECONCILE_ATTEMPTS_EXHAUSTED');
+  assert.equal(result.body.results[0].status, 'ACCEPTED_UNKNOWN');
+  assert.equal(result.body.results[0].recovery, 'NEEDS_RECONCILIATION');
+  assert.equal(result.body.results[0].republished, false);
+  assert.equal(dead, undefined);
 });
 
 test('只有同 operation/fingerprint 的权威 non-acceptance 才安全重投', async () => {
@@ -765,7 +765,7 @@ test('并发 HANDOFF_PENDING 重试只有 publish claim 获得者发布', async 
   assert.deepEqual([first.result.status, second.result.status].sort(), [202, 202]);
 });
 
-test('reconciler 通过过期 publish lease claim 恢复未发布 handoff', async () => {
+test('reconciler 看到过期 publish lease 仍视为已越过边界并停止盲重发', async () => {
   let published = 0;
   let confirmed = 0;
   const context = {
@@ -796,9 +796,10 @@ test('reconciler 通过过期 publish lease claim 恢复未发布 handoff', asyn
     publishDispatch: async () => { published += 1; },
   })(cronRequest('cron'), res);
   assert.equal(result.status, 200);
-  assert.equal(published, 1);
-  assert.equal(confirmed, 1);
-  assert.equal(result.body.results[0].republished, true);
+  assert.equal(published, 0);
+  assert.equal(confirmed, 0);
+  assert.equal(result.body.results[0].recovery, 'NEEDS_RECONCILIATION');
+  assert.equal(result.body.results[0].republished, false);
 });
 
 
