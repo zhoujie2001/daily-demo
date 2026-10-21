@@ -4,10 +4,18 @@ import test from 'node:test';
 import { createDispatchSendHandler as _realHandlerFactory, resolveSyncWaitMs as handlerSyncResolve } from '../lib/dispatch/api/send.js';
 
 const handler = _realHandlerFactory();
+const mockStore = {
+  registerDispatchHandoff: async () => ({ outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }),
+  confirmDispatchHandoff: async () => {},
+  markDispatchHandoffUnknown: async () => {},
+  markDispatchHandoffRejected: async () => {},
+};
+
 // 测试默认注入 no-op 拒绝理由回查，避免误触飞书网络；回查能力单独用真实模块测试。
 const createTestHandler = (opts = {}) => _realHandlerFactory({
   enrichRejectReasons: async () => [],
   publishDispatch: async () => ({ message_id: 'q_test', deduplicated: false }),
+  storeFactory: () => mockStore,
   ...opts,
 });
 import {
@@ -815,7 +823,7 @@ test('队列发布超时时返回可安全重试的未知接受状态', async ()
   await Promise.all(deferred);
 });
 
-test('队列发布明确失败时返回 503 且不谎报已接受', async () => {
+test('队列发布明确失败时返回 202 且标记未知接受以便闭环恢复', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   const targetHandler = createTestHandler({
     async publishDispatch() {
@@ -824,10 +832,35 @@ test('队列发布明确失败时返回 503 且不谎报已接受', async () => 
   });
 
   const response = await invoke(localBody, { targetHandler });
-  assert.equal(response.status, 503);
-  assert.equal(response.body.ok, false);
-  assert.equal(response.body.error_code, 'DISPATCH_QUEUE_UNAVAILABLE');
-  assert.equal(response.body.accepted_unknown, undefined);
+  assert.equal(response.status, 202);
+  assert.equal(response.body.ok, true);
+  assert.equal(response.body.accepted_unknown, true);
+  assert.equal(response.body.recovery, 'NEEDS_RECONCILIATION');
+});
+
+test('dry_run 模式下校验通过但不持久化也不入队', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  let publishes = 0;
+  const targetHandler = createTestHandler({
+    async publishDispatch() { publishes += 1; return { message_id: 'q_dry' }; },
+    storeFactory: () => ({
+      registerDispatchHandoff: () => { throw new Error('Should not call store in dry_run'); }
+    })
+  });
+
+  const response = await invoke({ ...localBody, dry_run: true }, { targetHandler });
+  assert.equal(response.status, 200);
+  assert.equal(response.body.status, 'DRY_RUN_OK');
+  assert.equal(publishes, 0);
+});
+
+test('成功入队应包含 durable_status 和 recovery 确认标记', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const targetHandler = createTestHandler();
+  const response = await invoke(localBody, { targetHandler });
+  assert.equal(response.status, 202);
+  assert.equal(response.body.durable_status, 'QUEUED');
+  assert.equal(response.body.recovery, 'CONFIRMED');
 });
 
 test('原部分过滤批次现在按原顺序全部入队', async () => {
