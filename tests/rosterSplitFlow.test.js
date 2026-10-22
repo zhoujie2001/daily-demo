@@ -100,6 +100,54 @@ test('名单保存与派单拆分：单条派单流程', async () => {
   assert.equal(writeCallFinal.assignee, '张三');
 });
 
+test('过期数据清理失败不应阻断名单保存', async () => {
+  const store = createMemoryBatchStore();
+  const client = new FakeClient();
+  const logs = [];
+  const now = () => new Date('2026-10-22T04:00:49Z');
+
+  await store.savePending({
+    form_message_id: 'om_cleanup_conflict',
+    request_id: 'req_cleanup_conflict',
+    original_message_id: 'om_original',
+    chat_id: 'oc_allowed',
+    request_context: {
+      requestId: 'req_cleanup_conflict', requestName: '需求', businessType: '千川',
+      sheetUrl: 'u', sheetId: 's', rowIndex: 10, dateFieldId: 'H', assigneeFieldId: 'J',
+    },
+    expires_at: '2026-10-23T00:00:00Z',
+  });
+  store.cleanupExpired = async () => {
+    const error = new Error('expired pending form is still referenced');
+    error.code = 'DISPATCH_DB_ERROR';
+    throw error;
+  };
+
+  const result = await handleDispatchEvent({
+    header: { event_id: 'evt_cleanup_conflict' },
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: {
+        form_value: { roster_names: '张三,李四', shuffle_roster: false },
+        tag: 'dispatch_roster_form',
+      },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_cleanup_conflict' },
+    },
+  }, {
+    store,
+    client,
+    config: { allowedChatIds: 'oc_allowed', featureEnabled: 'true' },
+    logger: { info(entry) { logs.push(JSON.parse(entry)); } },
+    now,
+  });
+
+  assert.equal(result.httpStatus, 200);
+  assert.equal(result.errorCode, undefined);
+  assert.match(result.body.toast.content, /今日名单已保存/);
+  assert.ok(logs.some((entry) => entry.stage === 'cleanup_failed'
+    && entry.error_code === 'DISPATCH_DB_ERROR'));
+});
+
 test('名单保存与派单拆分：批量派单流程', async () => {
   const store = createMemoryBatchStore();
   const client = new FakeClient();
