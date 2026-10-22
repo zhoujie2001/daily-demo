@@ -73,6 +73,49 @@ test('无有效表格地址时不渲染表格入口', () => {
   assert.equal(sheetButtons(card).length, 0);
 });
 
+test('C+ 单条需求卡使用红色 header 且保留标题', () => {
+  const fields = {
+    requestId: '706003',
+    requestName: '重点 C+ 风险处置',
+    businessType: '千川',
+    cardTitle: '【C+需求】新增回扫需求',
+  };
+
+  const card = buildInitialDispatchCard(fields, { action: 'bess_auto_dispatch' });
+
+  assert.equal(card.header.title.content, '【C+需求】新增回扫需求');
+  assert.equal(card.header.template, 'red');
+});
+
+test('普通需求卡继续沿用业务默认颜色', () => {
+  const qianchuan = buildInitialDispatchCard(
+    { requestId: '706004', requestName: '普通需求', businessType: '千川' },
+    { action: 'bess_auto_dispatch' },
+  );
+  const localPromo = buildInitialDispatchCard(
+    { requestId: '706005', requestName: '普通需求', businessType: '本地推' },
+    { action: 'bess_auto_dispatch' },
+  );
+
+  assert.equal(qianchuan.header.template, 'yellow');
+  assert.equal(localPromo.header.template, 'blue');
+});
+
+test('批次仅在全部为 C+ 需求时使用红色 header', () => {
+  const action = { action: 'bess_batch_auto_dispatch', batch_id: 'batch_c_plus', items: [] };
+  const cPlusFields = [
+    { requestId: '706006', requestName: 'C+ 需求一', businessType: '千川' },
+    { requestId: '706007', requestName: 'C＋ 需求二', businessType: '千川' },
+  ];
+  const mixedFields = [
+    cPlusFields[0],
+    { requestId: '706008', requestName: '普通需求', businessType: '千川' },
+  ];
+
+  assert.equal(buildBatchDispatchCard(cPlusFields, action).header.template, 'red');
+  assert.equal(buildBatchDispatchCard(mixedFields, action).header.template, 'yellow');
+});
+
 test('按 element_id 定位按钮并置灰、清空 behaviors、追加结果备注', () => {
   const result = patchCardForDispatched(cardWithButton(), {
     requestId: '706001',
