@@ -1885,6 +1885,51 @@ test('原子批量：全空批次单次 batch read、assignBatch 与 batch write
   assert.equal(store.calibrations.length, 0);
 });
 
+test('原子批量：前序人工锚点只校准一次，随后一次 assignBatch 与 batch write', async () => {
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[8] = ['2026-08-30', '乙', '千川'];
+  const store = new BatchStore({ batchApi: true });
+  store.state = { roster: ['甲', '乙', '丙'] };
+  const client = new BatchClient({ sheetRows: rows, batchApi: true });
+  const items = [item('atomic_anchor_1', 10), item('atomic_anchor_2', 11), item('atomic_anchor_3', 12)];
+
+  const result = await handleDispatchEvent(batchBody('atomic_after_manual_anchor', items), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'atomic_after_manual_anchor');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.deepEqual(batch.results.map(({ requestId, assignee }) => [requestId, assignee]), [
+    ['atomic_anchor_1', '丙'], ['atomic_anchor_2', '甲'], ['atomic_anchor_3', '乙'],
+  ]);
+  assert.deepEqual(rows.slice(9, 12).map((row) => row[1]), ['丙', '甲', '乙']);
+  assert.deepEqual(store.calibrations.map(({ direction, assignee }) => [direction, assignee]), [['forward', '乙']]);
+  assert.equal(store.assignBatchCalls, 1);
+  assert.equal(store.assignCalls, 0);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'batchRead').length, 1);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'batchWrite').length, 1);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'write').length, 0);
+});
+
+test('原子批量：目标行存在人工负责人时安全降级，禁止批量覆盖', async () => {
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[10] = ['2026-08-30', '乙', '千川'];
+  const store = new BatchStore({ batchApi: true });
+  store.state = { roster: ['甲', '乙', '丙'] };
+  const client = new BatchClient({ sheetRows: rows, batchApi: true });
+
+  const result = await handleDispatchEvent(batchBody('atomic_target_conflict', [
+    item('target_conflict_empty', 10), item('target_conflict_manual', 11), item('target_conflict_after', 12),
+  ]), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'atomic_target_conflict');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.equal(rows[10][1], '乙');
+  assert.equal(store.assignBatchCalls, 0);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'batchWrite').length, 0);
+  assert.equal(client.calls.filter(({ kind, rowIndex }) => kind === 'write' && rowIndex === 11).length, 0);
+});
+
 test('人工锚点在首条：跳过人工行，校准后续空行且仅逐条写入空目标', async () => {
   const rows = new Array(20).fill(null).map(() => ['', '', '']);
   rows[9] = ['2026-08-30', '乙', '千川'];
