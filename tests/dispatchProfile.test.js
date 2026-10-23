@@ -62,7 +62,22 @@ test('跨 ad_review/ad_game 混合批次在校验后具有不同 scope', () => {
       action({ request_id: 'game_1', target_category: 'game_agent', sheet_id: 'game' }),
     ],
   });
+  assert.equal(batch.kind, 'batch');
   assert.deepEqual(batch.items.map((item) => item.dispatchScope), ['ad_review', 'ad_game']);
+});
+
+test('校验后的旧本地推批次递归强制使用 JJqR2d 的 L/领取人契约', () => {
+  const batch = validateBatchDispatchValue({
+    action: 'bess_batch_auto_dispatch', batch_id: 'legacy_local_retry', items: [
+      action({
+        request_id: 'local_retry_1', business_type: '本地推', target_category: 'local_promo',
+        sheet_id: 'JJqR2d', assignee_field_id: 'J', assignee_field_name: '执行人',
+      }),
+    ],
+  });
+  const enforced = enforceAssigneeFieldContract(batch);
+  assert.equal(enforced.items[0].assigneeFieldId, 'L');
+  assert.equal(enforced.items[0].assigneeFieldName, '领取人');
 });
 
 test('AD ingest 显式携带 profile 但 scope 仅保留在服务端字段', () => {
