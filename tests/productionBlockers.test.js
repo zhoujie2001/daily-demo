@@ -99,6 +99,7 @@ test('启用 Base pull 会构建完整卡片并发布队列，重放不重复 pu
   let confirmedValue;
   const patched = [];
   const store = {
+    async reserveDispatchIngestRoot() { return { outcome: 'ACCEPTED' }; },
     async registerDispatchHandoff() {
       registrations += 1;
       return registrations === 1
@@ -171,6 +172,7 @@ test('Base pull 遍历分页快照并回写后续页，避免第一页饥饿', a
   const handler = createBasePullHandler({
     secret: 'cron', enabled: true, enforceHistoryIsolation: false, appToken: 'app', tableId: 'table', client,
     storeFactory: () => ({
+      async reserveDispatchIngestRoot() { return { outcome: 'ACCEPTED' }; },
       async registerDispatchHandoff() { return { outcome: 'REUSED', status: 'QUEUED' }; },
     }),
     publishDispatch: async () => assert.fail('queued handoff must not republish'),
@@ -200,6 +202,7 @@ test('Base pull publish 成功但 Base 回写失败时进入 pendingWritebacks',
       return { data: { items: [{ record_id: 'rec1', fields: { automation_status: 'PENDING', dispatch_payload: dispatchPayload } }] } };
     } },
     storeFactory: () => ({
+      async reserveDispatchIngestRoot() { return { outcome: 'ACCEPTED' }; },
       async registerDispatchHandoff() { return { outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }; },
       async confirmDispatchHandoff() { return { updated: true }; },
       async recordWritebackFailure(value) { pending = value; },
@@ -220,6 +223,7 @@ test('Base pull publish 成功但 Base 回写失败时进入 pendingWritebacks',
 test('同步 queue rejection 先持久化权威 non-acceptance 和完整卡片', async () => {
   let rejected;
   const store = {
+    async reserveDispatchIngestRoot() { return { outcome: 'ACCEPTED' }; },
     async registerDispatchHandoff() { return { outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }; },
     async markDispatchHandoffRejected(value) { rejected = value; },
   };
@@ -253,6 +257,7 @@ test('automation DEAD 重放返回终态失败且不重新 publish', async () =>
   const handler = createAutomationSendHandler({
     secret: 'automation',
     storeFactory: () => ({
+      async reserveDispatchIngestRoot() { return { outcome: 'ACCEPTED' }; },
       async registerDispatchHandoff() { return { outcome: 'REUSED', status: 'DEAD', operation_id: 'op-dead' }; },
     }),
     publishDispatch: async () => { publishes += 1; },
@@ -579,6 +584,7 @@ test('automation publish 成功但 confirm 失败只标记 ACCEPTED_UNKNOWN，�
   const handler = createAutomationSendHandler({
     secret: 'automation',
     storeFactory: () => ({
+      async reserveDispatchIngestRoot() { return { outcome: 'ACCEPTED' }; },
       async registerDispatchHandoff() { return { outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }; },
       async confirmDispatchHandoff() { throw Object.assign(new Error('db down'), { code: 'DB_DOWN' }); },
       async markDispatchHandoffUnknown(value) { unknown = value; },
@@ -625,6 +631,7 @@ test('Base pull publish 成功但 confirm 失败只标 unknown，且不回写 IN
       return { data: { items: [{ record_id: 'rec-confirm-unknown', fields: { automation_status: 'PENDING', dispatch_payload: dispatchPayload } }] } };
     } },
     storeFactory: () => ({
+      async reserveDispatchIngestRoot() { return { outcome: 'ACCEPTED' }; },
       async registerDispatchHandoff() { return { outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }; },
       async confirmDispatchHandoff() { throw Object.assign(new Error('db down'), { code: 'DB_DOWN' }); },
       async markDispatchHandoffUnknown(value) { unknown = value; },
@@ -659,6 +666,7 @@ test('Base pull 已有 ACCEPTED_UNKNOWN 不得提前回写 INGESTED', async () =
       return { data: { items: [{ record_id: 'rec-reused-unknown', fields: { automation_status: 'PENDING', dispatch_payload: dispatchPayload } }] } };
     } },
     storeFactory: () => ({
+      async reserveDispatchIngestRoot() { return { outcome: 'ACCEPTED' }; },
       async registerDispatchHandoff() {
         return { outcome: 'REUSED', status: 'ACCEPTED_UNKNOWN', operation_id: 'same-op' };
       },
@@ -691,6 +699,7 @@ test('Base pull publish 超时保持 ACCEPTED_UNKNOWN，不写权威拒绝', asy
       return { data: { items: [{ record_id: 'rec-timeout', fields: { automation_status: 'PENDING', dispatch_payload: dispatchPayload } }] } };
     } },
     storeFactory: () => ({
+      async reserveDispatchIngestRoot() { return { outcome: 'ACCEPTED' }; },
       async registerDispatchHandoff() { return { outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }; },
       async markDispatchHandoffUnknown() { unknown += 1; },
       async markDispatchHandoffRejected() { rejected += 1; },
@@ -716,6 +725,7 @@ test('注册后崩溃的 HANDOFF_PENDING 在重试时通过 publish claim 恢复
   const handler = createAutomationSendHandler({
     secret: 'automation',
     storeFactory: () => ({
+      async reserveDispatchIngestRoot() { return { outcome: 'ACCEPTED' }; },
       async registerDispatchHandoff() { return { outcome: 'REUSED', status: 'HANDOFF_PENDING', operation_id: 'op1' }; },
       async claimDispatchHandoffPublish() { claimed += 1; return { claimed: true, status: 'HANDOFF_PENDING' }; },
       async confirmDispatchHandoff() { return { updated: true }; },
@@ -739,6 +749,7 @@ test('并发 HANDOFF_PENDING 重试只有 publish claim 获得者发布', async 
   let leaseHeld = false;
   let published = 0;
   const store = {
+    async reserveDispatchIngestRoot() { return { outcome: 'ACCEPTED' }; },
     async registerDispatchHandoff() { return { outcome: 'REUSED', status: 'HANDOFF_PENDING', operation_id: 'op1' }; },
     async claimDispatchHandoffPublish() {
       if (leaseHeld) return { claimed: false, status: 'HANDOFF_PENDING' };
@@ -808,6 +819,7 @@ test('register 在 publish claim 前已原子携带 reconciler 所需完整消�
   const handler = createAutomationSendHandler({
     secret: 'automation',
     storeFactory: () => ({
+      async reserveDispatchIngestRoot() { return { outcome: 'ACCEPTED' }; },
       async registerDispatchHandoff(value) {
         registered = value;
         return { outcome: 'REUSED', status: 'QUEUED', operation_id: value.operationId };

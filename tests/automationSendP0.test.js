@@ -40,6 +40,7 @@ describe('automation-send P0 Handoff', () => {
     let registered = false;
     let published = false;
     const store = {
+      reserveDispatchIngestRoot: async () => ({ outcome: 'ACCEPTED' }),
       registerDispatchHandoff: async () => {
         registered = true;
         return { outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' };
@@ -66,6 +67,7 @@ describe('automation-send P0 Handoff', () => {
 
   it('returns 409 on payload conflict', async () => {
     const store = {
+      reserveDispatchIngestRoot: async () => ({ outcome: 'ACCEPTED' }),
       registerDispatchHandoff: async () => ({ outcome: 'PAYLOAD_CONFLICT', status: 'QUEUED', operation_id: 'old_op' }),
     };
     const handler = createAutomationSendHandler({
@@ -83,6 +85,7 @@ describe('automation-send P0 Handoff', () => {
   it('handles queue timeout by marking status as ACCEPTED_UNKNOWN', async () => {
     let unknownMarked = false;
     const store = {
+      reserveDispatchIngestRoot: async () => ({ outcome: 'ACCEPTED' }),
       registerDispatchHandoff: async () => ({ outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }),
       markDispatchHandoffUnknown: async () => { unknownMarked = true; },
       confirmDispatchHandoff: async () => {},
@@ -106,6 +109,7 @@ describe('automation-send P0 Handoff', () => {
   it('updates late success to QUEUED', async () => {
     let confirmed = false;
     const store = {
+      reserveDispatchIngestRoot: async () => ({ outcome: 'ACCEPTED' }),
       registerDispatchHandoff: async () => ({ outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }),
       markDispatchHandoffUnknown: async () => {},
       confirmDispatchHandoff: async () => { confirmed = true; },
@@ -138,6 +142,7 @@ describe('automation-send P0 Handoff', () => {
   it('does not re-publish if status is already QUEUED', async () => {
     let publishCount = 0;
     const store = {
+      reserveDispatchIngestRoot: async () => ({ outcome: 'ACCEPTED' }),
       registerDispatchHandoff: async () => ({ outcome: 'REUSED', status: 'QUEUED', operation_id: 'op1' }),
     };
     const handler = createAutomationSendHandler({

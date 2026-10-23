@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { LarkApiError } from '../lib/lark/client.js';
 import { processDispatchQueueMessage, runDispatchOutbox } from '../lib/dispatch/outbox-worker.js';
 
 function task(overrides = {}) {
@@ -84,6 +85,27 @@ test('达到 attempt 上限进入 dead-letter', async () => {
   assert.equal(result.results[0].dead, true);
   assert.equal(retry.dead, true);
   assert.equal(retry.errorCode, 'LARK_BAD');
+});
+
+test('LARK_API_230099 首次失败直接 dead-letter 且保留错误码', async () => {
+  let retry;
+  const store = {
+    async claimDispatchOutbox() { return [task({ attempt: 1 })]; },
+    async completeDispatchOutbox() { throw new Error('must not complete'); },
+    async retryDispatchOutbox(payload) { retry = payload; return { updated: true }; },
+  };
+  const client = {
+    async sendMessage() {
+      throw new LarkApiError('LARK_API_230099', 'invalid card content', {
+        httpStatus: 400, apiCode: 230099, apiMessage: 'invalid card content', logId: 'log-safe-id',
+      });
+    },
+  };
+  const result = await runDispatchOutbox({ store, client, workerToken: 'worker-1' });
+  assert.equal(result.results[0].dead, true);
+  assert.equal(result.results[0].error_code, 'LARK_API_230099');
+  assert.equal(retry.dead, true);
+  assert.equal(retry.errorCode, 'LARK_API_230099');
 });
 
 test('空 claim 保证重复 worker 不会重复发送', async () => {

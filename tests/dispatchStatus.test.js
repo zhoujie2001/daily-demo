@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import test from 'node:test';
+import { dispatchChunkBatchId } from '../lib/dispatch/card-chunks.js';
 import { createDispatchStatusHandler } from '../lib/dispatch/api/status.js';
 import { canonicalJson } from '../lib/dispatch/ingest.js';
 import { runDispatchOutbox } from '../lib/dispatch/outbox-worker.js';
@@ -96,6 +97,49 @@ test('持久化批次完成后返回 SENT 和 message_id', async () => {
     status: 'SENT',
     message_id: 'om_sent',
   });
+});
+
+
+test('原始 batch_id 聚合所有 card chunk 终态和 message_ids', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const batchId = 'batch_api_chunks';
+  const chunkIds = [1, 2].map((index) => dispatchChunkBatchId(batchId, index, 2));
+  let rows = [
+    { batch_id: chunkIds[0], found: true, status: 'SENT', message_id: 'om_1', operation_id: 'op_1', request_ids: ['r1'] },
+    { batch_id: chunkIds[1], found: true, status: 'PROCESSING', operation_id: 'op_2', request_ids: ['r2'] },
+  ];
+  const store = {
+    async getIngestBatchStatus() { return { found: false }; },
+    async getIngestBatchStatuses(targets) {
+      assert.deepEqual(targets.map((target) => target.batchId), chunkIds);
+      return rows;
+    },
+    async nudgeDispatchOutbox() { return false; },
+  };
+
+  const processing = await invoke({ chat_id: 'oc_test', batch_id: batchId }, store, { runWorker: async () => ({}) });
+  assert.equal(processing.body.status, 'SENDING');
+  assert.deepEqual(processing.body.message_ids, ['om_1']);
+  assert.equal(processing.body.chunks.length, 2);
+  await Promise.all(processing.deferred);
+
+  rows = [
+    { ...rows[0] },
+    { ...rows[1], status: 'SENT', message_id: 'om_2' },
+  ];
+  const sent = await invoke({ chat_id: 'oc_test', batch_id: batchId }, store);
+  assert.equal(sent.body.status, 'SENT');
+  assert.equal(sent.body.message_id, 'om_1');
+  assert.deepEqual(sent.body.message_ids, ['om_1', 'om_2']);
+
+  rows = [
+    { ...rows[0] },
+    { ...rows[1], status: 'DEAD', message_id: '', error_code: 'LARK_API_230099', retryable: false },
+  ];
+  const failed = await invoke({ chat_id: 'oc_test', batch_id: batchId }, store);
+  assert.equal(failed.body.status, 'FAILED');
+  assert.equal(failed.body.error_code, 'LARK_API_230099');
+  assert.equal(failed.body.dead_letter, true);
 });
 
 

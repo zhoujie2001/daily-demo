@@ -109,6 +109,7 @@ test('端到端：/send 保留全部需求并跳过拒绝理由回查', async ()
   const fakeClient = createFakeClient(['【团购】涉及保证产品/服务效果']);
   let queued;
   const mockStore = {
+    reserveDispatchIngestRoot: async () => ({ outcome: 'ACCEPTED' }),
     registerDispatchHandoff: async () => ({ outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }),
     confirmDispatchHandoff: async () => {},
     markDispatchHandoffUnknown: async () => {},

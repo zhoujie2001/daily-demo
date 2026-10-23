@@ -45,6 +45,7 @@ describe('P1 Handoff Reliability', () => {
   it('Scenario 1: publish 超时标记 ACCEPTED_UNKNOWN 并返回 503', async () => {
     let unknownMarked = false;
     const store = {
+      reserveDispatchIngestRoot: async () => ({ outcome: 'ACCEPTED' }),
       registerDispatchHandoff: async () => ({ outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }),
       markDispatchHandoffUnknown: async () => { unknownMarked = true; },
     };
@@ -68,6 +69,7 @@ describe('P1 Handoff Reliability', () => {
   it('Scenario 2: 已入队但响应丢失，晚到的成功应通过 defer 补偿确认', async () => {
     let confirmed = false;
     const store = {
+      reserveDispatchIngestRoot: async () => ({ outcome: 'ACCEPTED' }),
       registerDispatchHandoff: async () => ({ outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }),
       markDispatchHandoffUnknown: async () => {},
       confirmDispatchHandoff: async () => { confirmed = true; },
@@ -124,6 +126,7 @@ describe('P1 Handoff Reliability', () => {
     let publishCount = 0;
     let writebackFailed = false;
     const store = {
+      reserveDispatchIngestRoot: async () => ({ outcome: 'ACCEPTED' }),
       registerDispatchHandoff: async () => {
         if (publishCount === 0) return { outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' };
         return { outcome: 'REUSED', status: 'HANDOFF_PENDING' };
@@ -182,6 +185,7 @@ describe('P1 Handoff Reliability', () => {
       secret: TEST_SECRET,
       publishDispatch: async () => { publishCount++; return { message_id: 'q1' }; },
       storeFactory: () => ({
+        reserveDispatchIngestRoot: async () => ({ outcome: 'ACCEPTED' }),
         registerDispatchHandoff: async () => {
           if (!claimed) { claimed = true; return { outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }; }
           return { outcome: 'REUSED', status: 'QUEUED' };
@@ -203,6 +207,7 @@ describe('P1 Handoff Reliability', () => {
     const handler = createAutomationSendHandler({
       secret: TEST_SECRET,
       storeFactory: () => ({
+        reserveDispatchIngestRoot: async () => ({ outcome: 'ACCEPTED' }),
         registerDispatchHandoff: async () => ({ outcome: 'PAYLOAD_CONFLICT' }),
       }),
     });
@@ -219,6 +224,7 @@ describe('P1 Handoff Reliability', () => {
     const handler = createAutomationSendHandler({
       secret: TEST_SECRET,
       storeFactory: () => ({
+        reserveDispatchIngestRoot: async () => ({ outcome: 'ACCEPTED' }),
         registerDispatchHandoff: async () => ({ outcome: 'REUSED', status: 'ACCEPTED_UNKNOWN' }),
       }),
     });
