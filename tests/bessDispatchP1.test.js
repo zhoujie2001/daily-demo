@@ -73,6 +73,10 @@ class FakeStore {
     else this.reverse = roster.length - index;
     return { ...(this.state || {}), forward_cursor: this.forward, reverse_cursor: this.reverse };
   }
+  async calibrateAndAssign(args) {
+    await this.calibrateCursor(args);
+    return this.assign(args);
+  }
   async assign({ requestId, direction, roster, context = {} }) {
     this.assignCalls += 1;
     if (this.assignments.has(requestId)) return { ...this.assignments.get(requestId), roster: this.state.roster, replayed: true };

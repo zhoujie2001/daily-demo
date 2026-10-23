@@ -460,3 +460,97 @@ test('写前 GET 失败时不继续 PUT', async () => {
   await assert.rejects(() => client.writeSheetAssignee(guardedSheetTarget), (error) => error instanceof LarkApiError);
   assert.deepEqual(calls.map((call) => call.options.method), ['GET']);
 });
+
+
+function locateRequestClient({ rowCount, valuesByRange }) {
+  const requestedRanges = [];
+  const stub = stubFetch((call) => {
+    if (call.url.pathname.endsWith('/tenant_access_token/internal')) {
+      return jsonResponse(200, { code: 0, tenant_access_token: 't-1', expire: 7200 });
+    }
+    if (call.url.pathname.endsWith('/sheets/query')) {
+      return jsonResponse(200, { code: 0, data: { sheets: [{ sheet_id: 'sheet1', grid_properties: { row_count: rowCount } }] } });
+    }
+    const range = decodeURIComponent(call.url.pathname.split('/values/')[1]);
+    requestedRanges.push(range);
+    return jsonResponse(200, { code: 0, data: { valueRange: { values: valuesByRange[range] || [] } } });
+  });
+  return {
+    client: new LarkClient({ appId: 'cli_x', appSecret: 'sec', baseUrl: 'https://open.feishu.test' }),
+    requestedRanges,
+    restore: () => stub.restore(),
+  };
+}
+
+test('locateSheetRequestRow 分块完整扫描并按 request_id 返回唯一物理行', async () => {
+  const secondChunk = Array.from({ length: 7 }, () => []);
+  secondChunk[6] = ['req-5007'];
+  const fixture = locateRequestClient({ rowCount: 6000, valuesByRange: {
+    'sheet1!A1:A5000': [], 'sheet1!A5001:A6000': secondChunk,
+  } });
+  try {
+    const found = await fixture.client.locateSheetRequestRow({
+      sheetUrl: 'https://example.feishu.cn/sheets/spreadsheetToken', sheetId: 'sheet1',
+      requestId: 'req-5007', requestFieldId: 'A',
+    });
+    assert.deepEqual(found, { rowIndex: 5007, scanComplete: true });
+    assert.deepEqual(fixture.requestedRanges, ['sheet1!A1:A5000', 'sheet1!A5001:A6000']);
+  } finally { fixture.restore(); }
+});
+
+for (const scenario of [
+  { name: '重复', values: [['req-x'], ['req-x']] },
+  { name: '缺失', values: [['other']] },
+]) {
+  test(`locateSheetRequestRow 对 request_id ${scenario.name} fail-closed`, async () => {
+    const fixture = locateRequestClient({ rowCount: scenario.values.length, valuesByRange: {
+      [`sheet1!A1:A${scenario.values.length}`]: scenario.values,
+    } });
+    try {
+      await assert.rejects(() => fixture.client.locateSheetRequestRow({
+        sheetUrl: 'https://example.feishu.cn/sheets/spreadsheetToken', sheetId: 'sheet1',
+        requestId: 'req-x', requestFieldId: 'A',
+      }), (error) => error instanceof LarkApiError && error.code === 'TARGET_NOT_FOUND');
+    } finally { fixture.restore(); }
+  });
+}
+
+
+test('locateSheetRequestRow 兼容旧 action：无字段配置时按唯一的非“需求 ID”合法表头定位', async () => {
+  const fixture = locateRequestClient({ rowCount: 3, valuesByRange: {
+    'sheet1!1:1': [['标题', '负责人', '需求ID']],
+    'sheet1!C1:C3': [['需求ID'], ['other'], ['req-legacy']],
+  } });
+  try {
+    const found = await fixture.client.locateSheetRequestRow({
+      sheetUrl: 'https://example.feishu.cn/sheets/spreadsheetToken', sheetId: 'sheet1',
+      requestId: 'req-legacy',
+    });
+    assert.deepEqual(found, { rowIndex: 3, scanComplete: true });
+    assert.deepEqual(fixture.requestedRanges, ['sheet1!1:1', 'sheet1!C1:C3']);
+  } finally { fixture.restore(); }
+});
+
+test('locateSheetRequestRow 对旧 action 的多个需求 ID 候选表头 fail-closed', async () => {
+  const fixture = locateRequestClient({ rowCount: 2, valuesByRange: {
+    'sheet1!1:1': [['需求 ID', 'request_id']],
+  } });
+  try {
+    await assert.rejects(() => fixture.client.locateSheetRequestRow({
+      sheetUrl: 'https://example.feishu.cn/sheets/spreadsheetToken', sheetId: 'sheet1', requestId: 'req-x',
+    }), (error) => error instanceof LarkApiError && error.code === 'REQUEST_ID_FIELD_AMBIGUOUS');
+    assert.deepEqual(fixture.requestedRanges, ['sheet1!1:1']);
+  } finally { fixture.restore(); }
+});
+
+test('locateSheetRequestRow 对旧 action 无需求 ID 候选表头 fail-closed', async () => {
+  const fixture = locateRequestClient({ rowCount: 2, valuesByRange: {
+    'sheet1!1:1': [['标题', '负责人']],
+  } });
+  try {
+    await assert.rejects(() => fixture.client.locateSheetRequestRow({
+      sheetUrl: 'https://example.feishu.cn/sheets/spreadsheetToken', sheetId: 'sheet1', requestId: 'req-x',
+    }), (error) => error instanceof LarkApiError && error.code === 'REQUEST_ID_FIELD_NOT_FOUND');
+    assert.deepEqual(fixture.requestedRanges, ['sheet1!1:1']);
+  } finally { fixture.restore(); }
+});

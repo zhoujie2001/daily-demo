@@ -202,3 +202,10 @@ test('千川 l1ztJV 接入未显式传字段时不再注入 H/J/C 旧版配置',
   assert.equal(fields.projectFieldName, '');
   assert.equal(fields.projectValue, '');
 });
+
+
+test('历史 action 未配置需求字段时不伪造“需求 ID”显式配置', () => {
+  const fields = validateDispatchValue(action());
+  assert.equal(fields.requestFieldId, '');
+  assert.equal(fields.requestFieldName, '');
+});
