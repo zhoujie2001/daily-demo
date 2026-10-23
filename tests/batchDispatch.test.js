@@ -177,7 +177,9 @@ class BatchStore {
   async assignBatch({ requestIds, scope, direction = 'forward', roster, contexts = [] }) {
     if (roster) this.state = { roster };
     this.assignBatchCalls += 1;
-    this.assignBatchDetails.push({ requestIds: [...requestIds], scope, direction });
+    this.assignBatchDetails.push({
+      requestIds: [...requestIds], scope, direction, contexts: contexts.map((context) => ({ ...context })),
+    });
     const results = [];
     for (const [index, requestId] of requestIds.entries()) {
       const existing = this.assignments.get(requestId);
@@ -2089,4 +2091,121 @@ test('request_id 重定位不修改批次 identity：旧行号→部分失败→
   assert.equal(store.getBatch('oc_allowed', 'relocate_partial_retry').status, 'SUCCESS');
   assert.deepEqual(originalItems.map(({ row_index: row }) => row), [10, 11]);
   assert.equal(rows[20][1], '乙', '失败项重试必须继续写 request_id 重定位后的第 21 行');
+});
+
+
+test('原子批量按 request_id 重定位：空/过期行号使用 resolvedRowIndex 读写并持久化上下文', async () => {
+  const store = new BatchStore({ batchApi: true });
+  store.state = { roster: ['甲', '乙', '丙'] };
+  const originalItems = [item('fast_relocate_null', null), item('fast_relocate_stale', 11)];
+  const rows = new Array(30).fill(null).map(() => ['', '', '']);
+  const client = new BatchClient({ sheetRows: rows, batchApi: true });
+  const resolvedRows = new Map([['fast_relocate_null', 20], ['fast_relocate_stale', 21]]);
+  client.locateSheetRequestRow = async ({ requestId }) => ({
+    rowIndex: resolvedRows.get(requestId), scanComplete: true,
+  });
+
+  const result = await handleDispatchEvent(
+    batchBody('atomic_resolved_rows', originalItems), options(store, client),
+  );
+  await result.afterResponse();
+
+  assert.equal(store.getBatch('oc_allowed', 'atomic_resolved_rows').status, 'SUCCESS');
+  assert.deepEqual(originalItems.map(({ row_index: row }) => row), [null, 11],
+    '运行时重定位不得改写 action.items 或批次 fingerprint');
+  assert.deepEqual(client.calls.find(({ kind }) => kind === 'batchRead').ranges, [
+    'sheetA!J20:J20', 'sheetA!J21:J21',
+  ]);
+  assert.deepEqual(client.calls.find(({ kind }) => kind === 'batchWrite').valueRanges.map(({ range }) => range), [
+    'sheetA!J20:J20', 'sheetA!J21:J21',
+  ]);
+  assert.deepEqual(store.assignBatchDetails[0].contexts.map(({ rowIndex }) => rowIndex), [20, 21]);
+  assert.deepEqual(rows.slice(19, 21).map((row) => row[1]), ['甲', '乙']);
+  assert.equal(rows[10][1], '', '过期的原始第 11 行不得被写入');
+});
+
+test('原子批量写失败后逐条补偿继续使用 request_id 重定位行，原始空行号不阻断', async () => {
+  const store = new BatchStore({ batchApi: true });
+  store.state = { roster: ['甲', '乙', '丙'] };
+  const originalItems = [item('fast_fallback_null', null), item('fast_fallback_stale', 11)];
+  const rows = new Array(30).fill(null).map(() => ['', '', '']);
+  const client = new BatchClient({ sheetRows: rows, batchApi: true });
+  const resolvedRows = new Map([['fast_fallback_null', 20], ['fast_fallback_stale', 21]]);
+  client.locateSheetRequestRow = async ({ requestId }) => ({
+    rowIndex: resolvedRows.get(requestId), scanComplete: true,
+  });
+  const writeSheetValuesBatch = client.writeSheetValuesBatch.bind(client);
+  let failBatchWrite = true;
+  client.writeSheetValuesBatch = async (args) => {
+    if (failBatchWrite) {
+      failBatchWrite = false;
+      const error = new LarkApiError('LARK_API_90202', 'WrongRange');
+      throw error;
+    }
+    return writeSheetValuesBatch(args);
+  };
+
+  const result = await handleDispatchEvent(
+    batchBody('atomic_resolved_fallback', originalItems), options(store, client),
+  );
+  await result.afterResponse();
+
+  assert.equal(store.getBatch('oc_allowed', 'atomic_resolved_fallback').status, 'SUCCESS');
+  assert.equal(store.assignBatchCalls, 1, '批量账本提交不得重复');
+  assert.equal(store.assignCalls, 2, '逐条补偿应重放已提交分配');
+  assert.deepEqual(client.calls.filter(({ kind }) => kind === 'write').map(({ rowIndex }) => rowIndex), [20, 21]);
+  assert.deepEqual(rows.slice(19, 21).map((row) => row[1]), ['甲', '乙']);
+  assert.deepEqual(originalItems.map(({ row_index: row }) => row), [null, 11]);
+});
+
+test('request_id 重定位扫描不完整时 fail-closed，不进入批量或逐条写入', async () => {
+  const store = new BatchStore({ batchApi: true });
+  store.state = { roster: ['甲', '乙'] };
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  const client = new BatchClient({ sheetRows: rows, batchApi: true });
+  client.locateSheetRequestRow = async () => ({ rowIndex: 20, scanComplete: false });
+
+  const result = await handleDispatchEvent(
+    batchBody('relocate_scan_incomplete', [item('scan_incomplete', null)]), options(store, client),
+  );
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'relocate_scan_incomplete');
+  assert.equal(batch.status, 'FAILED');
+  assert.equal(batch.results[0].errorCode, 'SCAN_INCOMPLETE');
+  assert.equal(store.assignBatchCalls, 0);
+  assert.equal(store.assignCalls, 0);
+  assert.equal(client.calls.some(({ kind }) => kind === 'batchWrite' || kind === 'write'), false);
+});
+
+
+test('批量写失败且逐条补偿再次失败时日志保留 request_id 重定位后的真实行号', async () => {
+  const store = new BatchStore({ batchApi: true });
+  store.state = { roster: ['甲', '乙', '丙'] };
+  const originalItems = [item('fast_log_null', null), item('fast_log_stale', 11)];
+  const rows = new Array(30).fill(null).map(() => ['', '', '']);
+  const client = new BatchClient({ sheetRows: rows, batchApi: true, failRows: [20, 21] });
+  const resolvedRows = new Map([['fast_log_null', 20], ['fast_log_stale', 21]]);
+  client.locateSheetRequestRow = async ({ requestId }) => ({
+    rowIndex: resolvedRows.get(requestId), scanComplete: true,
+  });
+  client.writeSheetValuesBatch = async () => {
+    throw new LarkApiError('LARK_API_90202', 'WrongRange');
+  };
+  const logs = [];
+
+  const result = await handleDispatchEvent(
+    batchBody('atomic_resolved_failure_logs', originalItems),
+    options(store, client, { logger: { info(line) { logs.push(JSON.parse(line)); } } }),
+  );
+  await result.afterResponse();
+
+  assert.equal(store.getBatch('oc_allowed', 'atomic_resolved_failure_logs').status, 'FAILED');
+  assert.equal(store.assignBatchCalls, 1);
+  assert.equal(store.assignCalls, 2);
+  assert.deepEqual(logs.filter(({ stage }) => stage === 'batch_item_failed').map(({ range }) => range), [
+    'sheetA!row:20', 'sheetA!row:21',
+  ]);
+  assert.equal(logs.some(({ range }) => range === 'sheetA!row:11' || range === ''), false);
+  assert.equal(client.calls.some(({ kind, rowIndex }) => kind === 'write' && [10, 11].includes(rowIndex)), false);
 });
