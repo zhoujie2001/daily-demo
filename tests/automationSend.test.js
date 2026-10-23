@@ -51,6 +51,11 @@ const noop = () => {};
 const noopPublish = async () => ({ message_id: 'test-msg-id', deduplicated: false });
 const noopEnrich = async () => [];
 const noopStatusCache = { get: noop, set: noop };
+const mockStore = {
+  registerDispatchHandoff: async () => ({ outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }),
+  confirmDispatchHandoff: async () => {},
+  markDispatchHandoffUnknown: async () => {},
+};
 
 function createHandler(opts = {}) {
   return createAutomationSendHandler({
@@ -62,6 +67,7 @@ function createHandler(opts = {}) {
     publishTimeoutMs: 5000,
     defer: noop,
     statusCache: noopStatusCache,
+    storeFactory: () => mockStore,
     now: () => new Date('2026-09-17T07:00:00Z'),
     ...opts,
   });
@@ -112,7 +118,7 @@ describe('automation-send', () => {
     assert.equal(data.body.error_code, 'METHOD_NOT_ALLOWED');
   });
 
-  it('rejects wrong token when secret not configured (hash fallback)', async () => {
+  it('fails closed when automation secret is not configured', async () => {
     const handler = createAutomationSendHandler({ secret: '' });
     const { res, data } = mockRes();
     await handler(mockReq({ automation_token: 'x', dispatch_payload: VALID_DISPATCH_PAYLOAD }), res);

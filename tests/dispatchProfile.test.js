@@ -19,7 +19,7 @@ test('服务端按 targetCategory 将 AD 拆分为两个独立 scope，且两个
     const shared = ['qianchuan_ad', 'ehc_emergency_ad'].includes(targetCategory);
     assert.deepEqual(resolveDispatchProfile({
       dispatchProfile: 'ad', businessType: 'AD', targetCategory,
-      sheetId: shared ? '288afd' : 'review', dateFieldId: shared ? 'A' : 'J',
+      sheetId: shared ? 'Vp2A6O' : 'review', dateFieldId: shared ? 'A' : 'J',
       assigneeFieldId: shared ? 'F' : 'B',
     }), { name: 'ad', scope: 'ad_review', direction: 'forward' });
   }
@@ -35,16 +35,16 @@ test('服务端按 targetCategory 将 AD 拆分为两个独立 scope，且两个
 test('客户端不能指定 scope，分类与 sheet/字段冲突 fail-closed', () => {
   assert.equal(dispatchActionValue(validateDispatchValue(action())).dispatch_scope, undefined);
   for (const overrides of [
-    { target_category: 'game_agent', sheet_id: '288afd', date_field_id: 'A', assignee_field_id: 'F' },
+    { target_category: 'game_agent', sheet_id: 'Vp2A6O', date_field_id: 'A', assignee_field_id: 'F' },
     { target_category: 'qianchuan_ad', sheet_id: 'game', date_field_id: 'J', assignee_field_id: 'B' },
     { target_category: 'ad', sheet_id: 'review', date_field_id: 'J', assignee_field_id: 'B', dispatch_profile: 'default' },
     { target_category: 'ad', sheet_id: 'review', dispatch_profile: 'custom' },
   ]) assert.throws(() => validateDispatchValue(action(overrides)), /./);
 });
 
-test('历史 AD 卡仅在 288afd+A/F 能唯一推断 ad_review，含糊卡拒绝且不回退旧 ad', () => {
+test('历史 AD 卡仅在 Vp2A6O+A/F 能唯一推断 ad_review，含糊卡拒绝且不回退旧 ad', () => {
   const fields = validateDispatchValue(action({
-    target_category: undefined, dispatch_profile: 'ad', sheet_id: '288afd',
+    target_category: undefined, dispatch_profile: 'ad', sheet_id: 'Vp2A6O',
     date_field_id: 'A', assignee_field_id: 'F',
   }));
   assert.equal(fields.targetCategory, 'qianchuan_ad');
@@ -83,6 +83,64 @@ test('历史 AD/游戏卡片执行时强制写入 B/姓名', () => {
     assert.equal(normalized.assigneeFieldId, 'B');
     assert.equal(normalized.assigneeFieldName, '姓名');
   }
+});
+
+test('服务端按「表 + 业态」强制锚点只扫描派单写入人员列', () => {
+  const cases = [
+    ['qianchuan_ad', 'Vp2A6O', 'F', '回扫人'],
+    ['ehc_emergency_ad', 'Vp2A6O', 'F', '回扫人'],
+    ['qianchuan', 'l1ztJV', 'N', '领取人'],
+    ['local_promo', 'JJqR2d', 'L', '领取人'],
+    ['qianchuan', '2liLZi', 'O', '领取人'],
+    ['local_promo', 'rRYSNv', 'M', '领取人'],
+    ['qianchuan', 'TQuzLA', 'J', '执行人'],
+    ['local_promo', 'TQuzLA', 'J', '执行人'],
+    ['ehc_emergency', 'NWVztk', 'I', '跟进方'],
+  ];
+  for (const [targetCategory, sheetId, fieldId, fieldName] of cases) {
+    const normalized = enforceAssigneeFieldContract({
+      targetCategory, sheetId, assigneeFieldId: 'Z', assigneeFieldName: '相邻协作列',
+    });
+    assert.equal(normalized.assigneeFieldId, fieldId, `${targetCategory}@${sheetId} 列`);
+    assert.equal(normalized.assigneeFieldName, fieldName, `${targetCategory}@${sheetId} 列名`);
+  }
+  // 非受控表的普通卡片保持调用方字段，不误伤其它链路。
+  const untouched = enforceAssigneeFieldContract({
+    targetCategory: 'qianchuan', sheetId: 'sheetA', assigneeFieldId: 'D', assigneeFieldName: '负责人',
+  });
+  assert.equal(untouched.assigneeFieldId, 'D');
+  // 批量上下文逐 item 生效。
+  const batch = enforceAssigneeFieldContract({
+    kind: 'batch',
+    items: [
+      { targetCategory: 'qianchuan', sheetId: 'l1ztJV', assigneeFieldId: 'P' },
+      { targetCategory: 'ad', sheetId: 'review', assigneeFieldId: 'G' },
+    ],
+  });
+  assert.deepEqual(batch.items.map((item) => item.assigneeFieldId), ['N', 'B']);
+});
+
+test('旧 1.0 复盘表历史卡片按真实表头回退字段且不注入项目过滤', () => {
+  const legacyQianchuan = validateDispatchValue(action({
+    business_type: '千川', target_category: 'qianchuan', sheet_id: '2liLZi',
+    date_field_id: undefined, assignee_field_id: undefined,
+  }));
+  assert.deepEqual(
+    [legacyQianchuan.dateFieldId, legacyQianchuan.dateFieldName,
+      legacyQianchuan.assigneeFieldId, legacyQianchuan.assigneeFieldName,
+      legacyQianchuan.projectValue],
+    ['B', '粘贴时间', 'O', '领取人', ''],
+  );
+  const legacyLocal = validateDispatchValue(action({
+    business_type: '本地推', target_category: 'local_promo', sheet_id: 'rRYSNv',
+    date_field_id: undefined, assignee_field_id: undefined,
+  }));
+  assert.deepEqual(
+    [legacyLocal.dateFieldId, legacyLocal.dateFieldName,
+      legacyLocal.assigneeFieldId, legacyLocal.assigneeFieldName,
+      legacyLocal.projectValue],
+    ['B', '处理日期', 'M', '领取人', ''],
+  );
 });
 
 test('本地推 JJqR2d 旧卡按真实表头回退到 A/处理日期与 L/领取人', () => {

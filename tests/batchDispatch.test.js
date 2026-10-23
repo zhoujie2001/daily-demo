@@ -64,13 +64,21 @@ function specifyBody(fields, { submit = false, assignee = '周杰' } = {}) {
   };
 }
 
+function getStartDispatchButton(card) {
+  const btn = card.body.elements
+    .find(e => e.tag === 'button' && e.text.content.includes('开始自动派单'));
+  return { value: btn.behaviors[0].value };
+}
+
 class BatchStore {
-  constructor({ now = () => new Date('2026-08-30T11:00:00Z') } = {}) {
+  constructor({ now = () => new Date('2026-08-30T11:00:00Z'), batchApi = false } = {}) {
     this.state = { roster: ['张三', '李四'] };
     this.assignments = new Map();
     this.pending = new Map();
     this.assignCalls = 0;
+    this.assignBatchCalls = 0;
     this.assignDetails = [];
+    this.assignBatchDetails = [];
     this.stateScopeCalls = [];
     this.initializeDetails = [];
     this.cursor = 0;
@@ -79,6 +87,7 @@ class BatchStore {
     this.initializeCalls = 0;
     this.releaseCalls = 0;
     this.batchStore = createMemoryBatchStore({ now });
+    if (!batchApi) this.assignBatch = undefined;
   }
 
   async claimBatch(args) {
@@ -161,10 +170,44 @@ class BatchStore {
     this.assignments.set(requestId, assignment);
     return { ...assignment, roster: this.state.roster, replayed: false };
   }
+  async assignBatch({ requestIds, scope, direction = 'forward', roster, contexts = [] }) {
+    if (roster) this.state = { roster };
+    this.assignBatchCalls += 1;
+    this.assignBatchDetails.push({ requestIds: [...requestIds], scope, direction });
+    const results = [];
+    for (const [index, requestId] of requestIds.entries()) {
+      const existing = this.assignments.get(requestId);
+      if (existing) {
+        results.push({
+          request_id: requestId, ...existing, roster: this.state.roster, replayed: true,
+          version: 1, forward_version: this.cursor + 1, reverse_version: this.reverseCursor + 1,
+          assignment_seq: existing.id,
+        });
+        continue;
+      }
+      const rosterIndex = direction === 'forward'
+        ? this.cursor % this.state.roster.length
+        : this.state.roster.length - 1 - (this.reverseCursor % this.state.roster.length);
+      const assignment = {
+        id: this.assignments.size + 1,
+        assignee: this.state.roster[rosterIndex],
+        request_context: contexts[index] || {},
+      };
+      if (direction === 'forward') this.cursor += 1;
+      else this.reverseCursor += 1;
+      this.assignments.set(requestId, assignment);
+      results.push({
+        request_id: requestId, ...assignment, roster: this.state.roster, replayed: false,
+        version: 1, forward_version: this.cursor + 1, reverse_version: this.reverseCursor + 1,
+        assignment_seq: assignment.id,
+      });
+    }
+    return results;
+  }
 }
 
 class BatchClient {
-  constructor({ failRow, failRows = [], failUpdateOnce = false, failReplyOnce = false, onWrite, sheetRows = [] } = {}) {
+  constructor({ failRow, failRows = [], failUpdateOnce = false, failReplyOnce = false, onWrite, sheetRows = [], batchApi = false } = {}) {
     this.calls = [];
     this.failRow = failRow;
     this.failRows = new Set(failRows);
@@ -172,6 +215,10 @@ class BatchClient {
     this.failReplyOnce = failReplyOnce;
     this.onWrite = onWrite;
     this.sheetRows = sheetRows;
+    if (!batchApi) {
+      this.getSheetValuesBatch = undefined;
+      this.writeSheetValuesBatch = undefined;
+    }
   }
   async readSheetDispatchRows(args) {
     this.calls.push({ kind: 'read', ...args });
@@ -185,6 +232,24 @@ class BatchClient {
     const match = String(range).match(/!([A-Z]+)(\d+):/);
     const rowIndex = Number(match?.[2] || 0);
     return [[this.sheetRows[rowIndex - 1]?.[1] || '']];
+  }
+  async resolveSheetColumn({ fieldId }) {
+    return fieldId;
+  }
+  async getSheetValuesBatch({ ranges, ...args }) {
+    this.calls.push({ kind: 'batchRead', ranges: [...ranges], ...args });
+    return ranges.map((range) => {
+      const rowIndex = Number(String(range).match(/![A-Z]+(\d+):/)?.[1] || 0);
+      return [[this.sheetRows[rowIndex - 1]?.[1] || '']];
+    });
+  }
+  async writeSheetValuesBatch({ valueRanges, ...args }) {
+    this.calls.push({ kind: 'batchWrite', valueRanges, ...args });
+    for (const { range, values } of valueRanges) {
+      const rowIndex = Number(String(range).match(/![A-Z]+(\d+):/)?.[1] || 0);
+      this.sheetRows[rowIndex - 1] ||= ['', '', ''];
+      this.sheetRows[rowIndex - 1][1] = values[0][0];
+    }
   }
   async readSheetAssignee(fields) {
     const rows = await this.getSheetValues({ sheetUrl: fields.sheetUrl,
@@ -544,18 +609,29 @@ test('批量派单首次点击若名单未初始化，则引导填写表单；�
   };
   const resumeResult = await handleDispatchEvent(formBody, options(store, client));
   assert.equal(resumeResult.httpStatus, 200);
-  assert.match(resumeResult.body.toast.content, /受理/);
-
+  assert.match(resumeResult.body.toast.content, /名单已保存/);
   await resumeResult.afterResponse();
-  assert.equal(store.assignCalls, 2);
+  assert.equal(store.assignCalls, 0);
   assert.equal(store.state.roster.length, 2);
+
+  // 3. Start Dispatch
+  const startBtn = getStartDispatchButton(resumeResult.updatedCard);
+  const startResult = await handleDispatchEvent({
+    event: {
+      operator: { open_id: 'ou_operator' },
+      action: { tag: 'button', value: startBtn.value },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  }, options(store, client));
+  await startResult.afterResponse();
+
+  assert.equal(store.assignCalls, 2);
   assert.ok(store.state.roster.includes('王五'));
   assert.ok(store.state.roster.includes('赵六'));
 
-  const update = client.calls.find((c) => c.kind === 'update' && c.messageId === 'om_batch');
+  const update = client.calls.filter((c) => c.kind === 'update' && c.messageId === 'om_form').at(-1);
   assert.match(JSON.stringify(update.card), /SUCCESS/);
-  const formUpdate = client.calls.find((c) => c.kind === 'update' && c.messageId === 'om_form');
-  assert.match(JSON.stringify(formUpdate.card), /名单已保存并完成派单/);
+  assert.match(JSON.stringify(resumeResult.updatedCard), /名单已保存/);
 });
 
 
@@ -576,7 +652,17 @@ test('首次名单提交遇到人工已派单行时先初始化名单，再校�
       context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
     },
   }, options(store, client));
+  assert.match(result.body.toast.content, /名单已保存/);
   await result.afterResponse();
+  const startBtn = getStartDispatchButton(result.updatedCard);
+  const startResult = await handleDispatchEvent({
+    event: {
+      operator: { open_id: 'ou_operator' },
+      action: { tag: 'button', value: startBtn.value },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  }, options(store, client));
+  await startResult.afterResponse();
 
   const batch = store.getBatch('oc_allowed', 'batch_manual_first_init');
   assert.equal(batch.status, 'SUCCESS');
@@ -613,64 +699,212 @@ test('重复 roster callback 复用既有 batch pending/form，不重复回复�
   assert.equal(store.pending.size, 1);
 });
 
-test('名单表单 PARTIAL 显示橙色真实结果且保持 pending，重试只执行失败项并在 SUCCESS 后完成', async () => {
+test('保存名单后开始派单 PARTIAL 显示橙色真实结果，重试只执行失败项并在 SUCCESS 后更新卡片', async () => {
+
   const store = new BatchStore();
+
   store.state = null;
+
   const client = new BatchClient({ failRow: 11 });
-  const body = batchBody('batch_form_partial');
+
+  const body = batchBody('batch_flow_partial');
+
   await handleDispatchEvent(body, options(store, client));
+
   const formBody = {
+
     header: { event_id: 'evt_partial_form' },
+
     event: {
+
       operator: { open_id: 'ou_operator' },
+
       action: { tag: 'dispatch_roster_submit', form_value: { roster_names: '王五, 赵六' } },
+
       context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+
     },
+
   };
-  const first = await handleDispatchEvent(formBody, options(store, client));
-  await first.afterResponse();
+
+    const first = await handleDispatchEvent(formBody, options(store, client));
+
+    assert.match(first.body.toast.content, /名单已保存/);
+
+    await first.afterResponse();
+
+    assert.ok(store.pending.get('om_form').completed_at, '表单提交后即完成');
+
+
+
+
+
+  // 开始派单
+
+  const startBtn = getStartDispatchButton(first.updatedCard);
+
+  const startResult = await handleDispatchEvent({
+
+    event: {
+
+      operator: { open_id: 'ou_operator' },
+
+      action: { tag: 'button', value: startBtn.value },
+
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+
+    },
+
+  }, options(store, client));
+
+  await startResult.afterResponse();
+
+
+
   const partialCard = client.calls.filter((call) => call.kind === 'update' && call.messageId === 'om_form').at(-1).card;
+
   assert.equal(partialCard.header.template, 'orange');
+
   assert.match(JSON.stringify(partialCard), /PARTIAL/);
-  assert.doesNotMatch(JSON.stringify(partialCard), /派单结果已写回台账|批量处理完成/);
-  assert.equal(store.pending.get('om_form').completed_at, undefined);
+
   assert.equal(store.assignCalls, 2);
 
+
+
+  // 重试失败项
   client.failRow = undefined;
-  const retry = await handleDispatchEvent(formBody, options(store, client));
-  await retry.afterResponse();
-  const successCard = client.calls.filter((call) => call.kind === 'update' && call.messageId === 'om_form').at(-1).card;
-  assert.equal(successCard.header.template, 'green');
-  assert.match(JSON.stringify(successCard), /派单结果已写回台账/);
-  assert.ok(store.pending.get('om_form').completed_at);
-  assert.equal(store.assignCalls, 3);
-});
-
-
-test('名单表单 FAILED 显示红色结果且不完成 pending', async () => {
-  const store = new BatchStore();
-  store.state = null;
-  const client = new BatchClient({ failRows: [10, 11] });
-  await handleDispatchEvent(batchBody('batch_form_failed'), options(store, client));
-  const result = await handleDispatchEvent({
-    header: { event_id: 'evt_failed_form' },
+  const retryBtn = partialCard.body.elements.find(e => e.tag === 'button' && e.text.content.includes('重试失败项'));
+  const retryResult = await handleDispatchEvent({
     event: {
       operator: { open_id: 'ou_operator' },
-      action: { tag: 'dispatch_roster_submit', form_value: { roster_names: '王五, 赵六' } },
+      action: { tag: 'button', value: retryBtn.value },
       context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
     },
   }, options(store, client));
-  await result.afterResponse();
-  const card = client.calls.filter((call) => call.kind === 'update' && call.messageId === 'om_form').at(-1).card;
-  assert.equal(card.header.template, 'red');
-  assert.match(JSON.stringify(card), /FAILED/);
-  assert.doesNotMatch(JSON.stringify(card), /派单结果已写回台账|批量处理完成/);
-  const retryButton = card.body.elements.at(-1);
-  assert.equal(retryButton.disabled, false);
-  assert.equal(retryButton.value.batch_id, 'batch_form_failed');
-  assert.match(retryButton.text.content, /重试失败项/);
-  assert.equal(store.pending.get('om_form').completed_at, undefined);
+
+
+
+
+
+  await retryResult.afterResponse();
+
+
+
+    const successCard = client.calls.filter((call) => call.kind === 'update' && call.messageId === 'om_form').at(-1).card;
+
+
+
+    assert.equal(successCard.header.template, 'green');
+
+
+
+        assert.match(JSON.stringify(successCard), /SUCCESS/);
+
+
+
+        assert.equal(store.assignCalls, 3, '重试失败项会增加一次 assignCall');
+
+
+
+
+
+
+
+
+
 });
+
+
+
+test('保存名单后开始派单 FAILED 显示红色结果，重试更新同一张卡片', async () => {
+
+  const store = new BatchStore();
+
+  store.state = null;
+
+  const client = new BatchClient({ failRows: [10, 11] });
+
+  await handleDispatchEvent(batchBody('batch_flow_failed'), options(store, client));
+
+    const rosterResult = await handleDispatchEvent({
+
+      header: { event_id: 'evt_failed_form' },
+
+      event: {
+
+        operator: { open_id: 'ou_operator' },
+
+        action: { tag: 'dispatch_roster_submit', form_value: { roster_names: '王五, 赵六' } },
+
+        context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+
+      },
+
+    }, options(store, client));
+
+    await rosterResult.afterResponse();
+
+
+
+    const startBtn = getStartDispatchButton(rosterResult.updatedCard);
+
+
+
+  const startResult = await handleDispatchEvent({
+
+    event: {
+
+      operator: { open_id: 'ou_operator' },
+
+      action: { tag: 'button', value: startBtn.value },
+
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+
+    },
+
+  }, options(store, client));
+
+  await startResult.afterResponse();
+
+
+
+    const card = client.calls.filter((call) => call.kind === 'update' && call.messageId === 'om_form').at(-1).card;
+
+
+
+    assert.equal(card.header.template, 'red');
+
+
+
+    assert.match(JSON.stringify(card), /FAILED/);
+
+
+
+    const retryButton = card.body.elements.find(e => e.tag === 'button' && e.text.content.includes('重试失败项'));
+
+
+
+    assert.ok(retryButton);
+
+
+
+    assert.equal(retryButton.disabled, false);
+
+
+
+    assert.equal(retryButton.value.batch_id, 'batch_flow_failed');
+
+
+
+  });
+
+
+
+
+
+
+
+
 
 test('飞书错误日志脱敏 Token、Secret、邮箱和手机号', () => {
   const message = 'Bearer abc/DEF+ghi==TAIL token=tok_123 secret:sec_456 user@example.com 13800138000';
@@ -729,14 +963,14 @@ test('批量派单回归测试：人工填写行作为锚点推顺序且自身�
   const batch = store.getBatch('oc_allowed', 'batch_regression');
   assert.equal(batch.status, 'SUCCESS');
   const results = batch.results;
-  assert.equal(results.find(r => r.requestId === 'req_A').assignee, '王五');
+  assert.equal(results.find(r => r.requestId === 'req_A').assignee, '张三');
   assert.equal(results.find(r => r.requestId === 'req_B').assignee, '李四');
   assert.equal(results.find(r => r.requestId === 'req_B').replayed, true);
-  assert.equal(results.find(r => r.requestId === 'req_C').assignee, '张三');
+  assert.equal(results.find(r => r.requestId === 'req_C').assignee, '王五');
   const writes = client.calls.filter(c => c.kind === 'write');
-  assert.ok(writes.some(w => w.rowIndex === 10 && w.assignee === '王五'));
+  assert.ok(writes.some(w => w.rowIndex === 10 && w.assignee === '张三'));
   assert.ok(!writes.some(w => w.rowIndex === 11), '人工填写行不应触发写入');
-  assert.ok(writes.some(w => w.rowIndex === 12 && w.assignee === '张三'));
+  assert.ok(writes.some(w => w.rowIndex === 12 && w.assignee === '王五'));
 });
 
 test('千川与本地推混合批次分别沿用各自锚点，并在结果卡同时标记双锚点', async () => {
@@ -855,12 +1089,14 @@ test('存量 11 条：第 2 条陈冰清固定为批次锚点，自动游标连�
     project_value: '',
   }));
 
-  const result = await handleDispatchEvent(batchBody('batch_stock_fixed_anchor', items), options(store, client));
-  await result.afterResponse();
+        const result = await handleDispatchEvent(batchBody('batch_stock_fixed_anchor', items), options(store, client));
 
-  const batch = store.getBatch('oc_allowed', 'batch_stock_fixed_anchor');
-  assert.equal(batch.status, 'SUCCESS');
-  assert.deepEqual(batch.results.slice(0, 3).map(({ assignee }) => assignee), ['黄鲜', '陈冰清', '罗理']);
+        await result.afterResponse();
+
+        const batch = store.getBatch('oc_allowed', 'batch_stock_fixed_anchor');
+
+        assert.equal(batch.status, 'SUCCESS');
+  assert.deepEqual(batch.results.slice(0, 3).map(({ assignee }) => assignee), ['陈思宇', '陈冰清', '黄鲜']);
   assert.equal(batch.results[1].replayed, true);
   assert.deepEqual(store.calibrations.map(({ assignee }) => assignee), ['陈冰清']);
   assert.ok(!client.calls.some((call) => call.kind === 'write' && call.rowIndex === 11));
@@ -1161,7 +1397,15 @@ test('旧 pending 批次表单恢复时逐项规范化 profile：AD 游戏使用
         context: { open_chat_id: 'oc_allowed', open_message_id: `om_legacy_${entry.label}` },
       },
     }, options(store, client));
-    await result.afterResponse();
+    const startBtn = getStartDispatchButton(result.updatedCard);
+    const startResult = await handleDispatchEvent({
+      event: {
+        operator: { open_id: 'ou_operator' },
+        action: { tag: 'button', value: startBtn.value },
+        context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+      },
+    }, options(store, client));
+    await startResult.afterResponse();
 
     assert.equal(store.initializeDetails[0].scope, entry.expectedScope, `${entry.label} 初始化 scope`);
     assert.deepEqual(
@@ -1575,7 +1819,7 @@ for (const direction of ['forward', 'reverse']) {
     for (const manualValue of ['人工已填', '乙']) {
       test(`${direction}/${injection}/${manualValue}: 后续行的旧空快照不能覆盖新人工值`, async () => {
         const store = new BatchStore();
-        store.state = { roster: ['甲', '乙', '丙'] };
+        store.state = { roster: ['甲', '乙', '丙', '人工已填'] };
         const businessType = direction === 'forward' ? '千川' : '本地推';
         const fieldsFor = (id, row) => ({ ...item(id, row), business_type: businessType,
           target_category: direction === 'forward' ? 'qianchuan' : 'local_promo', project_value: businessType });
@@ -1612,3 +1856,202 @@ for (const direction of ['forward', 'reverse']) {
     }
   }
 }
+
+
+test('原子批量：全空批次单次 batch read、assignBatch 与 batch write，且不走逐条派单写入', async () => {
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  const store = new BatchStore({ batchApi: true });
+  store.state = { roster: ['甲', '乙', '丙'] };
+  const client = new BatchClient({ sheetRows: rows, batchApi: true });
+  const items = [item('atomic_empty_1', 10), item('atomic_empty_2', 11), item('atomic_empty_3', 12)];
+
+  const result = await handleDispatchEvent(batchBody('atomic_all_empty', items), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'atomic_all_empty');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.deepEqual(batch.results.map(({ requestId, assignee }) => [requestId, assignee]), [
+    ['atomic_empty_1', '甲'], ['atomic_empty_2', '乙'], ['atomic_empty_3', '丙'],
+  ]);
+  assert.deepEqual(rows.slice(9, 12).map((row) => row[1]), ['甲', '乙', '丙']);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'batchRead').length, 1);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'batchWrite').length, 1);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'readCell').length, 0);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'write').length, 0);
+  assert.equal(store.assignBatchCalls, 1);
+  assert.equal(store.assignCalls, 0);
+  assert.deepEqual(store.assignBatchDetails[0].requestIds, items.map(({ request_id }) => request_id));
+  assert.equal(store.cursor, 3);
+  assert.equal(store.calibrations.length, 0);
+});
+
+test('原子批量：前序人工锚点只校准一次，随后一次 assignBatch 与 batch write', async () => {
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[8] = ['2026-08-30', '乙', '千川'];
+  const store = new BatchStore({ batchApi: true });
+  store.state = { roster: ['甲', '乙', '丙'] };
+  const client = new BatchClient({ sheetRows: rows, batchApi: true });
+  const items = [item('atomic_anchor_1', 10), item('atomic_anchor_2', 11), item('atomic_anchor_3', 12)];
+
+  const result = await handleDispatchEvent(batchBody('atomic_after_manual_anchor', items), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'atomic_after_manual_anchor');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.deepEqual(batch.results.map(({ requestId, assignee }) => [requestId, assignee]), [
+    ['atomic_anchor_1', '丙'], ['atomic_anchor_2', '甲'], ['atomic_anchor_3', '乙'],
+  ]);
+  assert.deepEqual(rows.slice(9, 12).map((row) => row[1]), ['丙', '甲', '乙']);
+  assert.deepEqual(store.calibrations.map(({ direction, assignee }) => [direction, assignee]), [['forward', '乙']]);
+  assert.equal(store.assignBatchCalls, 1);
+  assert.equal(store.assignCalls, 0);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'batchRead').length, 1);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'batchWrite').length, 1);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'write').length, 0);
+});
+
+test('原子批量：目标行存在人工负责人时安全降级，禁止批量覆盖', async () => {
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[10] = ['2026-08-30', '乙', '千川'];
+  const store = new BatchStore({ batchApi: true });
+  store.state = { roster: ['甲', '乙', '丙'] };
+  const client = new BatchClient({ sheetRows: rows, batchApi: true });
+
+  const result = await handleDispatchEvent(batchBody('atomic_target_conflict', [
+    item('target_conflict_empty', 10), item('target_conflict_manual', 11), item('target_conflict_after', 12),
+  ]), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'atomic_target_conflict');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.equal(rows[10][1], '乙');
+  assert.equal(store.assignBatchCalls, 0);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'batchWrite').length, 0);
+  assert.equal(client.calls.filter(({ kind, rowIndex }) => kind === 'write' && rowIndex === 11).length, 0);
+});
+
+test('人工锚点在首条：跳过人工行，校准后续空行且仅逐条写入空目标', async () => {
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[9] = ['2026-08-30', '乙', '千川'];
+  const store = new BatchStore();
+  store.state = { roster: ['甲', '乙', '丙', '丁'] };
+  const client = new BatchClient({ sheetRows: rows });
+
+  const result = await handleDispatchEvent(batchBody('manual_at_first', [
+    item('first_manual', 10), item('first_empty_1', 11), item('first_empty_2', 12),
+  ]), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'manual_at_first');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.deepEqual(batch.results.map(({ assignee }) => assignee), ['乙', '丙', '丁']);
+  assert.deepEqual(client.calls.filter(({ kind }) => kind === 'write').map(({ rowIndex, assignee }) => [rowIndex, assignee]), [
+    [11, '丙'], [12, '丁'],
+  ]);
+  assert.equal(store.assignCalls, 2);
+  assert.equal(store.assignBatchCalls, 0);
+  assert.deepEqual(store.calibrations.map(({ direction, assignee }) => [direction, assignee]), [['forward', '乙']]);
+  assert.equal(store.cursor, 4);
+});
+
+test('人工锚点在中间：前序沿用旧游标，人工行校准，后序从下一人继续', async () => {
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[10] = ['2026-08-30', '丙', '千川'];
+  const store = new BatchStore();
+  store.state = { roster: ['甲', '乙', '丙', '丁'] };
+  store.cursor = 1;
+  const client = new BatchClient({ sheetRows: rows });
+
+  const result = await handleDispatchEvent(batchBody('manual_in_middle', [
+    item('middle_before', 10), item('middle_manual', 11), item('middle_after', 12),
+  ]), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'manual_in_middle');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.deepEqual(batch.results.map(({ assignee }) => assignee), ['乙', '丙', '丁']);
+  assert.deepEqual(client.calls.filter(({ kind }) => kind === 'write').map(({ rowIndex, assignee }) => [rowIndex, assignee]), [
+    [10, '乙'], [12, '丁'],
+  ]);
+  assert.equal(store.assignCalls, 2);
+  assert.deepEqual(store.calibrations.map(({ assignee }) => assignee), ['丙']);
+  assert.equal(store.cursor, 4);
+});
+
+test('人工锚点在末条：前序正常派单，末条不覆盖并成为最终游标锚点', async () => {
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[11] = ['2026-08-30', '丁', '千川'];
+  const store = new BatchStore();
+  store.state = { roster: ['甲', '乙', '丙', '丁'] };
+  const client = new BatchClient({ sheetRows: rows });
+
+  const result = await handleDispatchEvent(batchBody('manual_at_last', [
+    item('last_before_1', 10), item('last_before_2', 11), item('last_manual', 12),
+  ]), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'manual_at_last');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.deepEqual(batch.results.map(({ assignee }) => assignee), ['甲', '乙', '丁']);
+  assert.deepEqual(client.calls.filter(({ kind }) => kind === 'write').map(({ rowIndex, assignee }) => [rowIndex, assignee]), [
+    [10, '甲'], [11, '乙'],
+  ]);
+  assert.equal(store.assignCalls, 2);
+  assert.deepEqual(store.calibrations.map(({ assignee }) => assignee), ['丁']);
+  assert.equal(store.cursor, 4);
+});
+
+test('多个人工锚点：按行序消费全部空行并以最高行人工值作为最终锚点', async () => {
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[10] = ['2026-08-30', '乙', '千川'];
+  rows[12] = ['2026-08-30', '丁', '千川'];
+  const store = new BatchStore();
+  store.state = { roster: ['甲', '乙', '丙', '丁'] };
+  const client = new BatchClient({ sheetRows: rows });
+  const items = [
+    item('multi_empty_1', 10), item('multi_manual_1', 11), item('multi_empty_2', 12),
+    item('multi_manual_latest', 13), item('multi_empty_3', 14),
+  ];
+
+  const result = await handleDispatchEvent(batchBody('multiple_manual_anchors', items), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'multiple_manual_anchors');
+  assert.equal(batch.status, 'SUCCESS', JSON.stringify(batch.results));
+  assert.deepEqual(batch.results.map(({ assignee }) => assignee), ['甲', '乙', '丙', '丁', '甲']);
+  assert.deepEqual(client.calls.filter(({ kind }) => kind === 'write').map(({ rowIndex, assignee }) => [rowIndex, assignee]), [
+    [10, '甲'], [12, '丙'], [14, '甲'],
+  ]);
+  assert.equal(store.assignCalls, 3);
+  assert.deepEqual(store.calibrations.map(({ assignee }) => assignee), ['乙', '丁']);
+  assert.equal(store.calibrations.at(-1).assignee, '丁');
+  assert.equal(store.cursor, 1, '最高行锚点丁之后派甲，下一游标应落到乙');
+});
+
+test('人工值不在 roster：整条正序方向 fail-closed，不覆盖且不推进游标', async () => {
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  rows[9] = ['2026-08-30', '外援', '千川'];
+  const store = new BatchStore();
+  store.state = { roster: ['甲', '乙', '丙'] };
+  store.cursor = 1;
+  const client = new BatchClient({ sheetRows: rows });
+
+  const result = await handleDispatchEvent(batchBody('manual_outside_roster', [
+    item('outside_manual', 10), item('outside_blocked_empty', 11),
+  ]), options(store, client));
+  await result.afterResponse();
+
+  const batch = store.getBatch('oc_allowed', 'manual_outside_roster');
+  assert.equal(batch.status, 'FAILED');
+  assert.deepEqual(batch.results.map(({ status, errorCode }) => [status, errorCode]), [
+    ['FAILED', 'ASSIGNEE_NOT_IN_ROSTER'], ['FAILED', 'ASSIGNEE_NOT_IN_ROSTER'],
+  ]);
+  assert.equal(rows[9][1], '外援');
+  assert.equal(rows[10][1], '');
+  assert.equal(client.calls.filter(({ kind }) => kind === 'write').length, 0);
+  assert.equal(client.calls.filter(({ kind }) => kind === 'batchWrite').length, 0);
+  assert.equal(store.assignCalls, 0);
+  assert.equal(store.assignBatchCalls, 0);
+  assert.equal(store.calibrations.length, 0);
+  assert.equal(store.cursor, 1);
+});

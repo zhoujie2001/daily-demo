@@ -216,9 +216,9 @@ begin
       select 1 from pg_catalog.pg_constraint c
        where c.conrelid = to_regclass(format('public.%I', v_name)) and c.contype = 'c'
          and pg_get_constraintdef(c.oid) =
-           'CHECK ((scope = ANY (ARRAY[''default''::text, ''ad''::text, ''ad_review''::text, ''ad_game''::text])))'
+           'CHECK ((scope = ANY (ARRAY[''default''::text, ''test_default''::text, ''ad''::text, ''ad_review''::text, ''ad_game''::text])))'
     ) then
-      v_errors := array_append(v_errors, format('%I 的 scope CHECK 不是精确四值域', v_name));
+      v_errors := array_append(v_errors, format('%I 的 scope CHECK 不是精确五值域', v_name));
     end if;
   end loop;
   if not exists (
@@ -426,10 +426,10 @@ begin
     end if;
     v_definition := lower(pg_get_functiondef(v_function));
     if v_definition not like '%p_scope = ''ad''%legacy_ad_cursor_unrepresentable%'
-       or v_definition not like '%p_scope not in (''default'', ''ad'', ''ad_review'', ''ad_game'')%'
+       or v_definition not like '%p_scope not in (''default'', ''test_default'', ''ad'', ''ad_review'', ''ad_game'')%'
        or v_definition not like '%bess_sync_legacy_ad_shadow(p_day_key)%'
        or v_definition not like '%on conflict (day_key, scope, request_id)%' then
-      v_errors := array_append(v_errors, 'bess_assign_next 缺少四 scope、legacy fail-closed 或 rollback assignment shadow');
+      v_errors := array_append(v_errors, 'bess_assign_next 缺少五 scope、legacy fail-closed 或 rollback assignment shadow');
     end if;
   end if;
 

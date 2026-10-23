@@ -6,15 +6,53 @@ import { enforceSingleBatchScope } from '../lib/dispatch/dispatch-service.js';
 
 const sql = readFileSync(new URL('../db/migrations/20261005_ad_directional_scopes.sql', import.meta.url), 'utf8');
 const hardeningSql = readFileSync(new URL('../db/migrations/20261011_rpc_contract_hardening.sql', import.meta.url), 'utf8');
+const isolationSql = readFileSync(new URL('../db/migrations/20261023_isolate_ad_off_duty.sql', import.meta.url), 'utf8');
+const rollbackSql = readFileSync(new URL('../db/migrations/20261023_isolate_ad_off_duty_rollback.sql', import.meta.url), 'utf8');
 
 const verification = readFileSync(new URL('../db/bess-dispatch-verify.sql', import.meta.url), 'utf8');
 
-function functionSql(name) {
-  const start = sql.indexOf(`create or replace function public.${name}(`);
-  assert.notEqual(start, -1, `${name} must exist`);
-  const next = sql.indexOf('create or replace function public.', start + 1);
-  return sql.slice(start, next === -1 ? sql.length : next);
+function functionSql(name, source = sql) {
+  const start = source.indexOf(`create or replace function public.${name}(`);
+  assert.notEqual(start, -1, `${name} must exist in source`);
+  const next = source.indexOf('create or replace function public.', start + 1);
+  return source.slice(start, next === -1 ? source.length : next);
 }
+
+test('回滚迁移以 ad_review 为准恢复共享表并还原旧逻辑', () => {
+  assert.match(rollbackSql, /insert into public\.bess_dispatch_person_status/i);
+  assert.match(rollbackSql, /where scope = 'ad_review'/i);
+
+  // 确保回滚后的 update_roster_status 重新包含 person_status 写入和双 Scope 更新
+  const updateStatus = functionSql('bess_update_roster_status', rollbackSql);
+  assert.match(updateStatus, /insert into public\.bess_dispatch_person_status/i);
+  assert.match(updateStatus, /where state\.day_key = p_day_key and state\.scope in \('ad_review', 'ad_game'\)/i);
+});
+
+test('AD 状态隔离迁移移除对 person_status 的读写，回归使用 daily_state.off_duty', () => {
+  assert.match(isolationSql, /create or replace function public\.bess_initialize_ad_rosters\(/i);
+  assert.match(isolationSql, /create or replace function public\.bess_replace_ad_rosters\(/i);
+  assert.match(isolationSql, /create or replace function public\.bess_update_roster_status\(/i);
+  assert.match(isolationSql, /create or replace function public\.bess_assign_next\(/i);
+  assert.match(isolationSql, /create or replace function public\.bess_assign_batch\(/i);
+  assert.match(isolationSql, /create or replace function public\.bess_assign_specific\(/i);
+
+  // 确保新函数代码体中不再出现 person_status (忽略文件头注释)
+  const codeBody = isolationSql.slice(isolationSql.indexOf('begin;'));
+  assert.doesNotMatch(codeBody, /bess_dispatch_person_status/i);
+
+  // 确保 update_roster_status 仅更新单行且包含 test_default
+  const updateStatus = functionSql('bess_update_roster_status', isolationSql);
+  assert.match(updateStatus, /p_scope not in \('default', 'test_default', 'ad', 'ad_review', 'ad_game'\)/i);
+  assert.match(updateStatus, /where state\.day_key = p_day_key and state\.scope = p_scope/i);
+  assert.doesNotMatch(updateStatus, /state\.scope in \('ad_review', 'ad_game'\)/i);
+
+  // 确保派单函数统一使用 state.off_duty
+  for (const rpc of ['bess_assign_next', 'bess_assign_batch', 'bess_assign_specific']) {
+    const body = functionSql(rpc, isolationSql);
+    assert.match(body, /v_state\.off_duty \? /i);
+    assert.doesNotMatch(body, /public\.bess_dispatch_person_status/i);
+  }
+});
 
 test('AD 双 scope 迁移放宽约束并保留旧 ad 回滚兼容', () => {
   assert.match(sql, /scope in \('default', 'ad', 'ad_review', 'ad_game'\)/i);
@@ -119,7 +157,7 @@ test('assign_next 验收锁定 9 参数与版本化 OUT 契约', () => {
   assert.match(verification, /旧 RPC overload 未 DROP/i);
 });
 
-test('内存契约：双 scope 名单同序、游标和 assignment 隔离、离岗与恢复全局共享', async () => {
+test('内存契约：双 scope 名单同序、游标和 assignment 隔离、离岗与恢复完全独立', async () => {
   const store = createMemoryBatchStore({ now: () => new Date('2026-10-05T08:00:00Z') });
   const init = { dayKey: '2026-10-05', scope: 'ad_review', roster: ['甲甲', '乙乙'], expiresAt: '2026-10-06T16:00:00Z' };
   await store.initializeRoster(init);
@@ -129,20 +167,26 @@ test('内存契约：双 scope 名单同序、游标和 assignment 隔离、离�
   await store.assign({ dayKey: init.dayKey, scope: 'ad_review', requestId: 'same', direction: 'reverse', context: {} });
   assert.equal((await store.getDailyState(init.dayKey, 'ad_review')).reverse_cursor, 1);
   assert.equal((await store.getDailyState(init.dayKey, 'ad_game')).reverse_cursor, 0);
-  await store.replaceAdRosters({
-    dayKey: init.dayKey, roster: ['乙乙', '甲甲'], expectedReviewVersion: 1, expectedGameVersion: 1,
-  });
-  assert.deepEqual((await store.getDailyState(init.dayKey, 'ad_review')).roster, ['乙乙', '甲甲']);
-  assert.deepEqual((await store.getDailyState(init.dayKey, 'ad_game')).roster, ['乙乙', '甲甲']);
-  assert.equal((await store.getDailyState(init.dayKey, 'ad_review')).reverse_cursor, 1);
-  assert.equal((await store.getDailyState(init.dayKey, 'ad_game')).reverse_cursor, 0);
-  const game = await store.assignSpecific({ dayKey: init.dayKey, scope: 'ad_game', requestId: 'same', assignee: '甲甲', context: {} });
-  assert.equal(game.replayed, false);
 
-  await store.updateRosterStatus({ dayKey: init.dayKey, scope: 'ad_review', offDuty: ['甲甲'], expectedVersion: 2 });
-  assert.deepEqual((await store.getDailyState(init.dayKey, 'ad_game')).off_duty, ['甲甲']);
-  await store.updateRosterStatus({ dayKey: init.dayKey, scope: 'ad_game', offDuty: [], expectedVersion: 3 });
-  assert.deepEqual((await store.getDailyState(init.dayKey, 'ad_review')).off_duty, []);
+  // 验证状态隔离：更新 review 不影响 game
+  await store.updateRosterStatus({ dayKey: init.dayKey, scope: 'ad_review', offDuty: ['甲甲'], expectedVersion: 1 });
+  assert.deepEqual((await store.getDailyState(init.dayKey, 'ad_review')).off_duty, ['甲甲']);
+  assert.deepEqual((await store.getDailyState(init.dayKey, 'ad_game')).off_duty, []);
+
+  // 验证各 Scope 派单跳过各自的离岗人员
+  // ad_review 中 甲甲 离岗，reverse 应该派 乙乙 (index 1)
+  const reviewRes = await store.assign({ dayKey: init.dayKey, scope: 'ad_review', requestId: 'r-review', direction: 'reverse' });
+  assert.equal(reviewRes.assignee, '乙乙');
+
+  // ad_game 中没有人离岗，reverse 应该派 乙乙 (index 1) 然后 1 也是乙乙 (Wait, roster length 2, reverse cursor 0 -> index 2-1-0=1 which is 乙乙)
+  // Let's do forward for ad_game to be clearer
+  const gameRes = await store.assign({ dayKey: init.dayKey, scope: 'ad_game', requestId: 'r-game', direction: 'forward' });
+  assert.equal(gameRes.assignee, '甲甲');
+
+  // 验证反向隔离：更新 game 不影响 review
+  await store.updateRosterStatus({ dayKey: init.dayKey, scope: 'ad_game', offDuty: ['乙乙'], expectedVersion: 1 });
+  assert.deepEqual((await store.getDailyState(init.dayKey, 'ad_game')).off_duty, ['乙乙']);
+  assert.deepEqual((await store.getDailyState(init.dayKey, 'ad_review')).off_duty, ['甲甲']);
 });
 
 test('跨 scope 批次 fail-closed', () => {

@@ -4,10 +4,18 @@ import test from 'node:test';
 import { createDispatchSendHandler as _realHandlerFactory, resolveSyncWaitMs as handlerSyncResolve } from '../lib/dispatch/api/send.js';
 
 const handler = _realHandlerFactory();
+const mockStore = {
+  registerDispatchHandoff: async () => ({ outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }),
+  confirmDispatchHandoff: async () => {},
+  markDispatchHandoffUnknown: async () => {},
+  markDispatchHandoffRejected: async () => {},
+};
+
 // 测试默认注入 no-op 拒绝理由回查，避免误触飞书网络；回查能力单独用真实模块测试。
 const createTestHandler = (opts = {}) => _realHandlerFactory({
   enrichRejectReasons: async () => [],
   publishDispatch: async () => ({ message_id: 'q_test', deduplicated: false }),
+  storeFactory: () => mockStore,
   ...opts,
 });
 import {
@@ -122,7 +130,7 @@ test('AD 群兼容 BESS AD 分类并严格绑定 AD 应急表 A/F 字段', () =>
       chat_id: AD_DISPATCH_CHAT_ID,
       business_type: 'AD',
       target_category: targetCategory,
-      sheet_id: '288afd',
+      sheet_id: 'Vp2A6O',
       date_field_id: 'A',
       date_field_name: '需求创建时间',
       assignee_field_id: 'F',
@@ -130,7 +138,7 @@ test('AD 群兼容 BESS AD 分类并严格绑定 AD 应急表 A/F 字段', () =>
     });
     assert.equal(normalized.chatId, AD_DISPATCH_CHAT_ID);
     assert.equal(normalized.fields.targetCategory, targetCategory);
-    assert.equal(normalized.fields.sheetId, '288afd');
+    assert.equal(normalized.fields.sheetId, 'Vp2A6O');
     assert.equal(normalized.fields.dateFieldId, 'A');
     assert.equal(normalized.fields.assigneeFieldId, 'F');
   }
@@ -140,7 +148,7 @@ test('AD 群兼容 BESS AD 分类并严格绑定 AD 应急表 A/F 字段', () =>
       chat_id: AD_DISPATCH_CHAT_ID,
       business_type: 'AD',
       target_category: 'ehc_emergency_ad',
-      sheet_id: '288afd',
+      sheet_id: 'Vp2A6O',
       date_field_id: 'J',
       assignee_field_id: 'G',
     }),
@@ -156,7 +164,7 @@ test('AD 群兼容 BESS AD 分类并严格绑定 AD 应急表 A/F 字段', () =>
       ...localBody,
       business_type: 'AD',
       target_category: 'ehc_emergency_ad',
-      sheet_id: '288afd',
+      sheet_id: 'Vp2A6O',
       date_field_id: 'A',
       date_field_name: '需求创建时间',
       assignee_field_id: 'F',
@@ -292,7 +300,7 @@ test('AD 附加群只允许 AD 分类写入 AD 应急表', () => {
       chat_id: BESS_AD_ADDITIONAL_CHAT_ID,
       business_type: 'AD',
       target_category: targetCategory,
-      sheet_id: '288afd',
+      sheet_id: 'Vp2A6O',
       date_field_id: 'A',
       date_field_name: '需求创建时间',
       assignee_field_id: 'F',
@@ -300,17 +308,20 @@ test('AD 附加群只允许 AD 分类写入 AD 应急表', () => {
     });
     assert.equal(normalized.fields.targetCategory, targetCategory);
     assert.equal(normalized.fields.businessType, 'AD');
-    assert.equal(normalized.fields.sheetId, '288afd');
+    assert.equal(normalized.fields.sheetId, 'Vp2A6O');
     assert.equal(normalized.fields.dateFieldId, 'A');
     assert.equal(normalized.fields.assigneeFieldId, 'F');
   }
 
   for (const [targetCategory, businessType, sheetId, dateFieldId, assigneeFieldId] of [
     ['qianchuan', '千川', 'TQuzLA'],
-    ['qianchuan_ad', '千川', '288afd'],
+    ['qianchuan_ad', '千川', 'Vp2A6O'],
     ['ehc_emergency_ad', 'AD', 'TQuzLA', 'A', 'F'],
-    ['qianchuan_ad', 'AD', '288afd', 'H', 'F'],
-    ['ehc_emergency_ad', 'AD', '288afd', 'A', 'J'],
+    ['qianchuan_ad', 'AD', 'Vp2A6O', 'H', 'F'],
+    ['ehc_emergency_ad', 'AD', 'Vp2A6O', 'A', 'J'],
+    // 旧应急表 288afd 已切换，应急分类再投旧表必须拒绝
+    ['qianchuan_ad', 'AD', '288afd', 'A', 'F'],
+    ['ehc_emergency_ad', 'AD', '288afd', 'A', 'F'],
   ]) {
     assert.throws(
       () => normalizeDispatchIngest({
@@ -812,7 +823,7 @@ test('队列发布超时时返回可安全重试的未知接受状态', async ()
   await Promise.all(deferred);
 });
 
-test('队列发布明确失败时返回 503 且不谎报已接受', async () => {
+test('队列发布明确失败时返回 202 且标记未知接受以便闭环恢复', async () => {
   process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
   const targetHandler = createTestHandler({
     async publishDispatch() {
@@ -821,10 +832,35 @@ test('队列发布明确失败时返回 503 且不谎报已接受', async () => 
   });
 
   const response = await invoke(localBody, { targetHandler });
-  assert.equal(response.status, 503);
-  assert.equal(response.body.ok, false);
-  assert.equal(response.body.error_code, 'DISPATCH_QUEUE_UNAVAILABLE');
-  assert.equal(response.body.accepted_unknown, undefined);
+  assert.equal(response.status, 202);
+  assert.equal(response.body.ok, true);
+  assert.equal(response.body.accepted_unknown, true);
+  assert.equal(response.body.recovery, 'NEEDS_RECONCILIATION');
+});
+
+test('dry_run 模式下校验通过但不持久化也不入队', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  let publishes = 0;
+  const targetHandler = createTestHandler({
+    async publishDispatch() { publishes += 1; return { message_id: 'q_dry' }; },
+    storeFactory: () => ({
+      registerDispatchHandoff: () => { throw new Error('Should not call store in dry_run'); }
+    })
+  });
+
+  const response = await invoke({ ...localBody, dry_run: true }, { targetHandler });
+  assert.equal(response.status, 200);
+  assert.equal(response.body.status, 'DRY_RUN_OK');
+  assert.equal(publishes, 0);
+});
+
+test('成功入队应包含 durable_status 和 recovery 确认标记', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const targetHandler = createTestHandler();
+  const response = await invoke(localBody, { targetHandler });
+  assert.equal(response.status, 202);
+  assert.equal(response.body.durable_status, 'QUEUED');
+  assert.equal(response.body.recovery, 'CONFIRMED');
 });
 
 test('原部分过滤批次现在按原顺序全部入队', async () => {
@@ -846,4 +882,21 @@ test('原部分过滤批次现在按原顺序全部入队', async () => {
   assert.deepEqual(response.body.request_ids, ['blocked_inflight', 'allowed_inflight']);
   assert.deepEqual(response.body.skipped_request_ids, []);
   assert.deepEqual(queued.request_ids, ['blocked_inflight', 'allowed_inflight']);
+});
+
+
+test('/send 契约接受签名 body/source context 的 source_record_id 并透传队列', async () => {
+  let queued;
+  const targetHandler = createTestHandler({
+    async publishDispatch(message) { queued = message; return { message_id: 'q_source' }; },
+  });
+  const body = {
+    ...localBody,
+    source_context: { source: 'skill-signature-fast-path', source_record_id: 'recSendSource' },
+  };
+  const result = await invoke(body, { targetHandler });
+  assert.equal(result.status, 202);
+  assert.equal(result.body.source_record_id, 'recSendSource');
+  assert.equal(queued.source_record_id, 'recSendSource');
+  assert.equal(queued.source, 'skill-signature-fast-path');
 });
