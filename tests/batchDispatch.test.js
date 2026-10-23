@@ -211,7 +211,7 @@ class BatchStore {
 }
 
 class BatchClient {
-  constructor({ failRow, failRows = [], failUpdateOnce = false, failReplyOnce = false, onWrite, sheetRows = [], batchApi = false } = {}) {
+  constructor({ failRow, failRows = [], failUpdateOnce = false, failReplyOnce = false, onWrite, sheetRows = [], batchApi = false, locateRows = null } = {}) {
     this.calls = [];
     this.failRow = failRow;
     this.failRows = new Set(failRows);
@@ -222,6 +222,14 @@ class BatchClient {
     if (!batchApi) {
       this.getSheetValuesBatch = undefined;
       this.writeSheetValuesBatch = undefined;
+    }
+    if (locateRows) {
+      // Simulates proxy/supabase code that resolves the physical row from request_id.
+      this.locateSheetRequestRow = async ({ requestId }) => {
+        this.calls.push({ kind: 'locate', requestId });
+        const rowIndex = locateRows[requestId];
+        return { rowIndex: Number.isInteger(rowIndex) ? rowIndex : null, scanComplete: true };
+      };
     }
   }
   async readSheetDispatchRows(args) {
@@ -2089,4 +2097,47 @@ test('request_id 重定位不修改批次 identity：旧行号→部分失败→
   assert.equal(store.getBatch('oc_allowed', 'relocate_partial_retry').status, 'SUCCESS');
   assert.deepEqual(originalItems.map(({ row_index: row }) => row), [10, 11]);
   assert.equal(rows[20][1], '乙', '失败项重试必须继续写 request_id 重定位后的第 21 行');
+});
+
+
+test('批量 Fast Path：行号以定位结果为准，禁止用 null rowIndex 拼 A1 区间（90202 回归）', async () => {
+  const rows = new Array(14810).fill(null).map(() => ['', '', '']);
+  const store = new BatchStore({ batchApi: true });
+  store.state = { roster: ['甲', '乙'] };
+  const client = new BatchClient({
+    sheetRows: rows, batchApi: true, locateRows: { '848416': 14800, '848417': 14801 },
+  });
+  const items = [item('848416', null), item('848417', null)];
+
+  const result = await handleDispatchEvent(batchBody('batch_locate_rows', items), options(store, client));
+  await result.afterResponse();
+
+  const writes = client.calls.filter(({ kind }) => kind === 'batchWrite');
+  assert.equal(writes.length, 1);
+  assert.deepEqual(writes[0].valueRanges.map(({ range }) => range), [
+    'sheetA!J14800:J14800',
+    'sheetA!J14801:J14801',
+  ]);
+  assert.ok(!writes[0].valueRanges.some(({ range }) => /null|undefined|NaN/.test(range)));
+  const batch = store.getBatch('oc_allowed', 'batch_locate_rows');
+  assert.equal(batch.status, 'SUCCESS');
+  assert.deepEqual(batch.results.map(({ assignee }) => assignee), ['甲', '乙']);
+  assert.deepEqual([rows[14799][1], rows[14800][1]], ['甲', '乙']);
+});
+
+test('批量 Fast Path：定位失败时整条批次失败，绝不写入 null 区间', async () => {
+  const rows = new Array(20).fill(null).map(() => ['', '', '']);
+  const store = new BatchStore({ batchApi: true });
+  store.state = { roster: ['甲', '乙'] };
+  const client = new BatchClient({ sheetRows: rows, batchApi: true, locateRows: { '848416': null } });
+  const items = [item('848416', null)];
+
+  const result = await handleDispatchEvent(batchBody('batch_locate_missing', items), options(store, client));
+  await result.afterResponse();
+
+  assert.equal(client.calls.filter(({ kind }) => kind === 'batchWrite').length, 0);
+  const batch = store.getBatch('oc_allowed', 'batch_locate_missing');
+  assert.equal(batch.status, 'FAILED');
+  assert.equal(batch.results[0].status, 'FAILED');
+  assert.equal(batch.results[0].errorCode, 'SCAN_INCOMPLETE');
 });
