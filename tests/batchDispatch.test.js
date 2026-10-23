@@ -124,6 +124,10 @@ class BatchStore {
     if (direction === 'forward') this.cursor = index + 1;
     else this.reverseCursor = roster.length - index;
   }
+  async calibrateAndAssign(args) {
+    await this.calibrateCursor(args);
+    return this.assign(args);
+  }
   async getPendingByRequest(requestId, chatId) {
     return [...this.pending.values()].find((row) => row.request_id === requestId && row.chat_id === chatId && !row.completed_at) || null;
   }
@@ -2054,4 +2058,35 @@ test('人工值不在 roster：整条正序方向 fail-closed，不覆盖且不�
   assert.equal(store.assignBatchCalls, 0);
   assert.equal(store.calibrations.length, 0);
   assert.equal(store.cursor, 1);
+});
+
+
+test('request_id 重定位不修改批次 identity：旧行号→部分失败→同 batchId 重试不冲突且写入新行', async () => {
+  const store = new BatchStore();
+  store.state = { roster: ['甲', '乙', '丙'] };
+  const originalItems = [item('relocate_retry_1', 10), item('relocate_retry_2', 11)];
+  const request = batchBody('relocate_partial_retry', originalItems);
+  const rows = new Array(30).fill(null).map(() => ['', '', '']);
+  const client = new BatchClient({ sheetRows: rows, failRows: [21] });
+  const resolvedRows = new Map([['relocate_retry_1', 20], ['relocate_retry_2', 21]]);
+  client.locateSheetRequestRow = async ({ requestId }) => ({
+    rowIndex: resolvedRows.get(requestId), scanComplete: true,
+  });
+
+  const first = await handleDispatchEvent(request, options(store, client));
+  await first.afterResponse();
+  assert.equal(store.getBatch('oc_allowed', 'relocate_partial_retry').status, 'PARTIAL');
+  assert.deepEqual(originalItems.map(({ row_index: row }) => row), [10, 11],
+    '运行时重定位不得改写 action.items');
+  assert.ok(client.calls.some(({ kind, rowIndex }) => kind === 'write' && rowIndex === 20));
+  assert.ok(client.calls.some(({ kind, rowIndex }) => kind === 'write' && rowIndex === 21));
+  assert.equal(client.calls.some(({ kind, rowIndex }) => kind === 'write' && [10, 11].includes(rowIndex)), false);
+
+  client.failRows.delete(21);
+  const retry = await handleDispatchEvent(request, options(store, client));
+  await retry.afterResponse();
+  assert.notEqual(retry.errorCode, 'BATCH_ID_CONFLICT');
+  assert.equal(store.getBatch('oc_allowed', 'relocate_partial_retry').status, 'SUCCESS');
+  assert.deepEqual(originalItems.map(({ row_index: row }) => row), [10, 11]);
+  assert.equal(rows[20][1], '乙', '失败项重试必须继续写 request_id 重定位后的第 21 行');
 });
