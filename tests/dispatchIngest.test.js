@@ -5,6 +5,7 @@ import { createDispatchSendHandler as _realHandlerFactory, resolveSyncWaitMs as 
 
 const handler = _realHandlerFactory();
 const mockStore = {
+  reserveDispatchIngestRoot: async () => ({ outcome: 'ACCEPTED' }),
   registerDispatchHandoff: async () => ({ outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }),
   confirmDispatchHandoff: async () => {},
   markDispatchHandoffUnknown: async () => {},
@@ -525,6 +526,92 @@ test('batch ingest 将单按钮卡写入队列并返回 batch_id', async () => {
   assert.equal(queued.card.body.elements.some((element) => element.tag === 'column_set'), false);
   assert.equal(buttons.filter((button) => button.element_id.startsWith('spec_')).length, 2);
   assert.equal(queued.card.body.elements.at(-1).element_id, 'batch_batch_api_1');
+});
+
+
+test('send 原始批次 reservation 阻止 20↔21 漂移并允许完全一致重放', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  const roots = new Map();
+  const handoffs = new Set();
+  let publishes = 0;
+  const store = {
+    async reserveDispatchIngestRoot(root) {
+      const signature = JSON.stringify({
+        fingerprint: root.fingerprint, requestIds: root.requestIds, chunkPlan: root.chunkPlan,
+      });
+      const previous = roots.get(root.batchId);
+      if (previous && previous !== signature) return { outcome: 'PAYLOAD_CONFLICT' };
+      roots.set(root.batchId, signature);
+      return { outcome: previous ? 'REUSED' : 'ACCEPTED' };
+    },
+    async registerDispatchHandoff({ batchId }) {
+      if (handoffs.has(batchId)) return { outcome: 'REUSED', status: 'QUEUED' };
+      handoffs.add(batchId);
+      return { outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' };
+    },
+    async confirmDispatchHandoff() {},
+    async markDispatchHandoffUnknown() {},
+    async markDispatchHandoffRejected() {},
+  };
+  const targetHandler = createTestHandler({
+    storeFactory: () => store,
+    publishDispatch: async () => { publishes += 1; return { message_id: `q${publishes}` }; },
+  });
+  const payload = (batchId, count) => ({
+    chat_id: localBody.chat_id,
+    batch_id: batchId,
+    card_title: '批量派单',
+    time_segment: 'E',
+    items: Array.from({ length: count }, (_, index) => ({
+      ...localBody, request_id: `${batchId}_${index + 1}`, row_index: index + 2,
+    })),
+  });
+  const send = (body) => invoke(body, { targetHandler }, { headers: { 'x-bess-wait': 'async' } });
+
+  const twenty = payload('send_20_then_21', 20);
+  assert.equal((await send(twenty)).status, 202);
+  assert.equal((await send(twenty)).body.reused, true);
+  assert.equal(publishes, 1);
+  const forwardConflict = await send(payload('send_20_then_21', 21));
+  assert.equal(forwardConflict.status, 409);
+  assert.equal(forwardConflict.body.error_code, 'PAYLOAD_CONFLICT');
+  assert.equal(publishes, 1);
+
+  const twentyOne = payload('send_21_then_20', 21);
+  assert.equal((await send(twentyOne)).status, 202);
+  assert.equal(publishes, 3);
+  assert.equal((await send(twentyOne)).body.reused, true);
+  assert.equal(publishes, 3);
+  const reverseConflict = await send(payload('send_21_then_20', 20));
+  assert.equal(reverseConflict.status, 409);
+  assert.equal(reverseConflict.body.error_code, 'PAYLOAD_CONFLICT');
+  assert.equal(publishes, 3);
+});
+
+
+test('send 入口 21 条 dry_run 返回两片规划且零持久化', async () => {
+  process.env.BESS_DISPATCH_INGEST_SECRET = SECRET;
+  let stores = 0;
+  let publishes = 0;
+  const targetHandler = createTestHandler({
+    storeFactory: () => { stores += 1; return mockStore; },
+    publishDispatch: async () => { publishes += 1; return {}; },
+  });
+  const body = {
+    chat_id: localBody.chat_id,
+    batch_id: 'batch_send_21_dry',
+    card_title: '批量派单',
+    time_segment: 'E',
+    dry_run: true,
+    items: Array.from({ length: 21 }, (_, index) => ({
+      ...localBody, request_id: `send_${index + 1}`, row_index: index + 2,
+    })),
+  };
+  const result = await invoke(body, { targetHandler });
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.chunks.map((chunk) => chunk.item_count), [20, 1]);
+  assert.equal(stores, 0);
+  assert.equal(publishes, 0);
 });
 
 

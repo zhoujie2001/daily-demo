@@ -52,6 +52,7 @@ const noopPublish = async () => ({ message_id: 'test-msg-id', deduplicated: fals
 const noopEnrich = async () => [];
 const noopStatusCache = { get: noop, set: noop };
 const mockStore = {
+  reserveDispatchIngestRoot: async () => ({ outcome: 'ACCEPTED' }),
   registerDispatchHandoff: async () => ({ outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' }),
   confirmDispatchHandoff: async () => {},
   markDispatchHandoffUnknown: async () => {},
@@ -241,6 +242,136 @@ describe('automation-send', () => {
     }), res);
     assert.equal(data.statusCode, 403);
     assert.equal(data.body.error_code, 'FORBIDDEN_CHAT');
+  });
+
+  it('21 条拆为两张并在重复 ingest 时不重复建卡', async () => {
+    const state = new Set();
+    const roots = new Map();
+    let publishes = 0;
+    const store = {
+      async reserveDispatchIngestRoot(root) {
+        const previous = roots.get(root.batchId);
+        const signature = JSON.stringify({
+          fingerprint: root.fingerprint, requestIds: root.requestIds, chunkPlan: root.chunkPlan,
+        });
+        if (previous && previous !== signature) return { outcome: 'PAYLOAD_CONFLICT' };
+        roots.set(root.batchId, signature);
+        return { outcome: previous ? 'REUSED' : 'ACCEPTED' };
+      },
+      async registerDispatchHandoff({ batchId }) {
+        if (state.has(batchId)) return { outcome: 'REUSED', status: 'QUEUED' };
+        state.add(batchId);
+        return { outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' };
+      },
+      async confirmDispatchHandoff() {},
+      async markDispatchHandoffUnknown() {},
+    };
+    const handler = createHandler({
+      storeFactory: () => store,
+      publishDispatch: async () => { publishes += 1; return { message_id: `q${publishes}` }; },
+    });
+    const payload = {
+      ...VALID_DISPATCH_PAYLOAD,
+      batch_id: 'batch_21_items',
+      items: Array.from({ length: 21 }, (_, index) => ({
+        ...VALID_ITEM, request_id: `req_${index + 1}`, row_index: index + 2,
+      })),
+    };
+
+    const first = mockRes();
+    await handler(mockReq({ automation_token: TEST_SECRET, dispatch_payload: payload }), first.res);
+    const replay = mockRes();
+    await handler(mockReq({ automation_token: TEST_SECRET, dispatch_payload: payload }), replay.res);
+
+    assert.equal(first.data.statusCode, 202);
+    assert.equal(first.data.body.chunks.length, 2);
+    assert.deepEqual(first.data.body.chunks.map((chunk) => chunk.item_count), [20, 1]);
+    assert.equal(replay.data.body.reused, true);
+    assert.equal(publishes, 2);
+  });
+
+  it('原始批次 reservation 阻止 20↔21 漂移并允许完全一致重放', async () => {
+    const roots = new Map();
+    const handoffs = new Set();
+    let publishes = 0;
+    const store = {
+      async reserveDispatchIngestRoot(root) {
+        const signature = JSON.stringify({
+          fingerprint: root.fingerprint, requestIds: root.requestIds, chunkPlan: root.chunkPlan,
+        });
+        const previous = roots.get(root.batchId);
+        if (previous && previous !== signature) return { outcome: 'PAYLOAD_CONFLICT' };
+        roots.set(root.batchId, signature);
+        return { outcome: previous ? 'REUSED' : 'ACCEPTED' };
+      },
+      async registerDispatchHandoff({ batchId }) {
+        if (handoffs.has(batchId)) return { outcome: 'REUSED', status: 'QUEUED' };
+        handoffs.add(batchId);
+        return { outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' };
+      },
+      async confirmDispatchHandoff() {},
+      async markDispatchHandoffUnknown() {},
+    };
+    const handler = createHandler({
+      storeFactory: () => store,
+      publishDispatch: async () => { publishes += 1; return { message_id: `q${publishes}` }; },
+    });
+    const payload = (batchId, count) => ({
+      ...VALID_DISPATCH_PAYLOAD,
+      batch_id: batchId,
+      items: Array.from({ length: count }, (_, index) => ({
+        ...VALID_ITEM, request_id: `${batchId}_${index + 1}`, row_index: index + 2,
+      })),
+    });
+    const send = async (body) => {
+      const response = mockRes();
+      await handler(mockReq({ automation_token: TEST_SECRET, dispatch_payload: body }), response.res);
+      return response.data;
+    };
+
+    const twenty = payload('batch_20_then_21', 20);
+    assert.equal((await send(twenty)).statusCode, 202);
+    assert.equal((await send(twenty)).body.reused, true);
+    assert.equal(publishes, 1);
+    const forwardConflict = await send(payload('batch_20_then_21', 21));
+    assert.equal(forwardConflict.statusCode, 409);
+    assert.equal(forwardConflict.body.error_code, 'PAYLOAD_CONFLICT');
+    assert.equal(publishes, 1);
+
+    const twentyOne = payload('batch_21_then_20', 21);
+    assert.equal((await send(twentyOne)).statusCode, 202);
+    assert.equal(publishes, 3);
+    assert.equal((await send(twentyOne)).body.reused, true);
+    assert.equal(publishes, 3);
+    const reverseConflict = await send(payload('batch_21_then_20', 20));
+    assert.equal(reverseConflict.statusCode, 409);
+    assert.equal(reverseConflict.body.error_code, 'PAYLOAD_CONFLICT');
+    assert.equal(publishes, 3);
+  });
+
+  it('21 条 dry_run 返回分片摘要且零持久化、零入队', async () => {
+    let stores = 0;
+    let publishes = 0;
+    const handler = createHandler({
+      storeFactory: () => { stores += 1; return mockStore; },
+      publishDispatch: async () => { publishes += 1; return {}; },
+    });
+    const response = mockRes();
+    await handler(mockReq({
+      automation_token: TEST_SECRET,
+      dry_run: true,
+      dispatch_payload: {
+        ...VALID_DISPATCH_PAYLOAD,
+        batch_id: 'batch_21_dry',
+        items: Array.from({ length: 21 }, (_, index) => ({
+          ...VALID_ITEM, request_id: `dry_${index + 1}`, row_index: index + 2,
+        })),
+      },
+    }), response.res);
+    assert.equal(response.data.statusCode, 200);
+    assert.deepEqual(response.data.body.chunks.map((chunk) => chunk.item_count), [20, 1]);
+    assert.equal(stores, 0);
+    assert.equal(publishes, 0);
   });
 
   it('handles queue timeout gracefully (503)', async () => {
