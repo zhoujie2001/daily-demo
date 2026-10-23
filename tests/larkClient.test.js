@@ -370,6 +370,28 @@ function targetClient(handler) {
   return { client, calls };
 }
 
+test('批量写入使用 values_batch_update 并完整提交多个范围', async () => {
+  const { client, calls } = targetClient(() => jsonResponse(200, {
+    code: 0, data: { responses: [{ updatedCells: 1 }, { updatedCells: 1 }] },
+  }));
+  const valueRanges = [
+    { range: 'sheet1!B11:B11', values: [['甲']] },
+    { range: 'sheet1!B12:B12', values: [['乙']] },
+  ];
+
+  const responses = await client.writeSheetValuesBatch({
+    sheetUrl: guardedSheetTarget.sheetUrl,
+    valueRanges,
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.method, 'POST');
+  assert.equal(calls[0].url.pathname,
+    '/open-apis/sheets/v2/spreadsheets/spreadsheetToken/values_batch_update');
+  assert.deepEqual(JSON.parse(calls[0].options.body), { valueRanges });
+  assert.deepEqual(responses, [{ updatedCells: 1 }, { updatedCells: 1 }]);
+});
+
 test('实时负责人读取只查单目标格；字段名配置先解析表头', async () => {
   for (const byName of [false, true]) {
     const { client, calls } = targetClient((call) => {
