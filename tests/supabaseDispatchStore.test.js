@@ -82,8 +82,9 @@ test('首次指定派单按 scope 原子初始化名单且不覆盖并发先写�
   assert.equal(calls[0].options.headers.Prefer, 'resolution=ignore-duplicates,return=minimal');
   assert.deepEqual(JSON.parse(calls[0].options.body), {
     day_key: '2026-09-24', scope: 'ad', roster: ['周杰', '张三'],
-    forward_cursor: 0, reverse_cursor: 0, off_duty: [], version: 1,
-    forward_version: 1, reverse_version: 1, assignment_seq: 0,
+    forward_cursor: 0, reverse_cursor: 0, emergency_forward_cursor: 0, off_duty: [], version: 1,
+    forward_version: 1, reverse_version: 1, emergency_forward_version: 1,
+    roster_revision: 1, status_confirmed: true, confirmed_roster_revision: 1, assignment_seq: 0,
     expires_at: '2026-09-25T16:00:00.000Z',
   });
   assert.match(calls[1].url, /scope=eq\.ad/);

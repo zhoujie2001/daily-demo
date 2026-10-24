@@ -25,7 +25,7 @@ function serialized(card) {
   return JSON.stringify(card);
 }
 
-test('AD 批量结果卡只展示 AD 复盘名单（从上到下），不串入方向或千川本地文案', () => {
+test('AD 批量结果卡只展示 AD 大盘名单（从上到下），不串入方向或千川本地文案', () => {
   const card = buildBatchDispatchResultCard([adFields], {
     batchId: 'ad_batch_1',
     status: 'FAILED',
@@ -35,13 +35,13 @@ test('AD 批量结果卡只展示 AD 复盘名单（从上到下），不串入�
     dispatchedAt: '2026-09-24T12:00:00.000Z',
   });
   const text = serialized(card);
-  assert.match(text, /AD 复盘名单（从上到下）/);
+  assert.match(text, /AD 大盘名单（从上到下）/);
   assert.doesNotMatch(text, /AD 独立名单/);
   assert.doesNotMatch(text, /千川正序/);
   assert.doesNotMatch(text, /本地倒序/);
 });
 
-test('AD 单条结果与名单完成卡使用 AD 复盘名单（从上到下）文案', () => {
+test('AD 单条结果与名单完成卡使用 AD 大盘名单（从上到下）文案', () => {
   const resultCard = buildDispatchResultCard(adFields, {
     assignee: '李四',
     direction: 'forward',
@@ -55,7 +55,7 @@ test('AD 单条结果与名单完成卡使用 AD 复盘名单（从上到下）�
   });
   for (const card of [resultCard, completedCard]) {
     const text = serialized(card);
-    assert.match(text, /AD 复盘名单（从上到下）/);
+    assert.match(text, /AD 大盘名单（从上到下）/);
     assert.doesNotMatch(text, /AD 独立名单/);
     assert.doesNotMatch(text, /千川正序/);
     assert.doesNotMatch(text, /本地倒序/);

@@ -14,9 +14,9 @@ const action = (overrides = {}) => ({
   date_field_id: 'J', assignee_field_id: 'B', ...overrides,
 });
 
-test('服务端按 targetCategory 将 AD 拆分为两个独立 scope，且两个名单均为正序', () => {
-  for (const targetCategory of ['ad', 'qianchuan_ad', 'ehc_emergency_ad']) {
-    const shared = ['qianchuan_ad', 'ehc_emergency_ad'].includes(targetCategory);
+test('服务端按 targetCategory 将 AD 拆分为两个独立 scope，并隔离 AD 应急正序 lane', () => {
+  for (const targetCategory of ['ad', 'qianchuan_ad']) {
+    const shared = targetCategory === 'qianchuan_ad';
     assert.deepEqual(resolveDispatchProfile({
       dispatchProfile: 'ad', businessType: 'AD', targetCategory,
       sheetId: shared ? 'Vp2A6O' : 'review', dateFieldId: shared ? 'A' : 'J',
@@ -24,11 +24,18 @@ test('服务端按 targetCategory 将 AD 拆分为两个独立 scope，且两个
     }), { name: 'ad', scope: 'ad_review', direction: 'forward' });
   }
   assert.deepEqual(resolveDispatchProfile({
+    dispatchProfile: 'ad', businessType: 'AD', targetCategory: 'ehc_emergency_ad',
+    sheetId: 'Vp2A6O', dateFieldId: 'A', assigneeFieldId: 'F',
+  }), { name: 'ad', scope: 'ad_review', direction: 'emergency_forward' });
+  assert.deepEqual(resolveDispatchProfile({
     dispatchProfile: 'ad', businessType: 'AD', targetCategory: 'game_agent',
     sheetId: 'game', dateFieldId: 'J', assigneeFieldId: 'B',
   }), { name: 'ad', scope: 'ad_game', direction: 'forward' });
   assert.deepEqual(resolveDispatchProfile({ dispatchProfile: 'default', businessType: '千川', targetCategory: 'qianchuan' }), {
     name: 'default', scope: 'default', direction: 'forward',
+  });
+  assert.deepEqual(resolveDispatchProfile({ dispatchProfile: 'default', businessType: '应急', targetCategory: 'ehc_emergency' }), {
+    name: 'default', scope: 'default', direction: 'emergency_forward',
   });
 });
 
