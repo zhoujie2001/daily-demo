@@ -154,8 +154,8 @@ test('验收脚本精确校验动态 scope validator 并保留基础 schema/序�
 test('assign_next 验收锁定 9 参数与版本化 OUT 契约', () => {
   assert.match(verification, /bess_assign_next\(date,text,text,text,jsonb,timestamp with time zone,jsonb,bigint,bigint\)/i);
   assert.match(verification, /'p_expected_version','p_expected_cursor_version','assignee','roster','direction','replayed'/i);
-  assert.match(verification, /'original_message_id','version','forward_version','reverse_version','assignment_seq'/i);
-  assert.match(verification, /p\.proargmodes = array\['i','i','i','i','i','i','i','i','i','t','t','t','t','t','t','t','t','t'\]::"char"\[\]/i);
+  assert.match(verification, /'original_message_id','version','forward_version','reverse_version','assignment_seq',\s*'emergency_forward_version'/i);
+  assert.match(verification, /p\.proargmodes = array\['i','i','i','i','i','i','i','i','i','t','t','t','t','t','t','t','t','t','t'\]::"char"\[\]/i);
   assert.match(verification, /旧 RPC overload 未 DROP/i);
 });
 

@@ -25,7 +25,7 @@ function serialized(card) {
   return JSON.stringify(card);
 }
 
-test('AD 批量结果卡只展示 AD 大盘名单（从上到下），不串入方向或千川本地文案', () => {
+test('AD 批量结果卡只展示 AD大盘名单（从上到下），不串入方向或千川本地文案', () => {
   const card = buildBatchDispatchResultCard([adFields], {
     batchId: 'ad_batch_1',
     status: 'FAILED',
@@ -35,13 +35,13 @@ test('AD 批量结果卡只展示 AD 大盘名单（从上到下），不串入�
     dispatchedAt: '2026-09-24T12:00:00.000Z',
   });
   const text = serialized(card);
-  assert.match(text, /AD 大盘名单（从上到下）/);
+  assert.match(text, /AD大盘名单（从上到下）/);
   assert.doesNotMatch(text, /AD 独立名单/);
   assert.doesNotMatch(text, /千川正序/);
   assert.doesNotMatch(text, /本地倒序/);
 });
 
-test('AD 单条结果与名单完成卡使用 AD 大盘名单（从上到下）文案', () => {
+test('AD 单条结果与名单完成卡使用 AD大盘名单（从上到下）文案', () => {
   const resultCard = buildDispatchResultCard(adFields, {
     assignee: '李四',
     direction: 'forward',
@@ -55,14 +55,14 @@ test('AD 单条结果与名单完成卡使用 AD 大盘名单（从上到下）�
   });
   for (const card of [resultCard, completedCard]) {
     const text = serialized(card);
-    assert.match(text, /AD 大盘名单（从上到下）/);
+    assert.match(text, /AD大盘名单（从上到下）/);
     assert.doesNotMatch(text, /AD 独立名单/);
     assert.doesNotMatch(text, /千川正序/);
     assert.doesNotMatch(text, /本地倒序/);
   }
 });
 
-test('游戏 scope 卡片明确展示“游戏货不对板”', () => {
+test('AD游戏 scope 卡片明确展示“AD游戏名单”并保留调整按钮', () => {
   const card = buildDispatchResultCard({
     ...adFields, targetCategory: 'game_agent', dispatchScope: 'ad_game', sheetId: 'game',
   }, {
@@ -70,8 +70,21 @@ test('游戏 scope 卡片明确展示“游戏货不对板”', () => {
     dispatchedAt: '2026-10-05T12:00:00.000Z',
   });
   const text = serialized(card);
-  assert.match(text, /游戏货不对板在班名单（从上到下）/);
-  assert.doesNotMatch(text, /AD 复盘名单/);
+  assert.match(text, /AD游戏名单（从上到下）/);
+  assert.match(text, /调整人员状态/);
+  assert.doesNotMatch(text, /业务类型：AD|仅当前范围|仅另一范围|两个范围/);
+});
+
+test('应急结果卡使用独立应急需求名单文案并保留调整按钮', () => {
+  const card = buildDispatchResultCard({
+    ...adFields, targetCategory: 'ehc_emergency_ad', dispatchScope: 'ad_emergency',
+  }, {
+    assignee: '李四', direction: 'forward', roster: ['张三', '李四'],
+    dispatchedAt: '2026-10-24T12:00:00.000Z',
+  });
+  const text = serialized(card);
+  assert.match(text, /应急需求名单（从上到下）/);
+  assert.match(text, /调整人员状态/);
 });
 
 test('后台派单失败卡明确反馈失败且保留原需求卡重试入口', () => {

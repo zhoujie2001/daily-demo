@@ -1,4 +1,4 @@
--- BESS 双 scope 自动派单：只读迁移验收脚本（PostgreSQL 15）。
+-- BESS 三 scope 自动派单：只读迁移验收脚本（PostgreSQL 15）。
 --
 -- 执行顺序：db/bess-dispatch.sql 后按时间顺序执行派单 migration，再执行本文件。
 -- 本脚本只读系统目录，不读取业务行，也不创建、修改或删除对象。
@@ -155,7 +155,7 @@ begin
        and column_name = 'off_duty' and column_default = 'false'
   ) then v_errors := array_append(v_errors, 'person_status.off_duty 缺少默认值 false'); end if;
 
-  -- 当前双 scope 键契约以及所有基础主键/唯一键。
+  -- 当前三 scope 键契约以及所有基础主键/唯一键。
   if not exists (
     select 1 from pg_catalog.pg_constraint c
      where c.conrelid = to_regclass('public.bess_dispatch_pending_forms')
@@ -216,9 +216,10 @@ begin
     v_errors := array_append(v_errors, '缺少严格 scope validator bess_is_valid_dispatch_scope(text)');
   else
     v_definition := lower(pg_get_functiondef(v_function));
-    if v_definition not like '%^(ad_isolation|ad_game_isolation):[a-z0-9][a-z0-9_-]{0,31}$%'
+    if v_definition not like '%''ad_emergency''%'
+       or v_definition not like '%^(ad_isolation|ad_game_isolation):[a-z0-9][a-z0-9_-]{0,31}$%'
        or v_definition not like '%split_part(p_scope, '':''%not in (''ad'', ''ad_game'')%' then
-      v_errors := array_append(v_errors, '动态 isolation scope 模式或保留 run_id 约束不符');
+      v_errors := array_append(v_errors, '固定 ad_emergency、动态 isolation scope 模式或保留 run_id 约束不符');
     end if;
   end if;
   foreach v_name in array array['bess_dispatch_daily_state', 'bess_dispatch_assignments'] loop
@@ -235,9 +236,9 @@ begin
     select 1 from pg_catalog.pg_constraint c
      where c.conrelid = to_regclass('public.bess_dispatch_assignments') and c.contype = 'c'
        and pg_get_constraintdef(c.oid) =
-         'CHECK ((direction = ANY (ARRAY[''forward''::text, ''reverse''::text, ''specified''::text])))'
+         'CHECK ((direction = ANY (ARRAY[''forward''::text, ''reverse''::text, ''emergency_forward''::text, ''specified''::text])))'
   ) then
-    v_errors := array_append(v_errors, 'assignments.direction CHECK 不是精确三值域');
+    v_errors := array_append(v_errors, 'assignments.direction CHECK 不是精确四值域');
   end if;
   if not exists (
     select 1 from pg_catalog.pg_constraint c
@@ -375,8 +376,10 @@ begin
     'public.bess_assign_specific(date,text,text,text,jsonb)',
     'public.bess_calibrate_cursor(date,text,text,text,jsonb,bigint,bigint)',
     'public.bess_update_roster_status(date,text,jsonb,bigint)',
+    'public.bess_update_ad_roster_statuses(date,jsonb,text,text,text)',
     'public.bess_initialize_ad_rosters(date,jsonb,timestamp with time zone)',
-    'public.bess_replace_ad_rosters(date,jsonb,bigint,bigint)'
+    'public.bess_replace_ad_rosters(date,jsonb,bigint,bigint)',
+    'public.bess_replace_ad_rosters(date,jsonb,bigint,bigint,bigint)'
   ] loop
     v_function := to_regprocedure(v_signature);
     if v_function is null then
@@ -410,7 +413,7 @@ begin
     end if;
   end loop;
 
-  -- scope-aware 签名、返回契约与双名单/rollback 语义。
+  -- scope-aware 签名、返回契约与三名单/rollback 语义。
   v_function := to_regprocedure(
     'public.bess_assign_next(date,text,text,text,jsonb,timestamp with time zone,jsonb,bigint,bigint)'
   );
@@ -421,15 +424,16 @@ begin
        and p.proargnames = array[
          'p_day_key','p_scope','p_request_id','p_direction','p_roster','p_expires_at','p_context',
          'p_expected_version','p_expected_cursor_version','assignee','roster','direction','replayed',
-         'original_message_id','version','forward_version','reverse_version','assignment_seq'
+         'original_message_id','version','forward_version','reverse_version','assignment_seq',
+         'emergency_forward_version'
        ]
-       and p.proargmodes = array['i','i','i','i','i','i','i','i','i','t','t','t','t','t','t','t','t','t']::"char"[]
+       and p.proargmodes = array['i','i','i','i','i','i','i','i','i','t','t','t','t','t','t','t','t','t','t']::"char"[]
        and p.proallargtypes = array[
          'date'::regtype, 'text'::regtype, 'text'::regtype, 'text'::regtype,
          'jsonb'::regtype, 'timestamptz'::regtype, 'jsonb'::regtype, 'bigint'::regtype,
          'bigint'::regtype, 'text'::regtype, 'jsonb'::regtype, 'text'::regtype,
          'boolean'::regtype, 'text'::regtype, 'bigint'::regtype, 'bigint'::regtype,
-         'bigint'::regtype, 'bigint'::regtype
+         'bigint'::regtype, 'bigint'::regtype, 'bigint'::regtype
        ]::oid[]
     ) then
       v_errors := array_append(v_errors, 'bess_assign_next 9 参数/版本化返回契约不符');
@@ -499,14 +503,14 @@ begin
 
   foreach v_signature in array array[
     'public.bess_initialize_ad_rosters(date,jsonb,timestamp with time zone)',
-    'public.bess_replace_ad_rosters(date,jsonb,bigint,bigint)'
+    'public.bess_replace_ad_rosters(date,jsonb,bigint,bigint,bigint)'
   ] loop
     v_function := to_regprocedure(v_signature);
     if v_function is not null then
       v_definition := lower(pg_get_functiondef(v_function));
-      if v_definition not like '%''ad_review''%''ad_game''%'
+      if v_definition not like '%''ad_review''%''ad_game''%''ad_emergency''%'
          or v_definition not like '%bess_sync_legacy_ad_shadow(p_day_key)%' then
-        v_errors := array_append(v_errors, format('双名单 RPC %s 未原子维护两 scope 或 rollback shadow', v_signature));
+        v_errors := array_append(v_errors, format('三名单 RPC %s 未原子维护三个 scope 或 rollback shadow', v_signature));
       end if;
     end if;
   end loop;
@@ -588,10 +592,10 @@ begin
     raise exception using errcode = 'P0001',
       message = 'BESS dispatch 验证失败：' || array_to_string(v_errors, E'\n - ', E'\n - ');
   end if;
-  raise notice 'BESS dispatch 双 scope 验证通过：结构、RLS、权限、RPC 与 rollback shadow 均符合预期。';
+  raise notice 'BESS dispatch 三 scope 验证通过：结构、RLS、权限、RPC 与 rollback shadow 均符合预期。';
 end
 $verify$;
 
 select 'PASS' as status,
-       'BESS dispatch dual-scope schema and security verification passed' as detail;
+       'BESS dispatch three-scope schema and security verification passed' as detail;
 rollback;

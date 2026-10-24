@@ -304,7 +304,7 @@ function options(store, client, overrides = {}) {
   };
 }
 
-test('新版 Node 路径阻断未确认的 AD 名单，且不调用派单 RPC', async () => {
+test('AD大盘名单未确认也直接进入批量派单，不自动弹状态表单', async () => {
   const store = new BatchStore();
   store.getDailyState = async (dayKey, scope) => ({
     day_key: dayKey,
@@ -336,12 +336,30 @@ test('新版 Node 路径阻断未确认的 AD 名单，且不调用派单 RPC', 
     options(store, client),
   );
 
-  assert.equal(result.errorCode, 'WAITING_STATUS_CONFIRMATION');
-  assert.equal(store.assignCalls, 0);
-  assert.equal(store.assignBatchCalls, 0);
-  assert.match(result.body.toast.content, /人员状态调整表单/);
-  const statusForm = client.calls.find((call) => call.kind === 'replyCard')?.card;
-  assert.match(JSON.stringify(statusForm), /人员状态调整/);
+  assert.equal(result.errorCode, undefined);
+  assert.match(result.body.toast.content, /批量派单请求已受理/);
+  assert.equal(client.calls.some((call) => call.kind === 'replyCard' && JSON.stringify(call.card).includes('人员状态调整')), false);
+  await result.afterResponse();
+  assert.equal(store.assignCalls, 1);
+});
+
+test('AD游戏后续批量派单直接执行，不自动弹状态表单', async () => {
+  const store = new BatchStore();
+  const client = new BatchClient();
+  const gameItem = {
+    ...item('ad_game_direct_1', 10),
+    business_type: 'AD', target_category: 'game_agent',
+    date_field_id: 'J', assignee_field_id: 'B',
+    project_field_id: undefined, project_value: undefined,
+  };
+  const result = await handleDispatchEvent(
+    batchBody('ad_game_direct', [gameItem]), options(store, client),
+  );
+  assert.match(result.body.toast.content, /批量派单请求已受理/);
+  assert.equal(client.calls.some((call) => JSON.stringify(call.card || {}).includes('人员状态调整')), false);
+  await result.afterResponse();
+  assert.equal(store.assignCalls, 1);
+  assert.equal(store.assignDetails[0].scope, 'ad_game');
 });
 
 test('批量点击立即禁用按钮，逐项处理后更新原卡并在单一话题卡片中展示结果与人员名单', async () => {
