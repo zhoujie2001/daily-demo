@@ -210,15 +210,25 @@ begin
     v_errors := array_append(v_errors, 'person_status 缺少 PRIMARY KEY (day_key, person_name)');
   end if;
 
-  -- CHECK 域必须精确相等，不能只包含预期字面量后继续放行非法值。
+  -- CHECK 必须统一调用严格 scope validator，不能直接放开任意动态文本。
+  v_function := to_regprocedure('public.bess_is_valid_dispatch_scope(text)');
+  if v_function is null then
+    v_errors := array_append(v_errors, '缺少严格 scope validator bess_is_valid_dispatch_scope(text)');
+  else
+    v_definition := lower(pg_get_functiondef(v_function));
+    if v_definition not like '%^(ad_isolation|ad_game_isolation):[a-z0-9][a-z0-9_-]{0,31}$%'
+       or v_definition not like '%split_part(p_scope, '':''%not in (''ad'', ''ad_game'')%' then
+      v_errors := array_append(v_errors, '动态 isolation scope 模式或保留 run_id 约束不符');
+    end if;
+  end if;
   foreach v_name in array array['bess_dispatch_daily_state', 'bess_dispatch_assignments'] loop
     if not exists (
       select 1 from pg_catalog.pg_constraint c
        where c.conrelid = to_regclass(format('public.%I', v_name)) and c.contype = 'c'
-         and pg_get_constraintdef(c.oid) =
-           'CHECK ((scope = ANY (ARRAY[''default''::text, ''test_default''::text, ''ad''::text, ''ad_review''::text, ''ad_game''::text])))'
+         and lower(pg_get_constraintdef(c.oid)) like
+           '%bess_is_valid_dispatch_scope(scope)%'
     ) then
-      v_errors := array_append(v_errors, format('%I 的 scope CHECK 不是精确五值域', v_name));
+      v_errors := array_append(v_errors, format('%I 的 scope CHECK 未使用严格 validator', v_name));
     end if;
   end loop;
   if not exists (
@@ -426,40 +436,64 @@ begin
     end if;
     v_definition := lower(pg_get_functiondef(v_function));
     if v_definition not like '%p_scope = ''ad''%legacy_ad_cursor_unrepresentable%'
-       or v_definition not like '%p_scope not in (''default'', ''test_default'', ''ad'', ''ad_review'', ''ad_game'')%'
+       or v_definition not like '%not public.bess_is_valid_dispatch_scope(p_scope)%'
        or v_definition not like '%bess_sync_legacy_ad_shadow(p_day_key)%'
        or v_definition not like '%on conflict (day_key, scope, request_id)%' then
-      v_errors := array_append(v_errors, 'bess_assign_next 缺少五 scope、legacy fail-closed 或 rollback assignment shadow');
+      v_errors := array_append(v_errors, 'bess_assign_next 缺少严格动态 scope、legacy fail-closed 或 rollback assignment shadow');
     end if;
   end if;
 
   v_function := to_regprocedure('public.bess_calibrate_cursor(date,text,text,text,jsonb,bigint,bigint)');
   if v_function is not null then
     v_definition := lower(pg_get_functiondef(v_function));
-    if v_definition not like '%p_scope = ''ad''%legacy_ad_cursor_unrepresentable%'
+    if v_definition not like '%not public.bess_is_valid_dispatch_scope(p_scope)%'
+       or v_definition not like '%p_scope = ''ad''%legacy_ad_cursor_unrepresentable%'
        or v_definition not like '%p_direction = ''forward''%forward_cursor%'
        or v_definition not like '%reverse_cursor%' then
-      v_errors := array_append(v_errors, 'bess_calibrate_cursor 缺少 legacy fail-closed 或方向隔离');
+      v_errors := array_append(v_errors, 'bess_calibrate_cursor 缺少严格动态 scope、legacy fail-closed 或方向隔离');
     end if;
   end if;
 
   v_function := to_regprocedure('public.bess_assign_specific(date,text,text,text,jsonb)');
   if v_function is not null then
     v_definition := lower(pg_get_functiondef(v_function));
-    if v_definition not like '%''ad_review''%''ad_game''%'
-       or v_definition not like '%bess_dispatch_person_status%'
+    if v_definition not like '%not public.bess_is_valid_dispatch_scope(p_scope)%'
+       or v_definition like '%bess_dispatch_person_status%'
        or v_definition not like '%on conflict (day_key, scope, request_id)%' then
-      v_errors := array_append(v_errors, 'bess_assign_specific 缺少双 scope 人员状态或 rollback assignment shadow');
+      v_errors := array_append(v_errors, 'bess_assign_specific 缺少严格动态 scope、隔离 off_duty 或 rollback assignment shadow');
     end if;
   end if;
 
   v_function := to_regprocedure('public.bess_update_roster_status(date,text,jsonb,bigint)');
   if v_function is not null then
     v_definition := lower(pg_get_functiondef(v_function));
-    if v_definition not like '%bess_dispatch_person_status%'
-       or v_definition not like '%scope in (''ad_review'', ''ad_game'')%'
+    if v_definition not like '%not public.bess_is_valid_dispatch_scope(p_scope)%'
+       or v_definition like '%bess_dispatch_person_status%'
+       or v_definition not like '%where state.day_key = p_day_key and state.scope = p_scope%'
        or v_definition not like '%bess_sync_legacy_ad_shadow(p_day_key)%' then
-      v_errors := array_append(v_errors, 'bess_update_roster_status 缺少跨双 scope 人员状态同步');
+      v_errors := array_append(v_errors, 'bess_update_roster_status 缺少严格动态 scope 或独立 off_duty 状态');
+    end if;
+  end if;
+
+  v_function := to_regprocedure('public.bess_assign_batch(date,text,text[],text,jsonb,timestamp with time zone,jsonb,bigint,bigint)');
+  if v_function is null then
+    v_errors := array_append(v_errors, '缺少批量派单 RPC bess_assign_batch');
+  else
+    v_definition := lower(pg_get_functiondef(v_function));
+    if v_definition not like '%not public.bess_is_valid_dispatch_scope(p_scope)%'
+       or v_definition like '%bess_dispatch_person_status%'
+       or v_definition not like '%v_state.off_duty%' then
+      v_errors := array_append(v_errors, 'bess_assign_batch 缺少严格动态 scope 或独立 off_duty 状态');
+    end if;
+  end if;
+
+  v_function := to_regprocedure('public.bess_calibrate_and_assign_next(date,text,text,text,text,jsonb,timestamp with time zone,jsonb,bigint,bigint)');
+  if v_function is null then
+    v_errors := array_append(v_errors, '缺少原子锚点恢复 RPC bess_calibrate_and_assign_next');
+  else
+    v_definition := lower(pg_get_functiondef(v_function));
+    if v_definition not like '%not public.bess_is_valid_dispatch_scope(p_scope)%' then
+      v_errors := array_append(v_errors, 'bess_calibrate_and_assign_next 缺少严格动态 scope guard');
     end if;
   end if;
 
