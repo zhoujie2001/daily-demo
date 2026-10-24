@@ -236,6 +236,30 @@ test('主监控群允许多业务类型，但必须显式提供工作表', () =>
   assert.equal(qianchuan.fields.businessType, '千川');
   assert.equal(qianchuan.fields.targetCategory, 'qianchuan');
 
+  const currentMainSheet = normalizeDispatchIngest({
+    ...localBody,
+    chat_id: mainChatId,
+    business_type: '本地推',
+    target_category: 'local_promo',
+    sheet_id: 'NWVztk',
+    request_field_id: undefined,
+    request_field_name: undefined,
+  });
+  assert.equal(currentMainSheet.fields.requestFieldId, 'X');
+  assert.equal(currentMainSheet.fields.requestFieldName, '');
+
+  const explicitRequestFieldName = normalizeDispatchIngest({
+    ...localBody,
+    chat_id: mainChatId,
+    business_type: '本地推',
+    target_category: 'local_promo',
+    sheet_id: 'NWVztk',
+    request_field_id: undefined,
+    request_field_name: '需求ID',
+  });
+  assert.equal(explicitRequestFieldName.fields.requestFieldId, '');
+  assert.equal(explicitRequestFieldName.fields.requestFieldName, '需求ID');
+
   const stock = normalizeDispatchIngest({
     ...localBody,
     chat_id: mainChatId,
