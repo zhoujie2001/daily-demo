@@ -70,6 +70,8 @@ test('AD 状态卡提供 current/other/both 范围，旧提交兼容由服务默
   });
   const form = card.body.elements.find((element) => element.tag === 'form');
   const range = form.elements.find((element) => element.name === 'range');
+  assert.equal(range.initial_option, 'current');
+  assert.equal(typeof range.initial_option, 'string');
   assert.deepEqual(range.options.map((option) => option.value), ['current', 'other', 'both']);
 });
 
