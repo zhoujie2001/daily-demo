@@ -278,6 +278,11 @@ test('AD 首次名单保存卡入口打开统一三名单表单并独立提交�
   assert.match(text, /AD游戏名单/);
   assert.match(text, /应急需求名单/);
   assert.doesNotMatch(text, /仅当前范围|仅另一范围|两个范围/);
+  const pending = await store.getPending('om_form', new Date('2026-09-03T01:00:00Z'));
+  assert.equal(pending.request_context.statusFormProtocolVersion, 2);
+  assert.deepEqual(Object.keys(pending.request_context.expectedAdStates).sort(), [
+    'ad_emergency', 'ad_game', 'ad_review',
+  ]);
 
   const result = await handleDispatchEvent({
     header: { event_id: 'evt_ad_submit' },
@@ -299,4 +304,199 @@ test('AD 首次名单保存卡入口打开统一三名单表单并独立提交�
   assert.deepEqual((await store.getDailyState(dayKey, 'ad_review')).off_duty, ['张三']);
   assert.deepEqual((await store.getDailyState(dayKey, 'ad_game')).off_duty, ['李四']);
   assert.deepEqual((await store.getDailyState(dayKey, 'ad_emergency')).off_duty, []);
+});
+
+
+test('AD 旧版状态表单零写入拒绝，不清空三份离岗状态', async () => {
+  const store = createMemoryBatchStore();
+  const client = new FakeClient();
+  const dayKey = '2026-09-03';
+  await store.initializeRoster({
+    dayKey, scope: 'ad_review', roster: ['张三', '李四'], expiresAt: '2026-09-04T00:00:00Z',
+  });
+  const scopes = ['ad_review', 'ad_game', 'ad_emergency'];
+  const states = await Promise.all(scopes.map((scope) => store.getDailyState(dayKey, scope)));
+  await store.updateAdRosterStatuses({
+    dayKey,
+    confirmationOperationId: 'seed-legacy-status',
+    submissionHash: 'seed-legacy-status',
+    confirmedBy: 'ou_seed',
+    updates: states.map((state, index) => ({
+      scope: state.scope,
+      offDuty: index === 1 ? ['李四'] : ['张三'],
+      expectedVersion: state.version,
+      expectedRosterRevision: state.roster_revision,
+    })),
+  });
+  await store.savePending({
+    form_message_id: 'om_legacy_form',
+    request_id: 'legacy-status-form',
+    original_message_id: 'om_original',
+    chat_id: 'oc_allowed',
+    request_context: {
+      kind: 'adjust_status', dayKey, businessType: 'AD', targetCategory: 'qianchuan_ad',
+      dispatchProfile: 'ad', dispatchScope: 'ad_review', expectedVersion: 1,
+    },
+    expires_at: '2026-09-04T00:00:00Z',
+  });
+
+  const result = await handleDispatchEvent({
+    header: { event_id: 'evt_legacy_submit' },
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: {
+        form_value: { range: 'current', target_name: '李四', op_type: 'leave' },
+        tag: 'adjust_status_form',
+      },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_legacy_form' },
+    },
+  }, options(store, client));
+
+  assert.equal(result.errorCode, 'AD_STATUS_FORM_PROTOCOL_EXPIRED');
+  assert.match(result.body.toast.content, /未修改任何名单/);
+  assert.deepEqual(
+    await Promise.all(scopes.map(async (scope) => (await store.getDailyState(dayKey, scope)).off_duty)),
+    [['张三'], ['李四'], ['张三']],
+  );
+});
+
+test('AD 新版状态表单缺少任一名单字段时拒绝且不写入', async () => {
+  const store = createMemoryBatchStore();
+  const client = new FakeClient();
+  const dayKey = '2026-09-03';
+  await store.initializeRoster({
+    dayKey, scope: 'ad_review', roster: ['张三', '李四'], expiresAt: '2026-09-04T00:00:00Z',
+  });
+  await handleDispatchEvent({
+    header: { event_id: 'evt_missing_open' },
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: { value: {
+        action: 'bess_adjust_status', day_key: dayKey, business_type: 'AD',
+        target_category: 'qianchuan_ad', dispatch_profile: 'ad',
+      } },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_saved_roster' },
+    },
+  }, options(store, client));
+
+  const result = await handleDispatchEvent({
+    header: { event_id: 'evt_missing_submit' },
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: {
+        form_value: { ad_review_off_duty: ['张三'], ad_game_off_duty: [] },
+        tag: 'adjust_status_form',
+      },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  }, options(store, client));
+
+  assert.equal(result.errorCode, 'AD_STATUS_FORM_PROTOCOL_EXPIRED');
+  assert.deepEqual((await store.getDailyState(dayKey, 'ad_review')).off_duty, []);
+});
+
+test('AD 新版状态表单使用打开时版本做 CAS，并发更新后拒绝覆盖', async () => {
+  const store = createMemoryBatchStore();
+  const client = new FakeClient();
+  const dayKey = '2026-09-03';
+  await store.initializeRoster({
+    dayKey, scope: 'ad_review', roster: ['张三', '李四'], expiresAt: '2026-09-04T00:00:00Z',
+  });
+  await handleDispatchEvent({
+    header: { event_id: 'evt_cas_open' },
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: { value: {
+        action: 'bess_adjust_status', day_key: dayKey, business_type: 'AD',
+        target_category: 'qianchuan_ad', dispatch_profile: 'ad',
+      } },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_saved_roster' },
+    },
+  }, options(store, client));
+  const scopes = ['ad_review', 'ad_game', 'ad_emergency'];
+  const openedStates = await Promise.all(scopes.map((scope) => store.getDailyState(dayKey, scope)));
+  await store.updateAdRosterStatuses({
+    dayKey,
+    confirmationOperationId: 'concurrent-status-update',
+    submissionHash: 'concurrent-status-update',
+    confirmedBy: 'ou_other',
+    updates: openedStates.map((state) => ({
+      scope: state.scope,
+      offDuty: state.scope === 'ad_review' ? ['张三'] : [],
+      expectedVersion: state.version,
+      expectedRosterRevision: state.roster_revision,
+    })),
+  });
+
+  const result = await handleDispatchEvent({
+    header: { event_id: 'evt_cas_submit' },
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: {
+        form_value: {
+          ad_review_off_duty: [], ad_game_off_duty: ['李四'], ad_emergency_off_duty: [],
+        },
+        tag: 'adjust_status_form',
+      },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  }, options(store, client));
+
+  assert.equal(result.errorCode, 'STATUS_UPDATE_CONFLICT');
+  assert.deepEqual((await store.getDailyState(dayKey, 'ad_review')).off_duty, ['张三']);
+  assert.deepEqual((await store.getDailyState(dayKey, 'ad_game')).off_duty, []);
+});
+
+test('AD 新版状态表单允许用显式空数组主动清空三份离岗状态', async () => {
+  const store = createMemoryBatchStore();
+  const client = new FakeClient();
+  const dayKey = '2026-09-03';
+  await store.initializeRoster({
+    dayKey, scope: 'ad_review', roster: ['张三', '李四'], expiresAt: '2026-09-04T00:00:00Z',
+  });
+  const scopes = ['ad_review', 'ad_game', 'ad_emergency'];
+  const initial = await Promise.all(scopes.map((scope) => store.getDailyState(dayKey, scope)));
+  await store.updateAdRosterStatuses({
+    dayKey,
+    confirmationOperationId: 'seed-clear-status',
+    submissionHash: 'seed-clear-status',
+    confirmedBy: 'ou_seed',
+    updates: initial.map((state) => ({
+      scope: state.scope,
+      offDuty: ['张三'],
+      expectedVersion: state.version,
+      expectedRosterRevision: state.roster_revision,
+    })),
+  });
+  await handleDispatchEvent({
+    header: { event_id: 'evt_clear_open' },
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: { value: {
+        action: 'bess_adjust_status', day_key: dayKey, business_type: 'AD',
+        target_category: 'qianchuan_ad', dispatch_profile: 'ad',
+      } },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_saved_roster' },
+    },
+  }, options(store, client));
+
+  const result = await handleDispatchEvent({
+    header: { event_id: 'evt_clear_submit' },
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: {
+        form_value: {
+          ad_review_off_duty: [], ad_game_off_duty: [], ad_emergency_off_duty: [],
+        },
+        tag: 'adjust_status_form',
+      },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  }, options(store, client));
+
+  assert.match(result.body.toast.content, /三份名单状态已保存/);
+  assert.deepEqual(
+    await Promise.all(scopes.map(async (scope) => (await store.getDailyState(dayKey, scope)).off_duty)),
+    [[], [], []],
+  );
 });

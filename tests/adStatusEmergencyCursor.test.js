@@ -89,6 +89,8 @@ test('AD 统一状态卡展示三份明确名单和三个全局唯一多选字�
     'ad_review_off_duty', 'ad_game_off_duty', 'ad_emergency_off_duty',
   ]);
   assert.equal(new Set(form.elements.map((element) => element.name)).size, form.elements.length);
+  const submit = form.elements.find((element) => element.name === 'adjust_status_submit');
+  assert.equal(submit.value.status_form_protocol_version, 2);
   assert.deepEqual(selectors[0].initial_options, ['甲']);
   assert.equal(selectors.every((element) => element.options.every((option) => typeof option.value === 'string')), true);
 });
