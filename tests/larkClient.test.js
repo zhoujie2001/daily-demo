@@ -403,7 +403,7 @@ test('实时负责人读取只查单目标格；字段名配置先解析表头',
       }
       const range = decodeURIComponent(call.url.pathname.split('/values/')[1]);
       return jsonResponse(200, { code: 0, data: { valueRange: {
-        values: range === 'sheet1!A1:C1' ? [['日期', '负责人']] : [[{ text: ' 人工已填 ' }]],
+        values: range === 'sheet1!A1:C10' ? [['说明'], ['日期', '负责人']] : [[{ text: ' 人工已填 ' }]],
       } } });
     });
     const fields = byName
@@ -413,7 +413,7 @@ test('实时负责人读取只查单目标格；字段名配置先解析表头',
     assert.deepEqual(calls
       .filter((call) => call.url.pathname.includes('/values/'))
       .map((call) => decodeURIComponent(call.url.pathname.split('/values/')[1])),
-    byName ? ['sheet1!A1:C1', 'sheet1!B11:B11'] : ['sheet1!B11:B11']);
+    byName ? ['sheet1!A1:C10', 'sheet1!B11:B11'] : ['sheet1!B11:B11']);
   }
 });
 
@@ -469,7 +469,7 @@ test('写前 GET 失败时不继续 PUT', async () => {
 });
 
 
-function locateRequestClient({ rowCount, columnCount = 3, valuesByRange }) {
+function locateRequestClient({ rowCount, columnCount = 3, sheetId = 'sheet1', valuesByRange }) {
   const requestedRanges = [];
   let metadataRequests = 0;
   const stub = stubFetch((call) => {
@@ -478,7 +478,7 @@ function locateRequestClient({ rowCount, columnCount = 3, valuesByRange }) {
     }
     if (call.url.pathname.endsWith('/sheets/query')) {
       metadataRequests += 1;
-      return jsonResponse(200, { code: 0, data: { sheets: [{ sheet_id: 'sheet1', grid_properties: {
+      return jsonResponse(200, { code: 0, data: { sheets: [{ sheet_id: sheetId, grid_properties: {
         row_count: rowCount, column_count: columnCount,
       } }] } });
     }
@@ -528,10 +528,10 @@ for (const scenario of [
 }
 
 
-test('locateSheetRequestRow 按字段名定位时复用单次元数据请求', async () => {
+test('locateSheetRequestRow 按字段名定位时复用单次元数据请求并兼容第二行表头', async () => {
   const fixture = locateRequestClient({ rowCount: 3, valuesByRange: {
-    'sheet1!A1:C1': [['标题', '负责人', '需求ID']],
-    'sheet1!C1:C3': [['需求ID'], ['other'], ['req-by-name']],
+    'sheet1!A1:C3': [['说明'], ['标题', '负责人', '需求ID'], ['记录']],
+    'sheet1!C1:C3': [[], ['需求ID'], ['req-by-name']],
   } });
   try {
     const found = await fixture.client.locateSheetRequestRow({
@@ -540,18 +540,18 @@ test('locateSheetRequestRow 按字段名定位时复用单次元数据请求', a
     });
     assert.deepEqual(found, { rowIndex: 3, scanComplete: true });
     assert.equal(fixture.metadataRequests(), 1);
-    assert.deepEqual(fixture.requestedRanges, ['sheet1!A1:C1', 'sheet1!C1:C3']);
+    assert.deepEqual(fixture.requestedRanges, ['sheet1!A1:C3', 'sheet1!C1:C3']);
   } finally { fixture.restore(); }
 });
 
-test('locateSheetRequestRow 兼容旧 action：按 column_count 读取合法表头范围并定位需求 ID', async () => {
+test('locateSheetRequestRow 兼容旧 action：按有效范围扫描第二行表头并定位需求 ID', async () => {
   const headers = Array.from({ length: 24 }, () => '');
   headers[0] = '业务类型';
   headers[8] = '负责人';
   headers[23] = '需求ID';
   const fixture = locateRequestClient({ rowCount: 3, columnCount: 24, valuesByRange: {
-    'sheet1!A1:X1': [headers],
-    'sheet1!X1:X3': [['需求ID'], ['other'], ['req-legacy']],
+    'sheet1!A1:X3': [['向上新增插入'], headers, ['本地']],
+    'sheet1!X1:X3': [[], ['需求ID'], ['req-legacy']],
   } });
   try {
     const found = await fixture.client.locateSheetRequestRow({
@@ -559,9 +559,29 @@ test('locateSheetRequestRow 兼容旧 action：按 column_count 读取合法表�
       requestId: 'req-legacy',
     });
     assert.deepEqual(found, { rowIndex: 3, scanComplete: true });
-    assert.deepEqual(fixture.requestedRanges, ['sheet1!A1:X1', 'sheet1!X1:X3']);
+    assert.deepEqual(fixture.requestedRanges, ['sheet1!A1:X3', 'sheet1!X1:X3']);
   } finally { fixture.restore(); }
 });
+
+test('locateSheetRequestRow 对已知主表直接使用需求 ID 列，兼容已持久化旧 action', async () => {
+  const fixture = locateRequestClient({
+    rowCount: 3,
+    columnCount: 24,
+    sheetId: 'NWVztk',
+    valuesByRange: { 'NWVztk!X1:X3': [[], ['需求ID'], ['849558']] },
+  });
+  try {
+    const found = await fixture.client.locateSheetRequestRow({
+      sheetUrl: 'https://example.feishu.cn/sheets/spreadsheetToken',
+      sheetId: 'NWVztk',
+      requestId: '849558',
+    });
+    assert.deepEqual(found, { rowIndex: 3, scanComplete: true });
+    assert.equal(fixture.metadataRequests(), 1);
+    assert.deepEqual(fixture.requestedRanges, ['NWVztk!X1:X3']);
+  } finally { fixture.restore(); }
+});
+
 
 test('locateSheetRequestRow 对缺失 column_count 的元数据 fail-closed', async () => {
   const fixture = locateRequestClient({ rowCount: 2, columnCount: null, valuesByRange: {} });
@@ -575,24 +595,25 @@ test('locateSheetRequestRow 对缺失 column_count 的元数据 fail-closed', as
 
 test('locateSheetRequestRow 对旧 action 的多个需求 ID 候选表头 fail-closed', async () => {
   const fixture = locateRequestClient({ rowCount: 2, valuesByRange: {
-    'sheet1!A1:C1': [['需求 ID', 'request_id']],
+    'sheet1!A1:C2': [['需求 ID', 'request_id']],
   } });
   try {
     await assert.rejects(() => fixture.client.locateSheetRequestRow({
       sheetUrl: 'https://example.feishu.cn/sheets/spreadsheetToken', sheetId: 'sheet1', requestId: 'req-x',
     }), (error) => error instanceof LarkApiError && error.code === 'REQUEST_ID_FIELD_AMBIGUOUS');
-    assert.deepEqual(fixture.requestedRanges, ['sheet1!A1:C1']);
+    assert.deepEqual(fixture.requestedRanges, ['sheet1!A1:C2']);
   } finally { fixture.restore(); }
 });
 
+
 test('locateSheetRequestRow 对旧 action 无需求 ID 候选表头 fail-closed', async () => {
   const fixture = locateRequestClient({ rowCount: 2, valuesByRange: {
-    'sheet1!A1:C1': [['标题', '负责人']],
+    'sheet1!A1:C2': [['标题', '负责人']],
   } });
   try {
     await assert.rejects(() => fixture.client.locateSheetRequestRow({
       sheetUrl: 'https://example.feishu.cn/sheets/spreadsheetToken', sheetId: 'sheet1', requestId: 'req-x',
     }), (error) => error instanceof LarkApiError && error.code === 'REQUEST_ID_FIELD_NOT_FOUND');
-    assert.deepEqual(fixture.requestedRanges, ['sheet1!A1:C1']);
+    assert.deepEqual(fixture.requestedRanges, ['sheet1!A1:C2']);
   } finally { fixture.restore(); }
 });
