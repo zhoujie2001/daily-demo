@@ -250,3 +250,53 @@ test('人员状态调整重试：目标状态已生效时幂等成功，审计�
   assert.deepEqual(state.off_duty, ['张三']);
   assert.equal(state.version, 2);
 });
+
+
+test('AD 首次名单保存卡入口打开统一三名单表单并独立提交离岗状态', async () => {
+  const store = createMemoryBatchStore();
+  const client = new FakeClient();
+  const dayKey = '2026-09-03';
+  await store.initializeRoster({
+    dayKey, scope: 'ad_review', roster: ['张三', '李四'], expiresAt: '2026-09-04T00:00:00Z',
+  });
+  await handleDispatchEvent({
+    header: { event_id: 'evt_ad_open' },
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: { value: {
+        action: 'bess_adjust_status', day_key: dayKey, business_type: 'AD',
+        target_category: 'qianchuan_ad', dispatch_profile: 'ad',
+      } },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_saved_roster' },
+    },
+  }, options(store, client));
+
+  const formCard = client.calls.find((call) => call.kind === 'replyCard')?.card;
+  assert.ok(formCard);
+  const text = JSON.stringify(formCard);
+  assert.match(text, /AD大盘名单/);
+  assert.match(text, /AD游戏名单/);
+  assert.match(text, /应急需求名单/);
+  assert.doesNotMatch(text, /仅当前范围|仅另一范围|两个范围/);
+
+  const result = await handleDispatchEvent({
+    header: { event_id: 'evt_ad_submit' },
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: {
+        form_value: {
+          ad_review_off_duty: ['张三'],
+          ad_game_off_duty: ['李四'],
+          ad_emergency_off_duty: [],
+          reason: '统一调整',
+        },
+        tag: 'adjust_status_form',
+      },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  }, options(store, client));
+  assert.match(result.body.toast.content, /三份名单状态已保存/);
+  assert.deepEqual((await store.getDailyState(dayKey, 'ad_review')).off_duty, ['张三']);
+  assert.deepEqual((await store.getDailyState(dayKey, 'ad_game')).off_duty, ['李四']);
+  assert.deepEqual((await store.getDailyState(dayKey, 'ad_emergency')).off_duty, []);
+});

@@ -26,7 +26,7 @@ test('服务端按 targetCategory 将 AD 拆分为两个独立 scope，并隔离
   assert.deepEqual(resolveDispatchProfile({
     dispatchProfile: 'ad', businessType: 'AD', targetCategory: 'ehc_emergency_ad',
     sheetId: 'Vp2A6O', dateFieldId: 'A', assigneeFieldId: 'F',
-  }), { name: 'ad', scope: 'ad_review', direction: 'emergency_forward' });
+  }), { name: 'ad', scope: 'ad_emergency', direction: 'forward' });
   assert.deepEqual(resolveDispatchProfile({
     dispatchProfile: 'ad', businessType: 'AD', targetCategory: 'game_agent',
     sheetId: 'game', dateFieldId: 'J', assigneeFieldId: 'B',

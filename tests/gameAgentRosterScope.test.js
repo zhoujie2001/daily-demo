@@ -54,7 +54,7 @@ test('游戏批量、单条和名单完成卡展示游戏独立名单文案', ()
 
   for (const card of cards) {
     const text = serialized(card);
-    assert.match(text, /游戏货不对板在班名单/);
+    assert.match(text, /AD游戏名单/);
     assert.doesNotMatch(text, /AD业态在班名单/);
   }
 });
