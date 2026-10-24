@@ -370,6 +370,31 @@ function targetClient(handler) {
   return { client, calls };
 }
 
+test('批量读取使用 values_batch_get 并按请求范围返回多区域值', async () => {
+  const { client, calls } = targetClient(() => jsonResponse(200, {
+    code: 0,
+    data: {
+      valueRanges: [
+        { range: 'sheet1!B11:B11', values: [['甲']] },
+        { range: 'sheet1!B12:B12', values: [['乙']] },
+      ],
+    },
+  }));
+  const ranges = ['sheet1!B11:B11', 'sheet1!B12:B12'];
+
+  const values = await client.getSheetValuesBatch({
+    sheetUrl: guardedSheetTarget.sheetUrl,
+    ranges,
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.method, 'GET');
+  assert.equal(calls[0].url.pathname,
+    '/open-apis/sheets/v2/spreadsheets/spreadsheetToken/values_batch_get');
+  assert.equal(calls[0].url.searchParams.get('ranges'), ranges.join(','));
+  assert.deepEqual(values, [[['甲']], [['乙']]]);
+});
+
 test('批量写入使用 values_batch_update 并完整提交多个范围', async () => {
   const { client, calls } = targetClient(() => jsonResponse(200, {
     code: 0, data: { responses: [{ updatedCells: 1 }, { updatedCells: 1 }] },
