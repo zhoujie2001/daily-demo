@@ -129,12 +129,14 @@ test('只读验收覆盖双 scope 键、人员状态、双名单、scope-aware R
     'LEGACY_AD_CURSOR_UNREPRESENTABLE',
     'bess_sync_legacy_ad_shadow',
   ]) assert.match(verification, new RegExp(contract.replace(/[()]/g, '\\$&'), 'i'));
-  assert.match(verification, /'default'.*'ad'.*'ad_review'.*'ad_game'/i);
+  assert.match(verification, /bess_is_valid_dispatch_scope/);
+  assert.match(verification, /ad_isolation\|ad_game_isolation/);
   assert.match(verification, /begin transaction read only/i);
 });
 
-test('验收脚本精确校验枚举域并保留基础 schema/序列契约', () => {
-  assert.match(verification, /pg_get_constraintdef\(c\.oid\) =\s*'CHECK \(\(scope = ANY \(ARRAY\[/i);
+test('验收脚本精确校验动态 scope validator 并保留基础 schema/序列契约', () => {
+  assert.match(verification, /to_regprocedure\('public\.bess_is_valid_dispatch_scope\(text\)'\)/i);
+  assert.match(verification, /pg_get_constraintdef\(c\.oid\)[\s\S]*bess_is_valid_dispatch_scope\(scope\)/i);
   assert.match(verification, /pg_get_constraintdef\(c\.oid\) =\s*'CHECK \(\(direction = ANY \(ARRAY\[/i);
   assert.doesNotMatch(verification, /pg_get_constraintdef\(c\.oid\) like '%scope%'/i);
   for (const contract of [
