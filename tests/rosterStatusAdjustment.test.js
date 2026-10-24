@@ -36,6 +36,38 @@ const options = (store, client) => ({
   now: () => new Date('2026-09-03T01:00:00Z'),
 });
 
+test('真实新版按钮 value 与 form_value 同时提交使用服务端 pending 快照', async () => {
+  const store = createMemoryBatchStore();
+  const client = new FakeClient();
+  const dayKey = '2026-09-03';
+  await store.initializeRoster({ dayKey, scope: 'ad_review', roster: ['张三', '李四'], expiresAt: '2026-09-04T00:00:00Z' });
+  await handleDispatchEvent({
+    header: { event_id: 'evt_audit_real_open' },
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: { value: { action: 'bess_adjust_status', day_key: dayKey, business_type: 'AD', target_category: 'qianchuan_ad', dispatch_profile: 'ad' } },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_original' },
+    },
+  }, options(store, client));
+  const formCard = client.calls.find(({ kind }) => kind === 'replyCard').card;
+  const form = formCard.body.elements.find(({ tag }) => tag === 'form');
+  const button = form.elements.find(({ name }) => name === 'adjust_status_submit');
+  const result = await handleDispatchEvent({
+    header: { event_id: 'evt_audit_real_submit' },
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: {
+        tag: 'button', value: structuredClone(button.value),
+        form_value: { ad_review_off_duty: ['张三'], ad_game_off_duty: ['李四'], ad_emergency_off_duty: [] },
+      },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_form' },
+    },
+  }, options(store, client));
+  const after = await Promise.all(['ad_review', 'ad_game', 'ad_emergency'].map(async (scope) => ({ scope, offDuty: (await store.getDailyState(dayKey, scope)).off_duty })));
+  assert.equal(result.errorCode, undefined, '真实按钮提交不得丢弃服务端保存的协议及 CAS 快照');
+  assert.deepEqual(after.map(({ offDuty }) => offDuty), [['张三'], ['李四'], []]);
+});
+
 test('人员状态调整：展示调整表单卡片', async () => {
   const store = createMemoryBatchStore();
   const client = new FakeClient();
@@ -220,6 +252,7 @@ test('人员状态调整重试：目标状态已生效时幂等成功，审计�
     throw error;
   };
   const dayKey = '2026-09-04';
+  const replayOptions = { ...options(store, client), now: () => new Date('2026-09-04T01:00:00Z') };
   await store.assign({
     dayKey,
     requestId: 'init-replay',
@@ -228,6 +261,17 @@ test('人员状态调整重试：目标状态已生效时幂等成功，审计�
     expiresAt: '2026-09-05T00:00:00Z',
     context: {},
   });
+  // Real submit buttons are always bound to a previously opened server form.
+  // Keep the original stale-version/already-applied scenario, without inventing
+  // a submit that never had a pending record.
+  await handleDispatchEvent({
+    header: { event_id: 'evt_replay_open' },
+    event: {
+      operator: { open_id: 'ou_1' },
+      action: { value: { action: 'bess_adjust_status', day_key: dayKey, business_type: '千川' } },
+      context: { open_chat_id: 'oc_allowed', open_message_id: 'om_original' },
+    },
+  }, replayOptions);
   await store.updateRosterStatus({ dayKey, offDuty: ['张三'], expectedVersion: 1 });
 
   const event = {
@@ -243,7 +287,7 @@ test('人员状态调整重试：目标状态已生效时幂等成功，审计�
     },
   };
 
-  const result = await handleDispatchEvent(event, options(store, client));
+  const result = await handleDispatchEvent(event, replayOptions);
   assert.equal(result.httpStatus, 200);
   assert.match(result.body.toast.content, /状态已更新为 离岗/);
   const state = await store.getDailyState(dayKey);
