@@ -14,8 +14,8 @@ class MockStore {
     };
     this.states = new Map([
       ['default', this.state],
-      ['ad_review', { ...this.state }],
-      ['ad_game', { ...this.state }],
+      ['ad_review', { ...this.state, roster_revision: 1, status_confirmed: true, confirmed_roster_revision: 1 }],
+      ['ad_game', { ...this.state, roster_revision: 1, status_confirmed: true, confirmed_roster_revision: 1 }],
     ]);
     this.pending = new Map();
     this.assignments = new Map();

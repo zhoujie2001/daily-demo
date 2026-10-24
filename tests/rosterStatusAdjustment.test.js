@@ -178,9 +178,11 @@ test('离岗后派单：跳过离岗人员，若全员离岗则失败并禁用�
   dispatchEvent2.event.action.value.request_id = 'req_2';
 
   const result2 = await handleDispatchEvent(dispatchEvent2, options(store, client));
-  assert.equal(result2.errorCode, 'ALL_OFF_DUTY');
+  assert.equal(result2.errorCode, 'WAITING_NO_AVAILABLE_ASSIGNEE');
   assert.match(result2.body.toast.content, /所有人员均已离岗/);
-  assert.equal(result2.body.card.data.body.elements.find(el => el.tag === 'button').disabled, true);
+  const buttons = result2.body.card.data.body.elements.filter(el => el.tag === 'button');
+  assert.equal(buttons.find(button => JSON.stringify(button).includes('bess_auto_dispatch'))?.disabled, true);
+  assert.ok(buttons.find(button => JSON.stringify(button).includes('bess_adjust_status')));
 });
 
 

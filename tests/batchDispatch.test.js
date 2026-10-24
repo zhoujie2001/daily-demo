@@ -105,7 +105,11 @@ class BatchStore {
   async cleanupExpired() {}
   async getDailyState(_dayKey, scope) {
     this.stateScopeCalls.push(scope);
-    return this.state ? { ...this.state, forward_cursor: this.cursor, reverse_cursor: this.reverseCursor } : null;
+    if (!this.state) return null;
+    const adConfirmation = ['ad_review', 'ad_game'].includes(scope)
+      ? { roster_revision: 1, status_confirmed: true, confirmed_roster_revision: 1 }
+      : {};
+    return { ...this.state, ...adConfirmation, forward_cursor: this.cursor, reverse_cursor: this.reverseCursor };
   }
   async initializeRoster({ roster, scope }) {
     this.initializeDetails.push({ roster: [...roster], scope });
@@ -299,6 +303,46 @@ function options(store, client, overrides = {}) {
     now: overrides.now || (() => new Date('2026-08-30T11:00:00Z')),
   };
 }
+
+test('新版 Node 路径阻断未确认的 AD 名单，且不调用派单 RPC', async () => {
+  const store = new BatchStore();
+  store.getDailyState = async (dayKey, scope) => ({
+    day_key: dayKey,
+    scope,
+    roster: ['张三', '李四'],
+    off_duty: [],
+    version: 1,
+    forward_cursor: 0,
+    forward_version: 1,
+    emergency_forward_cursor: 0,
+    emergency_forward_version: 1,
+    roster_revision: 2,
+    status_confirmed: false,
+    confirmed_roster_revision: null,
+  });
+  const client = new BatchClient();
+  const adItem = {
+    ...item('ad_unconfirmed_1', 10),
+    business_type: 'AD',
+    target_category: 'ad',
+    date_field_id: 'J',
+    assignee_field_id: 'B',
+    project_field_id: undefined,
+    project_value: undefined,
+  };
+
+  const result = await handleDispatchEvent(
+    batchBody('ad_unconfirmed', [adItem]),
+    options(store, client),
+  );
+
+  assert.equal(result.errorCode, 'WAITING_STATUS_CONFIRMATION');
+  assert.equal(store.assignCalls, 0);
+  assert.equal(store.assignBatchCalls, 0);
+  assert.match(result.body.toast.content, /人员状态调整表单/);
+  const statusForm = client.calls.find((call) => call.kind === 'replyCard')?.card;
+  assert.match(JSON.stringify(statusForm), /人员状态调整/);
+});
 
 test('批量点击立即禁用按钮，逐项处理后更新原卡并在单一话题卡片中展示结果与人员名单', async () => {
   const store = new BatchStore();
