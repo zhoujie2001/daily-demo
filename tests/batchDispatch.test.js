@@ -304,6 +304,212 @@ function options(store, client, overrides = {}) {
   };
 }
 
+// Unlike the legacy BatchStore fixture, this store really checks and increments
+// CAS versions. Include the assignment ledger in the same snapshot, just as the
+// production PostgREST embedding does; otherwise automatic rows look manual.
+async function strictBatchScenario({ direction = 'forward', values, batchApi = false } = {}) {
+  const current = new Date('2026-08-30T11:00:00Z');
+  const dayKey = '2026-08-30';
+  const reverse = direction === 'reverse';
+  const scope = reverse ? 'default' : direction === 'emergency_forward' ? 'ad_emergency' : 'ad_game';
+  const roster = ['A', 'B', 'C', 'D', 'E'];
+  const store = createMemoryBatchStore({ now: () => current });
+  await store.initializeRoster({ dayKey, scope, roster, expiresAt: '2026-08-31T16:00:00Z' });
+  const ledgerRows = (state) => Object.entries(state?.assignments || {}).map(([requestId, assignment]) => ({
+    ...assignment, request_id: requestId, id: assignment.assignment_seq,
+    request_context: assignment.context,
+  })).sort((a, b) => b.id - a.id);
+  store.getDispatchSnapshot = async (day, targetScope) => {
+    const state = await store.getDailyState(day, targetScope);
+    return { state, assignments: ledgerRows(state) };
+  };
+  store.getAssignment = async (day, requestId, targetScope) => {
+    const state = await store.getDailyState(day, targetScope);
+    return ledgerRows(state).find((row) => row.request_id === requestId) || null;
+  };
+  store.getDailyAssignments = async (day, targetScope) => (
+    ledgerRows(await store.getDailyState(day, targetScope))
+  );
+  const trace = [];
+  for (const method of ['calibrateCursor', 'calibrateAndAssign', 'assign', 'assignBatch']) {
+    const original = store[method].bind(store);
+    store[method] = async (args) => {
+      const state = await store.getDailyState(args.dayKey, args.scope);
+      const versionField = args.direction === 'reverse' ? 'reverse_version'
+        : args.direction === 'emergency_forward' ? 'emergency_forward_version' : 'forward_version';
+      const entry = { method, ...args, actualCursorVersion: state[versionField] };
+      trace.push(entry);
+      try {
+        const result = await original(args);
+        entry.outcome = 'OK';
+        return result;
+      } catch (error) {
+        entry.outcome = error.code;
+        throw error;
+      }
+    };
+  }
+  const rows = Array.from({ length: values.length + 12 }, () => ['', '', '']);
+  values.forEach((value, i) => { rows[9 + i] = [dayKey, value, reverse ? '本地推' : '']; });
+  const client = new BatchClient({ sheetRows: rows, batchApi });
+  const items = values.map((_, i) => !reverse ? {
+    ...item(`strict_${i}`, 10 + i), business_type: 'AD', target_category: 'game_agent',
+    date_field_id: 'J', assignee_field_id: 'B', assignee_field_name: '姓名',
+    project_field_id: undefined, project_value: undefined,
+    ...(direction === 'emergency_forward' ? {
+      target_category: 'ehc_emergency_ad', sheet_id: 'Vp2A6O', date_field_id: 'A',
+      assignee_field_id: 'F', assignee_field_name: '',
+    } : {}),
+  } : {
+    ...item(`strict_${i}`, 10 + i), business_type: '本地推',
+    target_category: 'local_promo', project_value: '本地推',
+  });
+  const execute = async (batchId = 'strict_batch') => {
+    const response = await handleDispatchEvent(batchBody(batchId, items), options(store, client));
+    assert.ok([undefined, 'BATCH_ALREADY_PROCESSED'].includes(response.errorCode), JSON.stringify(response.body));
+    await response.afterResponse?.();
+    return store.getBatch('oc_allowed', batchId);
+  };
+  return { store, client, trace, items, rows, dayKey, scope, roster, current, execute };
+}
+
+for (const direction of ['forward', 'reverse', 'emergency_forward']) {
+  test(`严格 CAS ${direction}：连续十三条已填负责人不得因自身校准产生 PARTIAL`, async () => {
+    const values = Array.from({ length: 13 }, (_, i) => ['A', 'B', 'C', 'D', 'E'][i % 5]);
+    const s = await strictBatchScenario({ direction, values, batchApi: true });
+    const result = await s.execute();
+    assert.equal(result.status, 'SUCCESS', JSON.stringify(result.results));
+    assert.equal(result.results.length, 13);
+    assert.ok(result.results.every((entry) => entry.replayed));
+    assert.deepEqual(s.rows.slice(9, 22).map((row) => row[1]), values);
+    assert.equal(s.client.calls.filter((call) => ['write', 'batchWrite'].includes(call.kind)).length, 0);
+    assert.equal((await s.store.getDailyAssignments(s.dayKey, s.scope)).length, 0);
+    assert.ok(s.trace.length >= 13);
+    assert.ok(s.trace.every((entry) => entry.outcome === 'OK'), JSON.stringify(s.trace));
+    const count = s.trace.length;
+    await s.execute();
+    assert.equal(s.trace.length, count, '完成后的重复点击不得重复校准或分配');
+  });
+
+  test(`严格 CAS ${direction}：已填与空目标交替，保留人工值并从最新锚点继续`, async () => {
+    const s = await strictBatchScenario({ direction, values: ['A', '', 'C', '', 'E', ''] });
+    const result = await s.execute();
+    assert.equal(result.status, 'SUCCESS', JSON.stringify(result.results));
+    const expected = direction === 'reverse' ? ['A', 'E', 'C', 'B', 'E', 'D'] : ['A', 'B', 'C', 'D', 'E', 'A'];
+    assert.deepEqual(result.results.map((entry) => entry.assignee), expected);
+    assert.deepEqual(s.rows.slice(9, 15).map((row) => row[1]), expected);
+    assert.deepEqual(s.client.calls.filter((call) => call.kind === 'write').map((call) => call.rowIndex), [11, 13, 15]);
+    assert.equal((await s.store.getDailyAssignments(s.dayKey, s.scope)).length, 3);
+    assert.ok(s.trace.every((entry) => entry.outcome === 'OK'), JSON.stringify(s.trace));
+  });
+
+  test(`严格 CAS ${direction}：自动派单后再校准人工行，必须失效后续旧快照`, async () => {
+    const s = await strictBatchScenario({ direction, values: ['', 'C', ''] });
+    const result = await s.execute();
+    assert.equal(result.status, 'SUCCESS', JSON.stringify(result.results));
+    assert.deepEqual(result.results.map((entry) => entry.assignee), direction === 'reverse' ? ['E', 'C', 'B'] : ['A', 'C', 'D']);
+    assert.equal(s.client.calls.some((call) => call.kind === 'write' && call.rowIndex === 11), false);
+    assert.ok(s.trace.every((entry) => entry.outcome === 'OK'), JSON.stringify(s.trace));
+  });
+}
+
+test('严格 CAS：原批次七成功六失败恢复，一次执行完成余下六条而非仅前进两条', async () => {
+  const s = await strictBatchScenario({ values: Array.from({ length: 13 }, (_, i) => ['A', 'B', 'C', 'D', 'E'][i % 5]) });
+  await s.store.calibrateCursor({ dayKey: s.dayKey, scope: s.scope, direction: 'forward', assignee: 'A', roster: s.roster,
+    expectedVersion: 1, expectedCursorVersion: 1 });
+  await s.store.calibrateCursor({ dayKey: s.dayKey, scope: s.scope, direction: 'forward', assignee: 'B', roster: s.roster,
+    expectedVersion: 1, expectedCursorVersion: 2 });
+  s.trace.length = 0;
+  const batchId = 'strict_resume';
+  const parsed = validateBatchDispatchValue(batchBody(batchId, s.items).event.action.value, { chatId: 'oc_allowed' });
+  const seed = { chatId: 'oc_allowed', batchId, claimToken: 'seed', items: parsed.items,
+    fingerprint: batchDispatchFingerprint(parsed.items), originalMessageId: 'om_batch',
+    now: s.current, leaseExpiresAt: s.current.toISOString(), expiresAt: '2026-09-06T16:00:00Z' };
+  await s.store.claimBatch(seed);
+  await s.store.saveBatchProgress({ ...seed, status: 'PARTIAL', results: s.items.map((entry, i) => ({
+    requestId: entry.request_id, status: i < 7 ? 'SUCCESS' : 'FAILED',
+    ...(i < 7 ? { assignee: s.rows[9 + i][1], replayed: true } : { errorCode: 'CURSOR_CALIBRATION_CONFLICT' }),
+  })) });
+  const result = await s.execute(batchId);
+  assert.equal(result.status, 'SUCCESS', JSON.stringify(result.results));
+  assert.equal(result.results.filter((entry) => entry.status === 'SUCCESS').length, 13);
+  assert.equal(s.trace.filter((entry) => entry.method === 'calibrateCursor').length, 6);
+  assert.ok(s.trace.every((entry) => entry.outcome === 'OK'));
+  assert.equal(s.client.calls.filter((call) => ['write', 'batchWrite'].includes(call.kind)).length, 0);
+});
+
+test('严格 CAS：全空新批次仍保持一次批量读取、分配、写入，不退化逐条执行', async () => {
+  const s = await strictBatchScenario({ values: ['', '', '', ''], batchApi: true });
+  const result = await s.execute();
+  assert.equal(result.status, 'SUCCESS');
+  assert.equal(s.client.calls.filter((call) => call.kind === 'batchRead').length, 1);
+  assert.equal(s.client.calls.filter((call) => call.kind === 'batchWrite').length, 1);
+  assert.equal(s.trace.filter((entry) => entry.method === 'assignBatch').length, 1);
+  assert.equal(s.trace.filter((entry) => entry.method === 'assign').length, 0);
+});
+
+test('严格 CAS：快照后发生真实并发修改，RPC 仍拒绝旧版本并重读新人工负责人', async () => {
+  const s = await strictBatchScenario({ values: ['A', 'B', 'C'] });
+  const calibrate = s.store.calibrateCursor.bind(s.store);
+  let raced = false;
+  s.store.calibrateCursor = async (args) => {
+    if (!raced) {
+      raced = true;
+      await s.store.updateRosterStatus({ dayKey: s.dayKey, scope: s.scope, offDuty: ['E'], expectedVersion: 1 });
+      s.rows[9][1] = 'D';
+    }
+    return calibrate(args);
+  };
+  const result = await s.execute();
+  assert.equal(result.status, 'SUCCESS', JSON.stringify(result.results));
+  assert.equal(result.results[0].assignee, 'D', '不能只替换 CAS 版本后沿用旧锚点 A');
+  assert.equal(s.rows[9][1], 'D');
+  assert.equal(s.trace.filter((entry) => entry.outcome === 'CURSOR_CALIBRATION_CONFLICT').length, 1);
+  assert.equal(s.trace.filter((entry) => entry.method === 'calibrateCursor' && entry.assignee === 'A').length, 1);
+  assert.equal(s.client.calls.filter((call) => ['write', 'batchWrite'].includes(call.kind)).length, 0);
+});
+
+test('严格 CAS：自身校准后旧锚点被人工改动，必须重读事实而非给旧锚点配新版本', async () => {
+  const s = await strictBatchScenario({ values: ['A', '', ''] });
+  const calibrate = s.store.calibrateCursor.bind(s.store);
+  let edited = false;
+  s.store.calibrateCursor = async (args) => {
+    const result = await calibrate(args);
+    if (!edited) {
+      edited = true;
+      // No change to the next target cell. Merely revalidating that empty cell,
+      // or rebasing its cached A anchor onto cursor version 2, would miss this.
+      s.rows[9][1] = 'D';
+    }
+    return result;
+  };
+  const result = await s.execute();
+  assert.equal(result.status, 'SUCCESS', JSON.stringify(result.results));
+  assert.equal(result.results[1].assignee, 'E', '下一条必须沿用新人工锚点 D，不得从旧锚点 A 派 B');
+  assert.equal(s.rows[9][1], 'D');
+  assert.ok(s.trace.some((entry) => entry.method === 'calibrateAndAssign' && entry.assignee === 'D'));
+  assert.equal(s.client.calls.some((call) => call.kind === 'write' && call.rowIndex === 10), false);
+});
+
+test('严格 CAS：持续真实并发冲突仍只尝试两次，禁止绕过版本保护或执行后续写表', async () => {
+  const s = await strictBatchScenario({ values: ['A', '', 'C', ''] });
+  const calibrate = s.store.calibrateCursor.bind(s.store);
+  s.store.calibrateCursor = async (args) => {
+    const state = await s.store.getDailyState(s.dayKey, s.scope);
+    await s.store.updateRosterStatus({ dayKey: s.dayKey, scope: s.scope,
+      offDuty: state.off_duty.length ? [] : ['E'], expectedVersion: state.version });
+    return calibrate(args);
+  };
+  const result = await s.execute();
+  assert.equal(result.status, 'FAILED');
+  assert.ok(result.results.every((entry) => entry.errorCode === 'CURSOR_CALIBRATION_CONFLICT'));
+  assert.ok(result.results.every((entry) => entry.message.includes('游标版本')));
+  assert.equal(s.trace.length, 2, '不能通过无界重试制造偶然通过');
+  assert.ok(s.trace.every((entry) => entry.outcome === 'CURSOR_CALIBRATION_CONFLICT'));
+  assert.equal((await s.store.getDailyAssignments(s.dayKey, s.scope)).length, 0);
+  assert.equal(s.client.calls.filter((call) => ['write', 'batchWrite'].includes(call.kind)).length, 0);
+});
+
 test('AD大盘名单未确认也直接进入批量派单，不自动弹状态表单', async () => {
   const store = new BatchStore();
   store.getDailyState = async (dayKey, scope) => ({
