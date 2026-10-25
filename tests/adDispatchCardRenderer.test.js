@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  buildBatchDispatchCard,
   buildBatchDispatchResultCard,
   buildDispatchFailureCard,
   buildDispatchResultCard,
+  buildInitialDispatchCard,
   buildRosterCompletedCard,
 } from '../lib/lark/card-renderer.js';
 
@@ -24,6 +26,28 @@ const adFields = {
 function serialized(card) {
   return JSON.stringify(card);
 }
+
+test('AD 初始派单卡按大盘和游戏子业务展示标题', () => {
+  const review = buildInitialDispatchCard(adFields, { action: 'bess_auto_dispatch' });
+  const game = buildInitialDispatchCard({
+    ...adFields, targetCategory: 'game_agent', dispatchScope: 'ad_game', sheetId: 'game',
+  }, { action: 'bess_auto_dispatch' });
+
+  assert.equal(review.header.title.content, '【AD大盘】新增回扫需求');
+  assert.equal(game.header.title.content, '【AD游戏】新增回扫需求');
+});
+
+test('AD 批量派单卡按大盘和游戏子业务展示标题', () => {
+  const action = { action: 'bess_batch_auto_dispatch', batch_id: 'ad-title', items: [] };
+  const period = { segment: 'F 段' };
+  const review = buildBatchDispatchCard([adFields], action, { batchId: 'ad-review', period });
+  const game = buildBatchDispatchCard([{
+    ...adFields, targetCategory: 'game_agent', dispatchScope: 'ad_game', sheetId: 'game',
+  }], action, { batchId: 'ad-game', period });
+
+  assert.equal(review.header.title.content, '【AD大盘】F 段新增 1 条｜批量自动派单');
+  assert.equal(game.header.title.content, '【AD游戏】F 段新增 1 条｜批量自动派单');
+});
 
 test('AD 批量结果卡只展示 AD大盘名单（从上到下），不串入方向或千川本地文案', () => {
   const card = buildBatchDispatchResultCard([adFields], {
