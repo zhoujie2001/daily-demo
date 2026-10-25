@@ -83,25 +83,29 @@ for (const withValue of [true, false]) {
   });
 
   for (const field of Object.keys(selections)) {
-    test(`${route}：缺少 ${field} 时零状态写入`, async () => {
+    test(`${route}：旧 pending 无初始快照且缺少 ${field} 时零状态写入`, async () => {
       const f = await fixture();
+      await f.changePending(({ request_context: context }) => {
+        delete context.statusFormSelectionMode;
+        delete context.initialAdOffDuty;
+      });
       const before = await f.snapshot();
       const payload = f.body(withValue);
       delete payload.event.action.form_value[field];
-      assert.equal((await f.submit(payload)).errorCode, 'AD_STATUS_FORM_PROTOCOL_EXPIRED');
+      assert.equal((await f.submit(payload)).errorCode, 'AD_STATUS_FORM_FIELDS_INVALID');
       assert.deepEqual(await f.snapshot(), before);
       assert.equal(f.stats.attempts, 0);
       assert.equal(f.stats.completions, 0);
     });
   }
 
-  for (const invalid of [null, '甲', {}]) {
+  for (const invalid of ['甲', {}, 42, [{}], ['']]) {
     test(`${route}：拒绝非数组字段 ${JSON.stringify(invalid)}`, async () => {
       const f = await fixture();
       const before = await f.snapshot();
       const payload = f.body(withValue);
       payload.event.action.form_value.ad_game_off_duty = invalid;
-      assert.equal((await f.submit(payload)).errorCode, 'AD_STATUS_FORM_PROTOCOL_EXPIRED');
+      assert.equal((await f.submit(payload)).errorCode, 'AD_STATUS_FORM_FIELDS_INVALID');
       assert.deepEqual(await f.snapshot(), before);
       assert.equal(f.stats.attempts, 0);
     });
@@ -221,5 +225,101 @@ test('真实按钮：JSON 字符串回调及显式三个空数组均可提交', 
   payload.event.action.form_value = JSON.stringify(payload.event.action.form_value);
   assert.equal((await f.submit(payload)).errorCode, undefined);
   assert.deepEqual((await f.snapshot()).map((state) => state.off_duty), [[], [], []]);
+  assert.equal(f.stats.writes, 1);
+});
+
+test('真实客户端稀疏提交：仅修改大盘，未回传名单保留打开时状态', async () => {
+  const f = await fixture();
+  const result = await f.submit(f.body(true, { ad_review_off_duty: ['乙'], reason: '晚班' }));
+  assert.equal(result.errorCode, undefined);
+  assert.deepEqual((await f.snapshot()).map((state) => state.off_duty), [['乙'], ['乙'], ['甲']]);
+  assert.equal(f.stats.writes, 1);
+});
+
+test('多选选项初始值使用官方 selected_values，不能用 initial_options', async () => {
+  const f = await fixture();
+  const form = f.client.calls[0].card.body.elements.find((e) => e.tag === 'form');
+  const selectors = form.elements.filter((e) => e.tag === 'multi_select_static');
+  assert.deepEqual(selectors.map((e) => e.selected_values), [['甲'], ['乙'], ['甲']]);
+  for (const selector of selectors) assert.equal(Object.hasOwn(selector, 'initial_options'), false);
+});
+
+for (const withValue of [true, false]) {
+  for (const empty of [undefined, null, '']) {
+    test(`安全稀疏协议：${withValue ? '按钮' : '仅表单'} 的 ${String(empty)} 字段保留非空初始状态`, async () => {
+      const f = await fixture();
+      const fields = { ad_review_off_duty: ['乙'], reason: '只调整大盘' };
+      if (empty !== undefined) {
+        fields.ad_game_off_duty = empty;
+        fields.ad_emergency_off_duty = empty;
+      }
+      assert.equal((await f.submit(f.body(withValue, fields))).errorCode, undefined);
+      assert.deepEqual((await f.snapshot()).map((s) => s.off_duty), [['乙'], ['乙'], ['甲']]);
+    });
+  }
+}
+
+test('明确全员在岗仅清空指定名单，未操作名单保留', async () => {
+  const f = await fixture();
+  assert.equal((await f.submit(f.body(true, { ad_game_off_duty: ['__BESS_ALL_ON_DUTY_V1__'] }))).errorCode, undefined);
+  assert.deepEqual((await f.snapshot()).map((s) => s.off_duty), [['甲'], [], ['甲']]);
+});
+
+test('全员在岗与人员混选时零写入且不冒充版本过期', async () => {
+  const f = await fixture();
+  const before = await f.snapshot();
+  const result = await f.submit(f.body(true, { ad_review_off_duty: ['__BESS_ALL_ON_DUTY_V1__', '乙'] }));
+  assert.equal(result.errorCode, 'AD_STATUS_FORM_SELECTION_CONFLICT');
+  assert.match(result.body.toast.content, /不能与离岗人员同时选择/);
+  assert.deepEqual(await f.snapshot(), before);
+  assert.equal(f.stats.attempts, 0);
+});
+
+test('伪造公开初始状态不能清空未提交名单', async () => {
+  const f = await fixture();
+  const payload = f.body(true, { ad_review_off_duty: ['乙'] });
+  payload.event.action.value.initialAdOffDuty = { ad_game: [], ad_emergency: [] };
+  assert.equal((await f.submit(payload)).errorCode, undefined);
+  assert.deepEqual((await f.snapshot()).map((s) => s.off_duty), [['乙'], ['乙'], ['甲']]);
+});
+
+test('缺少服务端初始快照时不能用按钮内快照补齐', async () => {
+  const f = await fixture();
+  await f.changePending(({ request_context: context }) => { delete context.initialAdOffDuty.ad_game; });
+  const before = await f.snapshot();
+  const payload = f.body(true, { ad_review_off_duty: ['乙'] });
+  payload.event.action.value.initialAdOffDuty = { ad_review: ['甲'], ad_game: ['乙'], ad_emergency: ['甲'] };
+  assert.equal((await f.submit(payload)).errorCode, 'AD_STATUS_FORM_CONTEXT_INVALID');
+  assert.deepEqual(await f.snapshot(), before);
+  assert.equal(f.stats.attempts, 0);
+});
+
+test('旧 pending 不得靠公开 mode/defaults 开启稀疏兼容', async () => {
+  const f = await fixture();
+  await f.changePending(({ request_context: context }) => { delete context.statusFormSelectionMode; delete context.initialAdOffDuty; });
+  const payload = f.body(true, { ad_review_off_duty: ['乙'] });
+  Object.assign(payload.event.action.value, { statusFormSelectionMode: 'preserve-open-snapshot-v1', initialAdOffDuty: { ad_review: [], ad_game: [], ad_emergency: [] } });
+  assert.equal((await f.submit(payload)).errorCode, 'AD_STATUS_FORM_FIELDS_INVALID');
+  assert.equal(f.stats.attempts, 0);
+});
+
+test('稀疏提交不使用数据库最新状态补齐并绕过 CAS', async () => {
+  const f = await fixture();
+  const states = await f.snapshot();
+  await f.store.updateAdRosterStatuses({ dayKey, confirmationOperationId: 'other', submissionHash: 'other', confirmedBy: 'ou_other',
+    updates: states.map((s) => ({ scope: s.scope, offDuty: [], expectedVersion: s.version, expectedRosterRevision: s.roster_revision })) });
+  const before = await f.snapshot();
+  assert.equal((await f.submit(f.body(true, { ad_review_off_duty: ['乙'] }))).errorCode, 'STATUS_UPDATE_CONFLICT');
+  assert.deepEqual(await f.snapshot(), before);
+});
+
+test('稀疏提交完成标记丢失后按原初始快照幂等，不二次推进版本', async () => {
+  const f = await fixture();
+  f.store.markPendingCompleted = async () => { throw new Error('local receipt loss'); };
+  const payload = f.body(true, { ad_review_off_duty: ['乙'] });
+  assert.equal((await f.submit(payload)).errorCode, undefined);
+  const after = await f.snapshot();
+  assert.equal((await f.submit(payload)).errorCode, undefined);
+  assert.deepEqual(await f.snapshot(), after);
   assert.equal(f.stats.writes, 1);
 });

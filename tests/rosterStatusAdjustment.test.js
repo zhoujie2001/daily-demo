@@ -404,7 +404,7 @@ test('AD 旧版状态表单零写入拒绝，不清空三份离岗状态', async
   );
 });
 
-test('AD 新版状态表单缺少任一名单字段时拒绝且不写入', async () => {
+test('AD 旧 pending 未记录初始状态且缺少字段时拒绝且不写入', async () => {
   const store = createMemoryBatchStore();
   const client = new FakeClient();
   const dayKey = '2026-09-03';
@@ -423,6 +423,11 @@ test('AD 新版状态表单缺少任一名单字段时拒绝且不写入', async
     },
   }, options(store, client));
 
+  const pending = await store.getPending('om_form', options(store, client).now());
+  delete pending.request_context.statusFormSelectionMode;
+  delete pending.request_context.initialAdOffDuty;
+  await store.savePending(pending);
+
   const result = await handleDispatchEvent({
     header: { event_id: 'evt_missing_submit' },
     event: {
@@ -435,7 +440,7 @@ test('AD 新版状态表单缺少任一名单字段时拒绝且不写入', async
     },
   }, options(store, client));
 
-  assert.equal(result.errorCode, 'AD_STATUS_FORM_PROTOCOL_EXPIRED');
+  assert.equal(result.errorCode, 'AD_STATUS_FORM_FIELDS_INVALID');
   assert.deepEqual((await store.getDailyState(dayKey, 'ad_review')).off_duty, []);
 });
 
