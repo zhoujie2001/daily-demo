@@ -3,14 +3,17 @@ import test from 'node:test';
 import { LarkClient } from '../lib/lark/client.js';
 import { handleDispatchEvent } from '../lib/dispatch/dispatch-service.js';
 import { createMemoryBatchStore } from '../lib/dispatch/memory-batch-store.js';
+import { TEST_DISPATCH_CHAT_ID } from '../lib/dispatch/profile.js';
 
 // Exercise the real Lark adapter and strict-CAS store together. Every external
 // endpoint is a local stub; no credentials, live sheet, or network are used.
 async function scenario({ count = 20, values = [], direction = 'forward', rowCount = 15013,
-  firstRow = 14891, history = true, ad = false, beforeRead, beforeAssign, afterAssign, beforeWrite, responseShape, writeFailure } = {}) {
+  firstRow = 14891, history = true, ad = false, isolationProfile = '',
+  beforeRead, beforeAssign, afterAssign, beforeWrite, responseShape, writeFailure } = {}) {
   const current = new Date('2026-10-25T07:00:00Z');
   const dayKey = '2026-10-25';
-  const scope = ad ? 'ad_review' : 'default';
+  const scope = isolationProfile || (ad ? 'ad_review' : 'default');
+  const chatId = isolationProfile ? TEST_DISPATCH_CHAT_ID : 'test_chat';
   const requestColumn = ad ? 'C' : 'X';
   const dateColumn = ad ? 'J' : 'H';
   const assigneeColumn = ad ? 'B' : 'J';
@@ -33,7 +36,9 @@ async function scenario({ count = 20, values = [], direction = 'forward', rowCou
     set(assigneeColumn, row, values[index] || '');
     return { schema_version: 1, action: 'bess_auto_dispatch', request_id: `probe_${index}`,
       request_name: `test_${index}`, business_type: ad ? 'AD' : project,
-      target_category: ad ? 'ad' : direction === 'reverse' ? 'local_promo' : 'qianchuan',
+      target_category: ad ? (isolationProfile.startsWith('ad_game_isolation:') ? 'game_agent' : 'ad')
+        : direction === 'reverse' ? 'local_promo' : 'qianchuan',
+      ...(isolationProfile ? { dispatch_profile: isolationProfile } : {}),
       sheet_url: 'https://example.feishu.cn/wiki/wiki_token', sheet_id: 'sheetA', row_index: row,
       request_field_id: requestColumn, date_field_id: dateColumn, assignee_field_id: assigneeColumn,
       project_field_id: ad ? '' : 'C', project_value: ad ? '' : project };
@@ -70,6 +75,12 @@ async function scenario({ count = 20, values = [], direction = 'forward', rowCou
         }
         if (writeFailure) throw new Error('response lost after remote commit');
         data = { responses: call.body.valueRanges.map(({ range }) => ({ updatedRange: range, updatedCells: 1 })) };
+      } else if (call.path.endsWith('/values') && call.method === 'PUT') {
+        const entry = call.body.valueRange;
+        const match = entry.range.match(/!([A-Z]+)(\d+):/);
+        assert.ok(match, entry.range);
+        set(match[1], Number(match[2]), entry.values[0][0]);
+        data = { valueRange: entry };
       } else if (call.path.includes('/values/')) {
         const range = decodeURIComponent(call.path.split('/values/')[1]);
         const match = range.match(/!([A-Z]+)(\d+):([A-Z]+)(\d+)$/);
@@ -112,15 +123,15 @@ async function scenario({ count = 20, values = [], direction = 'forward', rowCou
     return result;
   };
   const logs = [];
-  const execute = async (batchId = 'shared_preflight') => {
+  const execute = async (batchId = 'shared_preflight', selectedItems = items) => {
     const response = await handleDispatchEvent({ header: { event_id: `event_${batchId}` }, event: {
-      operator: { open_id: 'test_operator' }, context: { open_chat_id: 'test_chat', open_message_id: 'test_card' },
-      action: { tag: 'button', value: { schema_version: 1, action: 'bess_batch_auto_dispatch', batch_id: batchId, items } },
-    } }, { store, client, config: { allowedChatIds: 'test_chat' }, now: () => current,
+      operator: { open_id: 'test_operator' }, context: { open_chat_id: chatId, open_message_id: 'test_card' },
+      action: { tag: 'button', value: { schema_version: 1, action: 'bess_batch_auto_dispatch', batch_id: batchId, items: selectedItems } },
+    } }, { store, client, config: { allowedChatIds: chatId }, now: () => current,
       logger: { info: (line) => logs.push(JSON.parse(line)) } });
     assert.ok(response.afterResponse || ['BATCH_ALREADY_PROCESSED', 'BATCH_IN_FLIGHT'].includes(response.errorCode), JSON.stringify(response.body));
     await response.afterResponse?.();
-    return store.getBatch('test_chat', batchId);
+    return store.getBatch(chatId, batchId);
   };
   return { client, store, items, cells, cell, set, calls, assignments, facts, execute, logs,
     databaseReads: () => databaseReads, firstRow, dayKey, scope, current };
@@ -128,6 +139,81 @@ async function scenario({ count = 20, values = [], direction = 'forward', rowCou
 
 const fullReads = (s) => s.calls.filter((call) => call.ranges?.some((range) => /1:[A-Z]+5000$/.test(range)));
 const writes = (s) => s.calls.filter((call) => call.path.endsWith('/values_batch_update'));
+
+for (const isolationProfile of ['ad_isolation:accept_batch', 'ad_game_isolation:accept_batch']) {
+  test(`${isolationProfile}: allowing the production chat does not authorize an isolation profile`, async () => {
+    const s = await scenario({ count: 5, ad: true, isolationProfile });
+    let dependencies = 0;
+    const forbidden = new Proxy({}, { get() { return async () => { dependencies += 1; throw new Error('must reject before I/O'); }; } });
+    const response = await handleDispatchEvent({ event: {
+      operator: { open_id: 'test_operator' },
+      context: { open_chat_id: 'oc_production_probe', open_message_id: 'test_card' },
+      action: { tag: 'button', value: { schema_version: 1,
+        action: 'bess_batch_auto_dispatch', batch_id: 'forbidden_isolation', items: s.items } },
+    } }, { store: forbidden, client: forbidden,
+      config: { allowedChatIds: 'oc_production_probe' }, now: () => s.current, logger: { info() {} } });
+    assert.equal(response.errorCode, 'AD_ISOLATION_PROFILE_FORBIDDEN');
+    assert.equal(response.afterResponse, undefined);
+    assert.equal(dependencies, 0);
+  });
+
+  test(`${isolationProfile}: 25 requests split 20+5 use one atomic allocation and one batch write per card`, async () => {
+    const s = await scenario({ count: 25, ad: true, isolationProfile });
+    const first = await s.execute('isolation_25_chunk_1_of_2', s.items.slice(0, 20));
+    const second = await s.execute('isolation_25_chunk_2_of_2', s.items.slice(20));
+    assert.equal(first.status, 'SUCCESS', JSON.stringify(first.results));
+    assert.equal(second.status, 'SUCCESS', JSON.stringify(second.results));
+    assert.deepEqual(s.assignments.map((call) => call.requestIds.length), [20, 5]);
+    assert.deepEqual(writes(s).map((call) => call.body.valueRanges.length), [20, 5]);
+    assert.equal(s.logs.filter((line) => line.stage === 'batch_execution_policy'
+      && line.segmented_batch_enabled && line.scope === isolationProfile).length, 2);
+    assert.equal(s.calls.filter((call) => call.method === 'PUT').length, 0, 'must never silently use single-cell PUT');
+    assert.deepEqual([...first.results, ...second.results].map((row) => row.assignmentSeq),
+      Array.from({ length: 25 }, (_, i) => i + 1));
+    assert.equal((await s.facts()).length, 25);
+    assert.ok(s.assignments.every((call) => call.scope === isolationProfile));
+    for (const productionScope of ['ad_review', 'ad_game', 'ad_emergency', 'default']) {
+      assert.equal(await s.store.getDailyState(s.dayKey, productionScope), null);
+    }
+    const beforeReplay = writes(s).length;
+    await s.execute('isolation_25_chunk_2_of_2', s.items.slice(20));
+    assert.equal(writes(s).length, beforeReplay);
+    assert.equal((await s.facts()).length, 25);
+  });
+
+  test(`${isolationProfile}: filled manual target divides segments without overwriting or allocating it`, async () => {
+    const s = await scenario({ count: 5, ad: true, isolationProfile, values: ['', '', 'D', '', ''] });
+    const result = await s.execute();
+    assert.equal(result.status, 'SUCCESS', JSON.stringify(result.results));
+    assert.deepEqual(s.assignments.map((call) => call.requestIds.length), [2, 2]);
+    assert.equal(s.cell('B', s.firstRow + 2), 'D');
+    assert.equal(result.results[2].replayed, true);
+    assert.equal((await s.facts()).length, 4);
+    assert.equal(writes(s).length, 2);
+    assert.ok(writes(s).every((call) => call.body.valueRanges.every(({ range }) => !range.includes(`B${s.firstRow + 2}:`))));
+  });
+
+  test(`${isolationProfile}: manual fill after committed decisions blocks all writes and further allocations`, async () => {
+    const s = await scenario({ count: 5, ad: true, isolationProfile,
+      afterAssign: ({ set }) => { set('B', 14892, 'MANUAL'); } });
+    const result = await s.execute();
+    assert.equal(result.status, 'FAILED');
+    assert.equal(s.cell('B', 14892), 'MANUAL');
+    assert.equal(writes(s).length, 0);
+    assert.equal(s.calls.filter((call) => call.method === 'PUT').length, 0);
+    assert.equal(s.assignments.length, 1);
+    assert.ok(result.results.every((row) => row.errorCode === 'SHEET_TARGET_CHANGED'));
+  });
+
+  test(`${isolationProfile}: lost batch-write response reconciles without a second write`, async () => {
+    const s = await scenario({ count: 5, ad: true, isolationProfile, writeFailure: true });
+    const result = await s.execute();
+    assert.equal(result.status, 'SUCCESS', JSON.stringify(result.results));
+    assert.equal(s.assignments.length, 1);
+    assert.equal(writes(s).length, 1);
+    assert.equal(s.calls.filter((call) => call.method === 'PUT').length, 0);
+  });
+}
 
 test('20 targets on a 15,013-row sheet: one shared complete scan, one CAS batch, one batch write', async () => {
   const s = await scenario();
