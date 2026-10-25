@@ -235,15 +235,19 @@ test('HTTP simulation: three explicit empty arrays clear all scopes', async (t) 
 });
 
 for (const field of Object.keys(selection)) {
-  test(`HTTP simulation: missing ${field} rejects without a status RPC`, async (t) => {
+  test(`HTTP simulation: legacy pending missing ${field} rejects without a status RPC`, async (t) => {
     const f = await harness(t);
     const form = await f.open();
+    const pending = await f.memory.getPending(form.id);
+    delete pending.request_context.statusFormSelectionMode;
+    delete pending.request_context.initialAdOffDuty;
+    await f.memory.savePending(pending);
     const before = await f.snapshot();
     const fields = structuredClone(selection);
     delete fields[field];
     const result = await f.submit(form, fields);
     assert.equal(result.body.toast.type, 'error');
-    assert.match(result.body.toast.content, /表单版本已失效/);
+    assert.match(result.body.toast.content, /字段不完整或格式无效/);
     assert.deepEqual(await f.snapshot(), before);
     assert.equal(f.requests.filter((r) => r.path.startsWith('/rest/v1/rpc/')).length, 0);
   });
@@ -332,4 +336,38 @@ test('HTTP simulation: callback deadline acknowledges first and publishes the ev
   await f.waitFor(() => JSON.stringify(f.cards.get(form.id)).includes('已更新'));
   assert.deepEqual((await f.snapshot()).map((s) => s.off_duty), [['模拟乙'], [], ['模拟甲']]);
   assert.equal(f.commits(), 1);
+});
+
+for (const empty of [undefined, null, '']) {
+  test(`HTTP simulation: sparse client fields ${String(empty)} preserve untouched non-empty rosters`, async (t) => {
+    const f = await harness(t);
+    const form = await f.open();
+    const fields = { ad_review_off_duty: ['模拟乙'], reason: '晚班' };
+    if (empty !== undefined) {
+      fields.ad_game_off_duty = empty;
+      fields.ad_emergency_off_duty = empty;
+    }
+    assert.equal((await f.submit(form, fields)).body.toast.type, 'success');
+    assert.deepEqual((await f.snapshot()).map((s) => s.off_duty), [['模拟乙'], ['模拟甲'], ['模拟甲']]);
+    assert.equal(f.commits(), 1);
+  });
+}
+
+test('HTTP simulation: screenshot-shaped submission from three initially empty rosters succeeds', async (t) => {
+  const f = await harness(t);
+  const states = await f.snapshot();
+  await f.memory.updateAdRosterStatuses({ dayKey: f.dayKey, confirmationOperationId: 'empty-seed', submissionHash: 'empty-seed', confirmedBy: 'ou_local_simulation',
+    updates: states.map((s) => ({ scope: s.scope, offDuty: [], expectedVersion: s.version, expectedRosterRevision: s.roster_revision })) });
+  const form = await f.open();
+  const fields = { ad_review_off_duty: ['模拟乙'], reason: '晚班' };
+  const response = await f.submit(form, fields);
+  assert.equal(response.body.toast.type, 'success');
+  assert.deepEqual((await f.snapshot()).map((s) => s.off_duty), [['模拟乙'], [], []]);
+});
+
+test('HTTP simulation: explicit all-on-duty value clears only its bound scope', async (t) => {
+  const f = await harness(t);
+  const response = await f.submit(await f.open(), { ad_game_off_duty: ['__BESS_ALL_ON_DUTY_V1__'] });
+  assert.equal(response.body.toast.type, 'success');
+  assert.deepEqual((await f.snapshot()).map((s) => s.off_duty), [['模拟甲'], [], ['模拟甲']]);
 });
