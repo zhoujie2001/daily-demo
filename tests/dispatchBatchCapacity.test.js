@@ -146,7 +146,7 @@ for (const profile of Object.keys(profiles)) {
   for (const count of [1, 20, 21, 30, 31, 32, 40]) {
     test(`${profile} ${count} 条在单个原批次中通过接入并保持每卡最多20条`, async () => {
       const body = payload(count, { profile });
-      const normalized = normalizeBatchDispatchIngest(body);
+      const normalized = normalizeBatchDispatchIngest(body, { splitCards: true });
       assert.equal(normalized.fieldsList.length, count);
       for (const entry of ['send', 'automation']) {
         const h = harness();
@@ -164,6 +164,13 @@ for (const profile of Object.keys(profiles)) {
     });
   }
 }
+
+test('未显式支持拆卡的内部调用保留30条旧上限，body不能自行提升容量', () => {
+  assert.equal(normalizeBatchDispatchIngest(payload(30)).fieldsList.length, 30);
+  assert.throws(() => normalizeBatchDispatchIngest({ ...payload(32), splitCards: true }),
+    (error) => error.code === 'INVALID_BATCH_SIZE' && error.maxItems === 30);
+  assert.equal(normalizeBatchDispatchIngest(payload(32), { splitCards: true }).fieldsList.length, 32);
+});
 
 for (const count of [0, 41]) {
   for (const entry of ['send', 'automation']) {
