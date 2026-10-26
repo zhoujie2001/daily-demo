@@ -35,10 +35,10 @@ function plans(count) {
   });
 }
 
-test('MAX_ITEMS_PER_CARD=20，20/21/30 条分别规划为 1/2/2 张卡', () => {
+test('MAX_ITEMS_PER_CARD=20，20至40条保持最多两张卡', () => {
   assert.equal(MAX_ITEMS_PER_CARD, 20);
-  assert.deepEqual([20, 21, 30].map((count) => splitDispatchCardChunks(normalized(count)).map((chunk) => chunk.items.length)), [
-    [20], [20, 1], [20, 10],
+  assert.deepEqual([20, 21, 30, 31, 32, 40].map((count) => splitDispatchCardChunks(normalized(count)).map((chunk) => chunk.items.length)), [
+    [20], [20, 1], [20, 10], [20, 11], [20, 12], [20, 20],
   ]);
 });
 
