@@ -44,6 +44,48 @@ test('Base pull 默认关闭且完全不创建 store 或访问 Base', async () =
   assert.equal(touched, false);
 });
 
+for (const count of [30, 31, 32, 40]) {
+  test(`旧单卡 Base Pull ${count}条保留原有30条边界，不能继承拆卡入口容量`, async () => {
+    let registrations = 0;
+    let publishes = 0;
+    let writes = 0;
+    const batch = {
+      ...payload,
+      items: Array.from({ length: count }, (_, index) => ({
+        ...payload.items[0], request_id: `legacy_capacity_${index}`, row_index: index + 1,
+      })),
+    };
+    const result = await runBasePull({
+      enabled: true, appToken: 'app', tableId: 'table',
+      client: { async request(method) {
+        if (method === 'PUT') { writes += 1; return {}; }
+        return { data: { items: [record({ automation_status: 'PENDING', dispatch_payload: batch })] } };
+      } },
+      storeFactory: () => ({
+        async registerDispatchHandoff() {
+          registrations += 1;
+          return { outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' };
+        },
+        async confirmDispatchHandoff() {},
+      }),
+      publishDispatch: async () => { publishes += 1; return {}; },
+    });
+    const item = result.body.results[0];
+    if (count === 30) {
+      assert.equal(item.status, 'QUEUED');
+      assert.equal(registrations, 1);
+      assert.equal(publishes, 1);
+      assert.equal(writes, 1);
+    } else {
+      assert.equal(item.error, 'INVALID_BATCH_SIZE');
+      assert.match(item.message, /1 至 30/);
+      assert.equal(registrations, 0);
+      assert.equal(publishes, 0);
+      assert.equal(writes, 0);
+    }
+  });
+}
+
 test('Base pull 启用后缺失 Base/Lark 配置时返回明确字段且不创建 store', async () => {
   let storeCreated = false;
   const { result, res } = response();

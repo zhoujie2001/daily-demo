@@ -25,7 +25,14 @@ this patch.
 
 Examples: 30 → 20+10; 31 → 20+11; 32 → 20+12; 40 → 20+20.
 Legacy callback validation and individual assignment limits are unchanged. The
-existing status aggregator expects at most two cards, so raising the ingress
+two split-aware ingress handlers explicitly opt in with `splitCards: true`.
+Other internal callers retain the original 30-item normalization limit; a field
+in the request body cannot opt them in. In particular, Base Pull still builds a
+legacy single card and must reject 31–40 before handoff rather than silently
+creating an oversized card. Migrating Pull to the root-reserved split protocol
+is separate work and is **not claimed complete** by this release.
+
+The existing status aggregator expects at most two cards, so raising the ingress
 limit beyond 40 is **not** supported by this patch. The automation endpoint's
 independent 64 KiB request-body budget remains enforced, including Base64 overhead.
 
@@ -85,9 +92,11 @@ fixtures. It exercises the real handlers and validation code, covering:
 - One confirmed card / one unknown card stays `SENDING`; only two receipt
   fixtures with message IDs produce aggregate `SENT` in both status APIs.
 - Root-payload drift does not create more cards.
+- Legacy Base Pull retains its previous 30-item limit, rejecting 31/32/40 before
+  any handoff, publication or Base writeback; the 30-item path remains unchanged.
 
 These tests are not live Feishu delivery or real Supabase acceptance evidence.
-On 2026-10-26 the full suite passed **972/972**, with **37/37** capacity/chunk
+On 2026-10-26 the full suite passed **977/977**, with **50/50** capacity/chunk/Pull
 focused tests, ESLint, Vite build and `git diff --check` passing. The first
 sandboxed full-suite attempt could not connect to its local HTTP fixture
 (`EACCES 127.0.0.1`); the full suite was rerun successfully with local loopback
