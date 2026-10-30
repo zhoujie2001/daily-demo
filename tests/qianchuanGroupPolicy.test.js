@@ -376,10 +376,10 @@ test('source manifest is immutable, including policy, upstream hash, grouping an
 });
 
 test('1000676/v2 callback roundtrip preserves the new flag and exact code policy', () => {
-  const source = currentSource(); const n = normalized(payload(source));
+  const source = currentSource(); const n = normalized(payload(source,source.filter((r)=>r.contains_code_1000676)));
   const action = batchDispatchActionValue(n.batchId, n.fieldsList);
-  assert.equal(action.items[2].contains_code_1000676, true);
-  assert.equal(Object.hasOwn(action.items[2], 'contains_code_1005004'), false);
+  assert.equal(action.items[0].contains_code_1000676, true);
+  assert.equal(Object.hasOwn(action.items[0], 'contains_code_1005004'), false);
   assert.deepEqual(validateBatchDispatchValue(action, { chatId: TEST_DISPATCH_CHAT_ID }).items, n.fieldsList);
   assert.deepEqual(n.qianchuanSnapshot.members.map((m) => m.assignmentGroup), ['g0','g1','g1','g1','g2','g2','g3']);
 });
@@ -408,14 +408,18 @@ test('old policy remains explicitly versioned; same source cannot be upgraded in
   const store = createMemoryBatchStore();
   const legacy = normalized(payload()); await registerQianchuanSource(store, legacy, NOW);
   assert.equal(legacy.fieldsList[2].containsCode1005004, true);
-  await assert.rejects(registerQianchuanSource(store, normalized(payload(currentSource())), NOW), { code:'QIANCHUAN_SOURCE_CONFLICT' });
+  const source=currentSource();
+  await assert.rejects(registerQianchuanSource(store, normalized(payload(source,[source[0]])), NOW), { code:'QIANCHUAN_SOURCE_CONFLICT' });
 });
 
-test('1000676/v2 real callback stub keeps grouped people and one batch write', async () => {
-  const s = await scenario({ currentPolicy:true }); const result = await s.execute();
+test('1000676/v2 real callback stub keeps whole-source groups and one batch write per bucket', async () => {
+  const s = await scenario({ currentPolicy:true });
+  const result = await s.execute(s.raw.filter((r)=>!r.contains_code_1000676),'normal');
   assert.equal(result.batch.status, 'SUCCESS');
-  assert.deepEqual(result.batch.results.map((r) => r.assignee), ['A','B','B','B','C','C','D']);
-  assert.equal(s.writes().length, 1); assert.equal((await s.store.getDailyState(DAY,'test_default')).forward_cursor,4);
+  assert.deepEqual(result.batch.results.map((r) => r.assignee), ['A','B','B','D']);
+  const special=await s.execute(s.raw.filter((r)=>r.contains_code_1000676),'special');
+  assert.equal(special.batch.status,'SUCCESS'); assert.deepEqual(special.batch.results.map((r)=>r.assignee),['B','C','C']);
+  assert.equal(s.writes().length, 2); assert.equal((await s.store.getDailyState(DAY,'test_default')).forward_cursor,4);
 });
 
 test('1000676/v2 reverse bucket click and 25-member adjacent run keep original source decisions', async () => {
@@ -432,7 +436,8 @@ test('1000676/v2 reverse bucket click and 25-member adjacent run keep original s
 
 test('row moves after committed decision: original card recovers latest target without mutating decision or cursor', async () => {
   let first = true;
-  const s = await scenario({ currentPolicy:true, afterAssign:() => { if (first) { first=false; throw new Error('lost decision response'); } } });
+  const s = await scenario({ currentPolicy:true, spec:[{object:'a'},{object:'b'},{object:'b'}],
+    afterAssign:() => { if (first) { first=false; throw new Error('lost decision response'); } } });
   const failed = await s.execute(); assert.equal(failed.batch.status,'FAILED'); assert.equal(s.writes().length,0);
   const before = await s.store.getDailyState(DAY,'test_default');
   for (const row of [...s.raw].reverse()) for (const col of ['X','A','C','N']) {
