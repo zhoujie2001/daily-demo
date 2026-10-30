@@ -1,0 +1,362 @@
+{
+  "test_case": "isolated-cross-bucket-adjacency-v1",
+  "hash_algorithm": "sha256(canonical_json(decision_snapshot))",
+  "canonical_json_rules": {
+    "encoding": "UTF-8",
+    "recursive_object_key_sort": true,
+    "compact_separators": true,
+    "ensure_ascii": false,
+    "array_order": "preserved"
+  },
+  "source_batch_id": "0a7508364a39b5ee3fd7efe4209046cda8e35ce32d746ea182674a9ab0563384",
+  "dispatch_payloads": [
+    {
+      "chat_id": "oc_REDACTED_TEST_GROUP",
+      "batch_id": "isolated-20261026-X-contains_1005004-01",
+      "card_title": "隔离测试｜千川决策快照｜contains_1005004",
+      "card_layout": {
+        "version": "horizontal-v1",
+        "item_fields": [
+          "request_id",
+          "reject_reason",
+          "risk_level"
+        ],
+        "item_action": {
+          "type": "assign_person",
+          "label": "指定人员",
+          "align": "right"
+        },
+        "batch_action": {
+          "type": "auto_dispatch",
+          "label": "批量自动派单",
+          "position": "card_bottom"
+        }
+      },
+      "source_batch_id": "0a7508364a39b5ee3fd7efe4209046cda8e35ce32d746ea182674a9ab0563384",
+      "decision_policy_version": "code-membership-1005004/v1",
+      "decision_group": "contains_1005004",
+      "decision_snapshot": [
+        {
+          "request_id": "QC-T001",
+          "request_name": "脱敏需求一",
+          "business_type": "千川",
+          "target_category": "qianchuan",
+          "sheet_url": "https://example.invalid/sheets/REDACTED",
+          "sheet_id": "sheet_REDACTED",
+          "row_index": 7001,
+          "assignee_field_id": "N",
+          "assignee_field_name": "领取人",
+          "date_field_id": "A",
+          "date_field_name": "粘贴日期",
+          "audit_object_id": "922337203685477580812345",
+          "reject_reason_codes": [
+            "1000541",
+            "1005004"
+          ],
+          "contains_code_1005004": true,
+          "decision_group": "contains_1005004",
+          "decision_policy_version": "code-membership-1005004/v1",
+          "source_batch_id": "0a7508364a39b5ee3fd7efe4209046cda8e35ce32d746ea182674a9ab0563384",
+          "risk_level": "P1",
+          "reject_reason": "脱敏理由甲"
+        },
+        {
+          "request_id": "QC-T002",
+          "request_name": "脱敏需求二",
+          "business_type": "千川",
+          "target_category": "qianchuan",
+          "sheet_url": "https://example.invalid/sheets/REDACTED",
+          "sheet_id": "sheet_REDACTED",
+          "row_index": 7002,
+          "assignee_field_id": "N",
+          "assignee_field_name": "领取人",
+          "date_field_id": "A",
+          "date_field_name": "粘贴日期",
+          "audit_object_id": "922337203685477580812345",
+          "reject_reason_codes": [
+            "1000541",
+            "10050040"
+          ],
+          "contains_code_1005004": false,
+          "decision_group": "without_1005004",
+          "decision_policy_version": "code-membership-1005004/v1",
+          "source_batch_id": "0a7508364a39b5ee3fd7efe4209046cda8e35ce32d746ea182674a9ab0563384",
+          "risk_level": "P2",
+          "reject_reason": "文字中出现1005004但代码集合不命中"
+        },
+        {
+          "request_id": "QC-T003",
+          "request_name": "脱敏需求三",
+          "business_type": "千川",
+          "target_category": "qianchuan",
+          "sheet_url": "https://example.invalid/sheets/REDACTED",
+          "sheet_id": "sheet_REDACTED",
+          "row_index": 7003,
+          "assignee_field_id": "N",
+          "assignee_field_name": "领取人",
+          "date_field_id": "A",
+          "date_field_name": "粘贴日期",
+          "audit_object_id": "900719925474099312346",
+          "reject_reason_codes": [
+            "1005004",
+            "1006000"
+          ],
+          "contains_code_1005004": true,
+          "decision_group": "contains_1005004",
+          "decision_policy_version": "code-membership-1005004/v1",
+          "source_batch_id": "0a7508364a39b5ee3fd7efe4209046cda8e35ce32d746ea182674a9ab0563384",
+          "risk_level": "P0",
+          "reject_reason": "脱敏理由乙"
+        },
+        {
+          "request_id": "QC-T004",
+          "request_name": "脱敏需求四",
+          "business_type": "千川",
+          "target_category": "qianchuan",
+          "sheet_url": "https://example.invalid/sheets/REDACTED",
+          "sheet_id": "sheet_REDACTED",
+          "row_index": 7004,
+          "assignee_field_id": "N",
+          "assignee_field_name": "领取人",
+          "date_field_id": "A",
+          "date_field_name": "粘贴日期",
+          "audit_object_id": "900719925474099312347",
+          "reject_reason_codes": [
+            "1007000"
+          ],
+          "contains_code_1005004": false,
+          "decision_group": "without_1005004",
+          "decision_policy_version": "code-membership-1005004/v1",
+          "source_batch_id": "0a7508364a39b5ee3fd7efe4209046cda8e35ce32d746ea182674a9ab0563384",
+          "risk_level": "P3",
+          "reject_reason": "脱敏理由丙"
+        }
+      ],
+      "decision_snapshot_hash": "de0037d086b419d5dbe984f1c1f68d7e76a2dd18553e4dbfc84dee5a13253d9d",
+      "items": [
+        {
+          "request_id": "QC-T001",
+          "request_name": "脱敏需求一",
+          "business_type": "千川",
+          "target_category": "qianchuan",
+          "sheet_url": "https://example.invalid/sheets/REDACTED",
+          "sheet_id": "sheet_REDACTED",
+          "row_index": 7001,
+          "assignee_field_id": "N",
+          "assignee_field_name": "领取人",
+          "date_field_id": "A",
+          "date_field_name": "粘贴日期",
+          "audit_object_id": "922337203685477580812345",
+          "reject_reason_codes": [
+            "1000541",
+            "1005004"
+          ],
+          "contains_code_1005004": true,
+          "decision_group": "contains_1005004",
+          "decision_policy_version": "code-membership-1005004/v1",
+          "source_batch_id": "0a7508364a39b5ee3fd7efe4209046cda8e35ce32d746ea182674a9ab0563384",
+          "risk_level": "P1",
+          "reject_reason": "脱敏理由甲"
+        },
+        {
+          "request_id": "QC-T003",
+          "request_name": "脱敏需求三",
+          "business_type": "千川",
+          "target_category": "qianchuan",
+          "sheet_url": "https://example.invalid/sheets/REDACTED",
+          "sheet_id": "sheet_REDACTED",
+          "row_index": 7003,
+          "assignee_field_id": "N",
+          "assignee_field_name": "领取人",
+          "date_field_id": "A",
+          "date_field_name": "粘贴日期",
+          "audit_object_id": "900719925474099312346",
+          "reject_reason_codes": [
+            "1005004",
+            "1006000"
+          ],
+          "contains_code_1005004": true,
+          "decision_group": "contains_1005004",
+          "decision_policy_version": "code-membership-1005004/v1",
+          "source_batch_id": "0a7508364a39b5ee3fd7efe4209046cda8e35ce32d746ea182674a9ab0563384",
+          "risk_level": "P0",
+          "reject_reason": "脱敏理由乙"
+        }
+      ]
+    },
+    {
+      "chat_id": "oc_REDACTED_TEST_GROUP",
+      "batch_id": "isolated-20261026-X-without_1005004-01",
+      "card_title": "隔离测试｜千川决策快照｜without_1005004",
+      "card_layout": {
+        "version": "horizontal-v1",
+        "item_fields": [
+          "request_id",
+          "reject_reason",
+          "risk_level"
+        ],
+        "item_action": {
+          "type": "assign_person",
+          "label": "指定人员",
+          "align": "right"
+        },
+        "batch_action": {
+          "type": "auto_dispatch",
+          "label": "批量自动派单",
+          "position": "card_bottom"
+        }
+      },
+      "source_batch_id": "0a7508364a39b5ee3fd7efe4209046cda8e35ce32d746ea182674a9ab0563384",
+      "decision_policy_version": "code-membership-1005004/v1",
+      "decision_group": "without_1005004",
+      "decision_snapshot": [
+        {
+          "request_id": "QC-T001",
+          "request_name": "脱敏需求一",
+          "business_type": "千川",
+          "target_category": "qianchuan",
+          "sheet_url": "https://example.invalid/sheets/REDACTED",
+          "sheet_id": "sheet_REDACTED",
+          "row_index": 7001,
+          "assignee_field_id": "N",
+          "assignee_field_name": "领取人",
+          "date_field_id": "A",
+          "date_field_name": "粘贴日期",
+          "audit_object_id": "922337203685477580812345",
+          "reject_reason_codes": [
+            "1000541",
+            "1005004"
+          ],
+          "contains_code_1005004": true,
+          "decision_group": "contains_1005004",
+          "decision_policy_version": "code-membership-1005004/v1",
+          "source_batch_id": "0a7508364a39b5ee3fd7efe4209046cda8e35ce32d746ea182674a9ab0563384",
+          "risk_level": "P1",
+          "reject_reason": "脱敏理由甲"
+        },
+        {
+          "request_id": "QC-T002",
+          "request_name": "脱敏需求二",
+          "business_type": "千川",
+          "target_category": "qianchuan",
+          "sheet_url": "https://example.invalid/sheets/REDACTED",
+          "sheet_id": "sheet_REDACTED",
+          "row_index": 7002,
+          "assignee_field_id": "N",
+          "assignee_field_name": "领取人",
+          "date_field_id": "A",
+          "date_field_name": "粘贴日期",
+          "audit_object_id": "922337203685477580812345",
+          "reject_reason_codes": [
+            "1000541",
+            "10050040"
+          ],
+          "contains_code_1005004": false,
+          "decision_group": "without_1005004",
+          "decision_policy_version": "code-membership-1005004/v1",
+          "source_batch_id": "0a7508364a39b5ee3fd7efe4209046cda8e35ce32d746ea182674a9ab0563384",
+          "risk_level": "P2",
+          "reject_reason": "文字中出现1005004但代码集合不命中"
+        },
+        {
+          "request_id": "QC-T003",
+          "request_name": "脱敏需求三",
+          "business_type": "千川",
+          "target_category": "qianchuan",
+          "sheet_url": "https://example.invalid/sheets/REDACTED",
+          "sheet_id": "sheet_REDACTED",
+          "row_index": 7003,
+          "assignee_field_id": "N",
+          "assignee_field_name": "领取人",
+          "date_field_id": "A",
+          "date_field_name": "粘贴日期",
+          "audit_object_id": "900719925474099312346",
+          "reject_reason_codes": [
+            "1005004",
+            "1006000"
+          ],
+          "contains_code_1005004": true,
+          "decision_group": "contains_1005004",
+          "decision_policy_version": "code-membership-1005004/v1",
+          "source_batch_id": "0a7508364a39b5ee3fd7efe4209046cda8e35ce32d746ea182674a9ab0563384",
+          "risk_level": "P0",
+          "reject_reason": "脱敏理由乙"
+        },
+        {
+          "request_id": "QC-T004",
+          "request_name": "脱敏需求四",
+          "business_type": "千川",
+          "target_category": "qianchuan",
+          "sheet_url": "https://example.invalid/sheets/REDACTED",
+          "sheet_id": "sheet_REDACTED",
+          "row_index": 7004,
+          "assignee_field_id": "N",
+          "assignee_field_name": "领取人",
+          "date_field_id": "A",
+          "date_field_name": "粘贴日期",
+          "audit_object_id": "900719925474099312347",
+          "reject_reason_codes": [
+            "1007000"
+          ],
+          "contains_code_1005004": false,
+          "decision_group": "without_1005004",
+          "decision_policy_version": "code-membership-1005004/v1",
+          "source_batch_id": "0a7508364a39b5ee3fd7efe4209046cda8e35ce32d746ea182674a9ab0563384",
+          "risk_level": "P3",
+          "reject_reason": "脱敏理由丙"
+        }
+      ],
+      "decision_snapshot_hash": "de0037d086b419d5dbe984f1c1f68d7e76a2dd18553e4dbfc84dee5a13253d9d",
+      "items": [
+        {
+          "request_id": "QC-T002",
+          "request_name": "脱敏需求二",
+          "business_type": "千川",
+          "target_category": "qianchuan",
+          "sheet_url": "https://example.invalid/sheets/REDACTED",
+          "sheet_id": "sheet_REDACTED",
+          "row_index": 7002,
+          "assignee_field_id": "N",
+          "assignee_field_name": "领取人",
+          "date_field_id": "A",
+          "date_field_name": "粘贴日期",
+          "audit_object_id": "922337203685477580812345",
+          "reject_reason_codes": [
+            "1000541",
+            "10050040"
+          ],
+          "contains_code_1005004": false,
+          "decision_group": "without_1005004",
+          "decision_policy_version": "code-membership-1005004/v1",
+          "source_batch_id": "0a7508364a39b5ee3fd7efe4209046cda8e35ce32d746ea182674a9ab0563384",
+          "risk_level": "P2",
+          "reject_reason": "文字中出现1005004但代码集合不命中"
+        },
+        {
+          "request_id": "QC-T004",
+          "request_name": "脱敏需求四",
+          "business_type": "千川",
+          "target_category": "qianchuan",
+          "sheet_url": "https://example.invalid/sheets/REDACTED",
+          "sheet_id": "sheet_REDACTED",
+          "row_index": 7004,
+          "assignee_field_id": "N",
+          "assignee_field_name": "领取人",
+          "date_field_id": "A",
+          "date_field_name": "粘贴日期",
+          "audit_object_id": "900719925474099312347",
+          "reject_reason_codes": [
+            "1007000"
+          ],
+          "contains_code_1005004": false,
+          "decision_group": "without_1005004",
+          "decision_policy_version": "code-membership-1005004/v1",
+          "source_batch_id": "0a7508364a39b5ee3fd7efe4209046cda8e35ce32d746ea182674a9ab0563384",
+          "risk_level": "P3",
+          "reject_reason": "脱敏理由丙"
+        }
+      ]
+    }
+  ],
+  "diagnostic_note": "DIAGNOSTIC CORRECTED COPY: complete target fields merged from both delivery items; original file unchanged; not proof that the original payload passed."
+}

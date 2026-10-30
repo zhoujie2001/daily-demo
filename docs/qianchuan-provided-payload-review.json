@@ -1,0 +1,86 @@
+{
+  "environment": "local_memory_only_no_network",
+  "original_file_modified": false,
+  "chat_id_substituted_for_test_only": true,
+  "original": {
+    "same_snapshot": true,
+    "snapshot_hash": "6b2bdfb445c543d290f3fb3266d6d94ad1f71a7e4803965df171c980f3f154a4",
+    "hashes_match": true,
+    "original_order": [
+      "QC-T001",
+      "QC-T002",
+      "QC-T003",
+      "QC-T004"
+    ],
+    "object_ids_are_strings": true,
+    "expected_groups": [
+      0,
+      0,
+      0,
+      1
+    ],
+    "normalizations": [
+      {
+        "batch_id": "isolated-20261026-X-contains_1005004-01",
+        "ok": false,
+        "error_code": "INVALID_REQUEST_NAME",
+        "message": "需求名称缺失或过长"
+      },
+      {
+        "batch_id": "isolated-20261026-X-without_1005004-01",
+        "ok": false,
+        "error_code": "INVALID_REQUEST_NAME",
+        "message": "需求名称缺失或过长"
+      }
+    ],
+    "contract_passed": false
+  },
+  "corrected": {
+    "explicitly_modified_fixture": true,
+    "snapshot_hash": "de0037d086b419d5dbe984f1c1f68d7e76a2dd18553e4dbfc84dee5a13253d9d",
+    "engine_checks": [
+      {
+        "order": [
+          "contains_1005004",
+          "without_1005004"
+        ],
+        "assignees": {
+          "QC-T001": "A",
+          "QC-T002": "A",
+          "QC-T003": "A",
+          "QC-T004": "B"
+        },
+        "cursor_turns": 2,
+        "assignment_count": 4,
+        "batch_write_sizes": [
+          2,
+          2
+        ],
+        "replay_extra_writes": 0,
+        "rehashed_source_drift_rejected": true,
+        "results_count": 4
+      },
+      {
+        "order": [
+          "without_1005004",
+          "contains_1005004"
+        ],
+        "assignees": {
+          "QC-T001": "A",
+          "QC-T002": "A",
+          "QC-T003": "A",
+          "QC-T004": "B"
+        },
+        "cursor_turns": 2,
+        "assignment_count": 4,
+        "batch_write_sizes": [
+          2,
+          2
+        ],
+        "replay_extra_writes": 0,
+        "rehashed_source_drift_rejected": true,
+        "results_count": 4
+      }
+    ]
+  }
+}
