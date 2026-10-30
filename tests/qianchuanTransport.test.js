@@ -4,6 +4,7 @@ import { createAutomationSendHandler } from '../lib/dispatch/api/automation-send
 import { createSupabaseDispatchStore } from '../lib/dispatch/supabase-store.js';
 import { TEST_DISPATCH_CHAT_ID } from '../lib/dispatch/profile.js';
 import { decisionSnapshotHash } from '../lib/dispatch/qianchuan-policy.js';
+import { normalizeBatchDispatchIngest, dispatchIdempotencyValue } from '../lib/dispatch/ingest.js';
 
 function payload() {
   const source = [false, true, false].map((code, index) => ({ request_id: `probe${index}`,
@@ -69,6 +70,54 @@ test('root/item delivery bucket mismatch: zero persistence and queue side effect
   const body = payload(); body.decision_group='without_1005004';
   const result = await invoke(body); assert.equal(result.status, 400);
   assert.equal(result.body.error_code, 'QIANCHUAN_BATCH_ITEM_CONFLICT'); assert.deepEqual(result.calls, []);
+});
+
+test('legacy unified accepts a homogeneous card without mutating payload or changing identity', async () => {
+  for (const special of [false,true]) {
+    const body = payload();
+    body.items = body.decision_snapshot.filter((item) => item.contains_code_1005004 === special);
+    body.decision_group = special ? 'contains_1005004' : 'without_1005004';
+    const explicit = normalizeBatchDispatchIngest(body, {splitCards:true});
+    body.decision_group = 'unified'; const frozen = structuredClone(body);
+    const alias = normalizeBatchDispatchIngest(body, {splitCards:true});
+    assert.deepEqual(body,frozen);
+    assert.deepEqual(alias.qianchuanSnapshot,explicit.qianchuanSnapshot);
+    assert.deepEqual(alias.fieldsList.map(dispatchIdempotencyValue),explicit.fieldsList.map(dispatchIdempotencyValue));
+    const result = await invoke(body);
+    assert.equal(result.status,202,JSON.stringify(result.body));
+    assert.deepEqual(result.calls,['source','root','handoff','publish']);
+    assert.deepEqual(body,frozen);
+  }
+});
+
+test('legacy unified dry-run has no side effects; mixed buckets and source drift remain rejected', async () => {
+  const body = payload(); body.decision_group = 'unified';
+  const dry = await invoke(body,{dryRun:true}); assert.equal(dry.status,200); assert.deepEqual(dry.calls,[]);
+  const mixed = structuredClone(body); mixed.items = structuredClone(mixed.decision_snapshot);
+  const rejected = await invoke(mixed);
+  assert.equal(rejected.body.error_code,'QIANCHUAN_BATCH_ITEM_CONFLICT'); assert.deepEqual(rejected.calls,[]);
+  const drift = structuredClone(body); drift.source_batch_id = 'wrong-source';
+  const mismatch = await invoke(drift);
+  assert.equal(mismatch.body.error_code,'QIANCHUAN_BATCH_ITEM_CONFLICT'); assert.deepEqual(mismatch.calls,[]);
+  const invalidHash = structuredClone(body); invalidHash.decision_snapshot_hash='0'.repeat(64);
+  const hash = await invoke(invalidHash);
+  assert.equal(hash.body.error_code,'QIANCHUAN_SNAPSHOT_HASH_MISMATCH'); assert.deepEqual(hash.calls,[]);
+});
+
+test('1000676/v2 cannot use legacy unified envelope', async () => {
+  const body = payload(); body.decision_group='unified';
+  const upgrade = (row) => {
+    row.reject_reason_codes=row.reject_reason_codes.map((c)=>c==='1005004'?'1000676':c);
+    row.contains_code_1000676=row.contains_code_1005004; delete row.contains_code_1005004;
+    row.decision_group=row.contains_code_1000676?'contains_1000676':'without_1000676';
+    row.decision_policy_version='code-membership-1000676/v2';
+  };
+  body.decision_snapshot.forEach(upgrade);
+  body.items=structuredClone([body.decision_snapshot[1]]);
+  body.decision_policy_version='code-membership-1000676/v2';
+  body.decision_snapshot_hash=decisionSnapshotHash(body.decision_snapshot);
+  const result=await invoke(body);
+  assert.equal(result.body.error_code,'QIANCHUAN_BATCH_ITEM_CONFLICT'); assert.deepEqual(result.calls,[]);
 });
 test('unknown bucket, even if root and item agree, is rejected before handoff', async () => {
   const body = payload(); body.decision_group='other'; body.items[0].decision_group='other';
