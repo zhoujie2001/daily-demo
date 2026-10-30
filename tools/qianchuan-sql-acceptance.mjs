@@ -31,8 +31,12 @@ try {
     audit_object_id: object, reject_reason_codes: [2,4,5].includes(i) ? ['1000676'] : [],
     contains_code_1000676: [2,4,5].includes(i), decision_group: [2,4,5].includes(i) ? 'contains_1000676' : 'without_1000676',
     source_batch_id: 'sql-source', decision_policy_version: 'code-membership-1000676/v2' }));
-  const n = normalizeBatchDispatchIngest({ chat_id: TEST_DISPATCH_CHAT_ID, batch_id: 'sql_delivery', time_segment: 'D',
-    decision_snapshot_hash: decisionSnapshotHash(rows), decision_snapshot: rows, items: rows }, { splitCards: true });
+  // This SQL-only harness exercises internal fenced RPCs, not a mixed v2 HTTP
+  // delivery. Normalize each single-item card against the same full source.
+  const normalized = rows.map((item) => normalizeBatchDispatchIngest({ chat_id: TEST_DISPATCH_CHAT_ID,
+    batch_id: `sql_delivery_${item.request_id}`, time_segment: 'D',
+    decision_snapshot_hash: decisionSnapshotHash(rows), decision_snapshot: rows, items: [item] }, { splitCards: true }));
+  const n = { ...normalized[0], fieldsList: normalized.flatMap((card) => card.fieldsList) };
   await db.query('select public.bess_register_qianchuan_source($1,$2,$3)', ['test_default',day,n.qianchuanSnapshot]);
   await db.query('select public.bess_register_qianchuan_source($1,$2,$3)', ['test_default',day,n.qianchuanSnapshot]);
   check((await scalar('select count(*)::integer n from public.bess_qianchuan_sources')).n === 1, 'idempotent source registration');

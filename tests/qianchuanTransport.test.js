@@ -132,9 +132,20 @@ test('1000676/v2 cannot use legacy unified envelope', async () => {
   body.decision_snapshot_hash=decisionSnapshotHash(body.decision_snapshot);
   const result=await invoke(body);
   assert.equal(result.body.error_code,'QIANCHUAN_BATCH_ITEM_CONFLICT'); assert.deepEqual(result.calls,[]);
-  body.decision_group='contains_1000676'; body.items=structuredClone(body.decision_snapshot);
-  const mixed=await invoke(body);
-  assert.equal(mixed.body.error_code,'QIANCHUAN_BATCH_ITEM_CONFLICT'); assert.deepEqual(mixed.calls,[]);
+  body.items=structuredClone(body.decision_snapshot);
+  for (const group of ['contains_1000676',undefined]) {
+    if (group === undefined) delete body.decision_group; else body.decision_group=group;
+    const mixed=await invoke(body);
+    assert.equal(mixed.status,400);
+    assert.equal(mixed.body.error_code,'QIANCHUAN_BATCH_ITEM_CONFLICT'); assert.deepEqual(mixed.calls,[]);
+  }
+  delete body.decision_policy_version;
+  const itemOnly=await invoke(body);
+  assert.equal(itemOnly.status,400); assert.equal(itemOnly.body.error_code,'QIANCHUAN_BATCH_ITEM_CONFLICT');
+  assert.deepEqual(itemOnly.calls,[]);
+  body.items=[structuredClone(body.decision_snapshot[1])];
+  const homogeneous=await invoke(body,{dryRun:true});
+  assert.equal(homogeneous.status,200); assert.deepEqual(homogeneous.calls,[]);
 });
 test('unknown bucket, even if root and item agree, is rejected before handoff', async () => {
   const body = payload(); body.decision_group='other'; body.items[0].decision_group='other';
