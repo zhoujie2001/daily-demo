@@ -147,6 +147,23 @@ test('1000676/v2 cannot use legacy unified envelope', async () => {
   const homogeneous=await invoke(body,{dryRun:true});
   assert.equal(homogeneous.status,200); assert.deepEqual(homogeneous.calls,[]);
 });
+
+test('mixed v1/v2 items without envelope policy/group preserve mixed-policy error precedence', async () => {
+  const body=payload();
+  delete body.decision_policy_version; delete body.decision_group;
+  const current=structuredClone(body.decision_snapshot[1]);
+  current.decision_policy_version='code-membership-1000676/v2';
+  current.reject_reason_codes=['1000676']; current.contains_code_1000676=true;
+  delete current.contains_code_1005004; current.decision_group='contains_1000676';
+  for (const items of [[body.decision_snapshot[0],current],[current,body.decision_snapshot[0]]]) {
+    body.items=structuredClone(items);
+    const original=structuredClone(body);
+    const result=await invoke(body);
+    assert.equal(result.status,400);
+    assert.equal(result.body.error_code,'QIANCHUAN_MIXED_SOURCE_POLICY');
+    assert.deepEqual(result.calls,[]); assert.deepEqual(body,original);
+  }
+});
 test('unknown bucket, even if root and item agree, is rejected before handoff', async () => {
   const body = payload(); body.decision_group='other'; body.items[0].decision_group='other';
   const result = await invoke(body); assert.equal(result.status, 400);
