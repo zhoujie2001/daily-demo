@@ -4,6 +4,7 @@ import { expectedDecisionGroups, registerQianchuanSource, stableJson, decisionSn
 import { normalizeBatchDispatchIngest, batchDispatchActionValue, dispatchIdempotencyValue } from '../lib/dispatch/ingest.js';
 import { validateBatchDispatchValue } from '../lib/lark/card-actions.js';
 import { createMemoryBatchStore } from '../lib/dispatch/memory-batch-store.js';
+import { createQianchuanMemoryStore } from '../lib/dispatch/qianchuan-memory.js';
 import { TEST_DISPATCH_CHAT_ID } from '../lib/dispatch/profile.js';
 import { handleDispatchEvent } from '../lib/dispatch/dispatch-service.js';
 import { LarkClient } from '../lib/lark/client.js';
@@ -450,4 +451,111 @@ test('row moves after committed decision: original card recovers latest target w
   const after = await s.store.getDailyState(DAY,'test_default');
   assert.equal(after.forward_cursor,before.forward_cursor); assert.deepEqual(after.assignments,before.assignments);
   assert.equal((await s.store.getQianchuanSource({scope:'test_default',sourceBatchId:'root-source'})).pendingIds.length,0);
+});
+
+function sourceItemsV3(spec) {
+  return spec.map((row, index) => {
+    const codes = row.codes || [];
+    const matched = codes.filter((code) => ['1000666', '1000676'].includes(code)).sort();
+    const special = matched.length > 0;
+    return {
+      request_id: `v3r${index}`, request_name: `v3 isolated ${index}`, business_type: '千川', target_category: 'qianchuan',
+      sheet_url: 'https://example.feishu.cn/sheets/local_test', sheet_id: 'sheetA', row_index: 30 + index,
+      assignee_field_id: 'N', assignee_field_name: '领取人', request_field_id: 'X', date_field_id: 'A',
+      project_field_id: 'C', project_value: '千川', audit_object_id: row.object ?? '',
+      reject_reason_codes: codes, is_special_code_pool: special, matched_special_codes: matched,
+      decision_pool: special ? 'special_code' : 'default', decision_group: special ? 'special_code' : 'default',
+      decision_policy_version: 'two-pool-special-code-1000666-1000676/v3', source_batch_id: 'v3_source',
+    };
+  });
+}
+
+function normalizedV3(spec) {
+  const snapshot = sourceItemsV3(spec);
+  const hash = decisionSnapshotHash(snapshot);
+  return normalizeBatchDispatchIngest({
+    chat_id: TEST_DISPATCH_CHAT_ID,
+    batch_id: 'v3_card', card_title: '千川 A 段批量自动派单',
+    source_batch_id: 'v3_source', decision_policy_version: 'two-pool-special-code-1000666-1000676/v3',
+    decision_group: snapshot[0].decision_group, decision_snapshot: snapshot, decision_snapshot_hash: hash,
+    items: [snapshot[0]],
+  }, { splitCards: true });
+}
+
+test('qianchuan v3 has only default and special-code pools; 1000666/1000676 share special rotation', () => {
+  const n = normalizedV3([
+    { codes: [] }, { codes: ['1000666'] }, { codes: ['1000666'] },
+    { codes: ['1000676'] }, { codes: ['1005004'] }, { codes: ['1000666'] },
+  ]);
+  assert.deepEqual(n.qianchuanSnapshot.members.map((m) => m.assignmentGroup), [
+    'default:g0', 'special_code:g0', 'special_code:g1', 'special_code:g2', 'default:g1', 'special_code:g3',
+  ]);
+  assert.deepEqual(n.qianchuanSnapshot.members.map((m) => m.isSpecialCodePool), [false, true, true, true, false, true]);
+});
+
+test('qianchuan v3 exact code matching excludes substring traps and legacy 1005004', () => {
+  const n = normalizedV3([
+    { codes: ['10006660'] }, { codes: ['10006760'] }, { codes: ['1005004'] },
+    { codes: ['1000666', '1000676'] },
+  ]);
+  assert.deepEqual(n.qianchuanSnapshot.members.map((m) => m.assignmentGroup), [
+    'default:g0', 'default:g1', 'default:g2', 'special_code:g0',
+  ]);
+  assert.deepEqual(n.qianchuanSnapshot.members[3].matchedSpecialCodes, ['1000666', '1000676']);
+});
+
+test('qianchuan v3 independent special cursor assignment groups start from the same roster order', () => {
+  const n = normalizedV3([
+    { codes: [] }, { codes: ['1000666'] }, { codes: ['1000676'] }, { codes: ['1000666'] },
+  ]);
+  assert.deepEqual(n.qianchuanSnapshot.members.map((member) => member.assignmentGroup), ['default:g0', 'special_code:g0', 'special_code:g1', 'special_code:g2']);
+});
+
+
+test('qianchuan v3 keeps ordinary same-object requirements together but special codes consume individual turns', () => {
+  const n = normalizedV3([
+    { object: 'shared', codes: [] },
+    { object: 'shared', codes: [] },
+    { object: 'shared', codes: ['1000666'] },
+    { object: 'shared', codes: ['1000676'] },
+    { object: '', codes: [] },
+    { object: '', codes: [] },
+  ]);
+  assert.deepEqual(n.qianchuanSnapshot.members.map((member) => member.assignmentGroup), [
+    'default:g0', 'default:g0', 'special_code:g0', 'special_code:g1', 'default:g1', 'default:g2',
+  ]);
+});
+
+test('qianchuan v3 special-only assignment advances global CAS version without moving ordinary cursor', async () => {
+  const n = normalizedV3([{ codes: ['1000666'] }]);
+  let state = {
+    roster: ['A', 'B', 'C'], off_duty: [], assignments: {}, version: 1,
+    forward_cursor: 0, forward_version: 0,
+    special_code_forward_cursor: 0, special_code_forward_version: 0,
+    assignment_seq: 0,
+  };
+  const store = createQianchuanMemoryStore({
+    getState: () => structuredClone(state),
+    putState: (_dayKey, _scope, next) => { state = structuredClone(next); },
+    assertClaim: ({ items }) => ({ items: items.map((item) => ({
+      requestId: item.requestId,
+      decisionManifestHash: item.decisionManifestHash,
+      sourceBatchId: item.sourceBatchId,
+    })) }),
+  });
+  const item = n.fieldsList[0];
+  const scope = item.dispatchScope;
+  await store.registerQianchuanSource({ scope, dayKey: DAY, snapshot: n.qianchuanSnapshot });
+  const result = await store.assignQianchuanBatch({
+    dayKey: DAY, scope, items: [item],
+    observations: n.qianchuanSnapshot.members.map((member) => ({
+      requestId: member.requestId, rowIndex: member.rowIndex, assignee: '',
+    })),
+    expectedVersion: 1, expectedCursorVersion: 0,
+  });
+  assert.equal(result[0].assignee, 'A');
+  assert.equal(state.forward_cursor, 0);
+  assert.equal(state.special_code_forward_cursor, 1);
+  assert.equal(state.forward_version, 1);
+  assert.equal(state.special_code_forward_version, 1);
 });
