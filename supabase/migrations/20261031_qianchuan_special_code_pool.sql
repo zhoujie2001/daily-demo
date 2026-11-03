@@ -146,11 +146,13 @@ begin
     v_result:=v_result||jsonb_build_array(jsonb_build_object('request_id',v_item->>'requestId','assignee',v_name,
       'assignment_seq',v_old.assignment_seq,'assignment_group',v_member->>'assignmentGroup','replayed',v_replayed,
       'roster',v_state.roster,'version',v_state.version,'reverse_version',v_state.reverse_version,
-      'forward_version',v_state.forward_version+case when v_default_cursor<>v_initial_default_cursor then 1 else 0 end,
+      'forward_version',v_state.forward_version+case when v_default_cursor<>v_initial_default_cursor or v_special_cursor<>v_initial_special_cursor then 1 else 0 end,
       'special_code_forward_version',v_state.special_code_forward_version+case when v_special_cursor<>v_initial_special_cursor then 1 else 0 end));
   end loop;
   update public.bess_dispatch_daily_state s set forward_cursor=v_default_cursor,
-    forward_version=s.forward_version+case when v_default_cursor<>v_initial_default_cursor then 1 else 0 end,
+    -- forward_version remains the global CAS token for both independent pools.
+    -- Advancing only the special-code pool must still invalidate stale callers.
+    forward_version=s.forward_version+case when v_default_cursor<>v_initial_default_cursor or v_special_cursor<>v_initial_special_cursor then 1 else 0 end,
     special_code_forward_cursor=v_special_cursor,
     special_code_forward_version=s.special_code_forward_version+case when v_special_cursor<>v_initial_special_cursor then 1 else 0 end,
     assignment_seq=v_new_seq,updated_at=now() where s.day_key=p_day_key and s.scope=p_scope;

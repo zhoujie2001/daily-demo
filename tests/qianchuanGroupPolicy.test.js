@@ -4,6 +4,7 @@ import { expectedDecisionGroups, registerQianchuanSource, stableJson, decisionSn
 import { normalizeBatchDispatchIngest, batchDispatchActionValue, dispatchIdempotencyValue } from '../lib/dispatch/ingest.js';
 import { validateBatchDispatchValue } from '../lib/lark/card-actions.js';
 import { createMemoryBatchStore } from '../lib/dispatch/memory-batch-store.js';
+import { createQianchuanMemoryStore } from '../lib/dispatch/qianchuan-memory.js';
 import { TEST_DISPATCH_CHAT_ID } from '../lib/dispatch/profile.js';
 import { handleDispatchEvent } from '../lib/dispatch/dispatch-service.js';
 import { LarkClient } from '../lib/lark/client.js';
@@ -508,4 +509,53 @@ test('qianchuan v3 independent special cursor assignment groups start from the s
     { codes: [] }, { codes: ['1000666'] }, { codes: ['1000676'] }, { codes: ['1000666'] },
   ]);
   assert.deepEqual(n.qianchuanSnapshot.members.map((member) => member.assignmentGroup), ['default:g0', 'special_code:g0', 'special_code:g1', 'special_code:g2']);
+});
+
+
+test('qianchuan v3 keeps ordinary same-object requirements together but special codes consume individual turns', () => {
+  const n = normalizedV3([
+    { object: 'shared', codes: [] },
+    { object: 'shared', codes: [] },
+    { object: 'shared', codes: ['1000666'] },
+    { object: 'shared', codes: ['1000676'] },
+    { object: '', codes: [] },
+    { object: '', codes: [] },
+  ]);
+  assert.deepEqual(n.qianchuanSnapshot.members.map((member) => member.assignmentGroup), [
+    'default:g0', 'default:g0', 'special_code:g0', 'special_code:g1', 'default:g1', 'default:g2',
+  ]);
+});
+
+test('qianchuan v3 special-only assignment advances global CAS version without moving ordinary cursor', async () => {
+  const n = normalizedV3([{ codes: ['1000666'] }]);
+  let state = {
+    roster: ['A', 'B', 'C'], off_duty: [], assignments: {}, version: 1,
+    forward_cursor: 0, forward_version: 0,
+    special_code_forward_cursor: 0, special_code_forward_version: 0,
+    assignment_seq: 0,
+  };
+  const store = createQianchuanMemoryStore({
+    getState: () => structuredClone(state),
+    putState: (_dayKey, _scope, next) => { state = structuredClone(next); },
+    assertClaim: ({ items }) => ({ items: items.map((item) => ({
+      requestId: item.requestId,
+      decisionManifestHash: item.decisionManifestHash,
+      sourceBatchId: item.sourceBatchId,
+    })) }),
+  });
+  const item = n.fieldsList[0];
+  const scope = item.dispatchScope;
+  await store.registerQianchuanSource({ scope, dayKey: DAY, snapshot: n.qianchuanSnapshot });
+  const result = await store.assignQianchuanBatch({
+    dayKey: DAY, scope, items: [item],
+    observations: n.qianchuanSnapshot.members.map((member) => ({
+      requestId: member.requestId, rowIndex: member.rowIndex, assignee: '',
+    })),
+    expectedVersion: 1, expectedCursorVersion: 0,
+  });
+  assert.equal(result[0].assignee, 'A');
+  assert.equal(state.forward_cursor, 0);
+  assert.equal(state.special_code_forward_cursor, 1);
+  assert.equal(state.forward_version, 1);
+  assert.equal(state.special_code_forward_version, 1);
 });
