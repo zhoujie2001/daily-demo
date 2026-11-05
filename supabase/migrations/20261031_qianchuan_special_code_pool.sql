@@ -1,4 +1,4 @@
--- Support qianchuan two-pool special-code rotation for 1000666/1000676.
+-- Support qianchuan two-pool special-code rotation for a shared special CODE pool.
 -- Additive columns keep the ordinary forward cursor unchanged and introduce a
 -- separate special-code forward cursor used by qianchuan assignment groups whose
 -- assignmentGroup starts with `special_code:`.
