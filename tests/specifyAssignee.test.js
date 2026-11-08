@@ -224,3 +224,78 @@ test('指定人员：拒绝工号且不写表', async () => {
   assert.equal(submitted.errorCode, 'INVALID_ROSTER');
   assert.equal(client.calls.some((call) => call.operation === 'write'), false);
 });
+
+// Historical AD/game identity was later registered in a source. New forms must
+// retain the proven server-side origin through open, roster continuation/retry,
+// assignment compensation and completed replay.
+for (const initialized of [true, false]) test(`历史AD游戏旧卡→指定表单→提交/补偿/完成重试，initialized=${initialized}`, async () => {
+  const store = new Store({ initialized }); const client = new Client();
+  const body = event();
+  body.event.action.value = { ...actionValue, target_category: 'game_agent', dispatch_profile: 'ad',
+    sheet_id: 'gameSheet', sheet_url: 'https://example.feishu.cn/sheets/game', date_field_id: 'J', assignee_field_id: 'B' };
+  const guards = [];
+  store.assertLegacySourceCardMembers = async ({ chatId, messageId, items }) => {
+    guards.push(messageId);
+    assert.equal(chatId, 'oc_allowed'); assert.equal(messageId, 'om_original');
+    assert.equal(items[0].requestId, 'ad_9001');
+    assert.equal(items[0].dispatchProfile, 'ad'); assert.equal(items[0].targetCategory, 'game_agent');
+  };
+  const opened = await handleDispatchEvent(body, options(store, client));
+  assert.equal(opened.errorCode, undefined);
+  if (!initialized) {
+    const reply = client.replyInteractiveCard.bind(client); let fail = true;
+    client.replyInteractiveCard = async (args) => {
+      if (fail && args.uuid.startsWith('bess-specify-') && !args.uuid.startsWith('bess-specify-roster-')) {
+        fail = false; throw new Error('isolated form reply failure');
+      }
+      return reply(args);
+    };
+    const failed = await handleDispatchEvent(rosterSubmitEvent(), options(store, client));
+    assert.equal(failed.body.toast.type, 'error');
+    assert.equal(store.pending.get('om_roster_form').completed_at, null);
+    const continued = await handleDispatchEvent(rosterSubmitEvent(), options(store, client));
+    assert.equal(continued.errorCode, undefined);
+  }
+  const pending = store.pending.get('om_specify_form');
+  assert.equal(pending.original_message_id, 'om_original');
+  assert.equal(pending.chat_id, 'oc_allowed'); assert.equal(pending.request_context.dispatchScope, 'ad_game');
+  const calibration = store.calibrateCursor.bind(store); let fail = true;
+  store.calibrateCursor = async (args) => { if (fail) { fail = false; throw new Error('isolated calibration failure'); } return calibration(args); };
+  const submit = event({ form: true });
+  // Neither action nor form data is allowed to override the pending origin/context.
+  submit.event.action.value = { original_message_id: 'om_attacker', request_id: 'attacker' };
+  submit.event.action.form_value.original_message_id = 'om_attacker';
+  const failed = await handleDispatchEvent(submit, options(store, client));
+  assert.equal(failed.body.toast.type, 'error'); assert.equal(pending.completed_at, null);
+  const completed = await handleDispatchEvent(submit, options(store, client));
+  assert.equal(completed.errorCode, undefined); assert.ok(pending.completed_at);
+  const replay = await handleDispatchEvent(submit, options(store, client));
+  assert.equal(replay.errorCode, 'ALREADY_SPECIFIED');
+  assert.equal(client.calls.filter((call) => call.operation === 'write').length, 1);
+  assert.ok(guards.length >= (initialized ? 4 : 6));
+});
+
+for (const [name, mutate, code] of [
+  ['cross chat', (p) => { p.chat_id = 'oc_other'; }, 'PENDING_CHAT_MISMATCH'],
+  ['wrong form', (p) => { p.form_message_id = 'om_other'; }, 'PENDING_CONTEXT_MISMATCH'],
+  ['wrong request', (p) => { p.request_id = 'specify_other'; }, 'PENDING_CONTEXT_MISMATCH'],
+  ['wrong context chat', (p) => { p.request_context.chatId = 'oc_other'; }, 'PENDING_CONTEXT_MISMATCH'],
+  ['wrong kind', (p) => { p.request_context.kind = 'batch'; }, 'INVALID_PENDING_KIND'],
+  ['missing origin', (p) => { delete p.original_message_id; }, 'SOURCE_CARD_BINDING_CONFLICT'],
+  ['unproven origin', (p) => { p.original_message_id = 'om_stripped_source'; }, 'SOURCE_CARD_BINDING_CONFLICT'],
+  ['wrong member', (p) => { p.request_context.requestId = 'other_registered_member'; p.request_id = 'specify_other_registered_member'; }, 'SOURCE_CARD_BINDING_CONFLICT'],
+]) test(`历史指定submit拒绝${name}，不读表/派单/完成/更新卡`, async () => {
+  const store = new Store(); const client = new Client(); const body = event();
+  body.event.action.value = { ...actionValue, target_category: 'game_agent', dispatch_profile: 'ad',
+    sheet_id: 'gameSheet', sheet_url: 'https://example.feishu.cn/sheets/game', date_field_id: 'J', assignee_field_id: 'B' };
+  store.assertLegacySourceCardMembers = async ({ messageId, items }) => {
+    if (messageId !== 'om_original' || items[0].requestId !== 'ad_9001') {
+      throw Object.assign(new Error('conflict'), { code: 'SOURCE_CARD_BINDING_CONFLICT' });
+    }
+  };
+  await handleDispatchEvent(body, options(store, client));
+  mutate(store.pending.get('om_specify_form')); client.calls = [];
+  const result = await handleDispatchEvent(event({ form: true }), options(store, client));
+  assert.equal(result.errorCode, code); assert.deepEqual(client.calls, []);
+  assert.equal(store.assignments, undefined); assert.equal(store.pending.get('om_specify_form').completed_at, null);
+});
