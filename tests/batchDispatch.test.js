@@ -2477,3 +2477,62 @@ test('批量写失败且逐条补偿再次失败时日志保留 request_id 重�
   assert.equal(logs.some(({ range }) => range === 'sheetA!row:11' || range === ''), false);
   assert.equal(client.calls.some(({ kind, rowIndex }) => kind === 'write' && [10, 11].includes(rowIndex)), false);
 });
+
+for (const messageId of ['om_proven_history', 'om_stripped_source']) test(`历史AD游戏批量完整callback/部分结果/重试来源：${messageId}`, async () => {
+  const fields = [item('historic_game_1', 10), item('historic_game_2', 11)].map((value) => ({
+    ...value, business_type: 'AD', target_category: 'game_agent', dispatch_profile: 'ad',
+    sheet_id: 'gameSheet', date_field_id: 'J', assignee_field_id: 'B', project_value: '',
+  }));
+  const store = new BatchStore({ now: () => new Date('2026-11-08T00:00:00Z') }); const client = new BatchClient({ failRow: 11 });
+  const body = batchBody('historic_game_batch', fields); body.event.context.open_message_id = messageId;
+  const guards = []; let claims = 0;
+  store.assertLegacySourceCardBatch = async ({ batchId }) => { assert.equal(batchId, 'historic_game_batch'); };
+  store.assertLegacySourceCardMembers = async (args) => {
+    guards.push(args.messageId); assert.deepEqual(args.items.map((f) => f.requestId), ['historic_game_1', 'historic_game_2']);
+    assert.equal(args.chatId, 'oc_allowed');
+    if (args.messageId !== 'om_proven_history') throw Object.assign(new Error('conflict'), { code: 'SOURCE_CARD_BINDING_CONFLICT' });
+  };
+  const claim = store.claimBatch.bind(store); store.claimBatch = async (args) => { claims++; return claim(args); };
+  const opts = { store, client, logger: silentLogger, now: () => new Date('2026-11-08T00:00:00Z'), config: { allowedChatIds: 'oc_allowed' } };
+  const first = await handleDispatchEvent(body, opts);
+  if (messageId !== 'om_proven_history') {
+    assert.equal(first.errorCode, 'SOURCE_CARD_BINDING_CONFLICT'); assert.equal(claims, 0);
+    assert.deepEqual(client.calls, []); return;
+  }
+  assert.equal(first.errorCode, undefined); await first.afterResponse();
+  assert.equal(store.getBatch('oc_allowed', 'historic_game_batch').status, 'PARTIAL');
+  client.failRow = null;
+  const retry = await handleDispatchEvent(body, opts); assert.equal(retry.errorCode, undefined); await retry.afterResponse();
+  assert.equal(store.getBatch('oc_allowed', 'historic_game_batch').status, 'SUCCESS');
+  const replay = await handleDispatchEvent(body, opts); assert.equal(replay.errorCode, 'BATCH_ALREADY_PROCESSED');
+  assert.deepEqual(guards, ['om_proven_history', 'om_proven_history', 'om_proven_history']);
+  assert.equal(client.calls.filter((c) => c.kind === 'write' && c.rowIndex === 10).length, 1);
+});
+
+test('历史AD游戏批量名单表单恢复：两层guard均取服务端原消息，不取新表单/用户来源', async () => {
+  const fields = [item('historic_roster_game', 10)].map((value) => ({ ...value,
+    business_type: 'AD', target_category: 'game_agent', dispatch_profile: 'ad',
+    sheet_id: 'gameSheet', date_field_id: 'J', assignee_field_id: 'B', project_value: '' }));
+  const now = () => new Date('2026-11-08T00:00:00Z');
+  const store = new BatchStore({ now }); store.state = null; const client = new BatchClient();
+  const origins = [];
+  store.assertLegacySourceCardMembers = async ({ messageId }) => {
+    origins.push(messageId);
+    if (messageId !== 'om_proven_history') throw Object.assign(new Error('conflict'), { code: 'SOURCE_CARD_BINDING_CONFLICT' });
+  };
+  const body = batchBody('historic_roster_batch', fields); body.event.context.open_message_id = 'om_proven_history';
+  const opts = { store, client, now, logger: silentLogger, config: { allowedChatIds: 'oc_allowed' } };
+  assert.equal((await handleDispatchEvent(body, opts)).errorCode, undefined);
+  const submit = batchBody('ignored_user_batch', []);
+  submit.event.context.open_message_id = 'om_form'; submit.event.action.value = { original_message_id: 'om_attacker' };
+  submit.event.action.form_value = { roster_names: '张三\n李四', original_message_id: 'om_attacker' };
+  const restored = await handleDispatchEvent(submit, opts);
+  assert.equal(restored.errorCode, undefined); assert.ok(restored.updatedCard);
+  assert.equal(store.initializeCalls, 1);
+  await restored.afterResponse();
+  body.event.context.open_message_id = 'om_form';
+  const started = await handleDispatchEvent(body, opts); assert.equal(started.errorCode, undefined);
+  await started.afterResponse();
+  assert.equal(store.getBatch('oc_allowed', 'historic_roster_batch').status, 'SUCCESS');
+  assert.deepEqual(origins.slice(-2), ['om_form', 'om_proven_history']);
+});
