@@ -118,3 +118,33 @@ test('后台派单失败卡明确反馈失败且保留原需求卡重试入口',
   assert.match(text, /LARK_API_91403/);
   assert.match(text, /原需求卡保持不变/);
 });
+
+test('批量结果卡仅在 SUCCESS 且 atAll 开启时携带 @所有人', () => {
+  const base = {
+    batchId: 'ad_batch_atall',
+    roster: ['张三', '李四'],
+    direction: 'forward',
+    dispatchedAt: '2026-11-13T12:00:00.000Z',
+    results: [{ requestId: 'ad_9001', status: 'SUCCESS', assignee: '李四' }],
+  };
+  const successCard = buildBatchDispatchResultCard([adFields], { ...base, status: 'SUCCESS', atAll: true });
+  assert.match(serialized(successCard), /<at id=all><\/at>/);
+  assert.match(serialized(successCard), /本批派单已全部完成/);
+
+  const partialCard = buildBatchDispatchResultCard([adFields], { ...base, status: 'PARTIAL', atAll: true });
+  assert.doesNotMatch(serialized(partialCard), /<at id=all><\/at>/);
+
+  const disabledCard = buildBatchDispatchResultCard([adFields], { ...base, status: 'SUCCESS' });
+  assert.doesNotMatch(serialized(disabledCard), /<at id=all><\/at>/);
+});
+
+test('单条结果卡按 atAll 开关决定是否携带 @所有人', () => {
+  const base = {
+    assignee: '李四',
+    direction: 'forward',
+    roster: ['张三', '李四'],
+    dispatchedAt: '2026-11-13T12:00:00.000Z',
+  };
+  assert.match(serialized(buildDispatchResultCard(adFields, { ...base, atAll: true })), /<at id=all><\/at>/);
+  assert.doesNotMatch(serialized(buildDispatchResultCard(adFields, base)), /<at id=all><\/at>/);
+});

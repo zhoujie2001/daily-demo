@@ -1247,3 +1247,68 @@ test('名单保存修复：批量名单保存流程', async () => {
   const updateCall = client.calls.find(c => c.kind === 'update' && c.id === 'om_batch_form');
   assert.ok(updateCall, '批量慢路径应更新表单卡片');
 });
+
+test('单条派单成功在白名单群的话题结果卡 @所有人', async () => {
+  const previous = process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS;
+  process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS = 'oc_allowed';
+  try {
+    const store = new FakeStore();
+    store.state = { roster: ['张三', '李四', '王五'] };
+    const client = new FakeClient();
+    const result = await handleDispatchEvent(body({ shuffleRoster: false }), options(store, client));
+    assert.equal(result.body.toast.type, 'success');
+    const reply = client.calls.find(
+      (call) => call.kind === 'replyCard' && String(call.uuid || '').startsWith('bess-result'),
+    );
+    assert.ok(reply, '成功后必须发送话题结果卡');
+    assert.equal(reply.replyInThread, true);
+    assert.match(JSON.stringify(reply.card), /<at id=all><\/at>/);
+  } finally {
+    if (previous === undefined) delete process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS;
+    else process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS = previous;
+  }
+});
+
+test('未配置白名单时单条结果卡保持无 @所有人 的历史行为', async () => {
+  const previous = process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS;
+  delete process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS;
+  try {
+    const store = new FakeStore();
+    store.state = { roster: ['张三', '李四', '王五'] };
+    const client = new FakeClient();
+    const result = await handleDispatchEvent(body({ shuffleRoster: false }), options(store, client));
+    assert.equal(result.body.toast.type, 'success');
+    assert.doesNotMatch(JSON.stringify(client.calls), /<at id=all><\/at>/);
+  } finally {
+    if (previous !== undefined) process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS = previous;
+  }
+});
+
+test('单条结果卡因 @所有人 被拒时，降级补发不带 @ 的结果卡且派单仍成功', async () => {
+  const previous = process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS;
+  process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS = 'oc_allowed';
+  try {
+    const store = new FakeStore();
+    store.state = { roster: ['张三', '李四', '王五'] };
+    const client = new FakeClient();
+    let rejected = false;
+    const originalReply = client.replyInteractiveCard.bind(client);
+    client.replyInteractiveCard = async (args) => {
+      if (!rejected && JSON.stringify(args.card).includes('<at id=all>')) {
+        rejected = true;
+        client.calls.push({ kind: 'replyCard', ...args });
+        throw new LarkApiError('AT_ALL_NOT_ALLOWED', 'not allow to at all user');
+      }
+      return originalReply(args);
+    };
+    const result = await handleDispatchEvent(body({ shuffleRoster: false }), options(store, client));
+    assert.equal(result.body.toast.type, 'success');
+    const replies = client.calls.filter((call) => call.kind === 'replyCard');
+    assert.equal(replies.length, 2);
+    assert.match(JSON.stringify(replies[0].card), /<at id=all><\/at>/);
+    assert.doesNotMatch(JSON.stringify(replies[1].card), /<at id=all><\/at>/);
+  } finally {
+    if (previous === undefined) delete process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS;
+    else process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS = previous;
+  }
+});

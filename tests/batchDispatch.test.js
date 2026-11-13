@@ -614,6 +614,86 @@ test('批量点击立即禁用按钮，逐项处理后更新原卡并在单一�
   assert.doesNotMatch(JSON.stringify(reply.card), /sensitive write error/);
 });
 
+test('成功批量派单在白名单群的话题结果卡 @所有人，原卡更新不带 @', async () => {
+  const previous = process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS;
+  process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS = 'oc_allowed';
+  try {
+    const store = new BatchStore();
+    const client = new BatchClient();
+    const result = await handleDispatchEvent(
+      batchBody('batch_atall', [item('batch_atall_1', 10), item('batch_atall_2', 12)]),
+      options(store, client),
+    );
+    await result.afterResponse();
+
+    const threadReply = client.calls.find(
+      (call) => call.kind === 'replyCard' && String(call.uuid || '').startsWith('bess-batch-result'),
+    );
+    assert.ok(threadReply, '成功后必须发送话题结果卡');
+    assert.equal(threadReply.replyInThread, true);
+    assert.match(JSON.stringify(threadReply.card), /<at id=all><\/at>/);
+    const originalUpdate = client.calls.find((call) => call.kind === 'update');
+    assert.doesNotMatch(JSON.stringify(originalUpdate.card), /<at id=all><\/at>/);
+  } finally {
+    if (previous === undefined) delete process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS;
+    else process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS = previous;
+  }
+});
+
+test('未配置白名单时批量结果卡保持无 @所有人 的历史行为', async () => {
+  const previous = process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS;
+  delete process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS;
+  try {
+    const store = new BatchStore();
+    const client = new BatchClient();
+    const result = await handleDispatchEvent(
+      batchBody('batch_no_atall', [item('batch_no_atall_1', 10), item('batch_no_atall_2', 12)]),
+      options(store, client),
+    );
+    await result.afterResponse();
+    assert.doesNotMatch(JSON.stringify(client.calls), /<at id=all><\/at>/);
+  } finally {
+    if (previous !== undefined) process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS = previous;
+  }
+});
+
+test('话题结果卡因 @所有人 被拒时，降级补发不带 @ 的结果卡且批次仍收尾', async () => {
+  class AtAllRejectingClient extends BatchClient {
+    constructor() {
+      super();
+      this.atAllRejectedOnce = false;
+    }
+    async replyInteractiveCard(args) {
+      if (!this.atAllRejectedOnce && JSON.stringify(args.card).includes('<at id=all>')) {
+        this.atAllRejectedOnce = true;
+        this.calls.push({ kind: 'replyCard', ...args });
+        throw new LarkApiError('AT_ALL_NOT_ALLOWED', 'not allow to at all user');
+      }
+      return super.replyInteractiveCard(args);
+    }
+  }
+  const previous = process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS;
+  process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS = 'oc_allowed';
+  try {
+    const store = new BatchStore();
+    const client = new AtAllRejectingClient();
+    const result = await handleDispatchEvent(
+      batchBody('batch_atall_fallback', [item('batch_atall_fallback_1', 10), item('batch_atall_fallback_2', 12)]),
+      options(store, client),
+    );
+    await result.afterResponse();
+
+    const replies = client.calls.filter((call) => call.kind === 'replyCard');
+    assert.equal(replies.length, 2);
+    assert.match(JSON.stringify(replies[0].card), /<at id=all><\/at>/);
+    assert.doesNotMatch(JSON.stringify(replies[1].card), /<at id=all><\/at>/);
+    assert.match(JSON.stringify(replies[1].card), /这是最新最终结果/);
+  } finally {
+    if (previous === undefined) delete process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS;
+    else process.env.BESS_AT_ALL_SUCCESS_CHAT_IDS = previous;
+  }
+});
+
 test('后置 daily state 刷新返回 null 时批量仍完成补偿并释放 claim', async () => {
   const store = new BatchStore();
   store.cursor = 1;
