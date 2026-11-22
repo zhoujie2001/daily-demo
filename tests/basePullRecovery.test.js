@@ -295,6 +295,9 @@ test('UNKNOWN handoff 不回写 Base；只有 QUEUED/SENT 可写 INGESTED', asyn
 const RECOVER_AFTER_MS = new Date('2026-10-15T00:00:00+08:00').getTime();
 const INSIDE_WINDOW_MS = new Date('2026-11-22T10:01:22+08:00').getTime();
 const BEFORE_WINDOW_MS = new Date('2026-10-01T09:00:00+08:00').getTime();
+// Deterministic clock for runBasePull age-guard tests: 30 min after the fixture
+// record was created, comfortably inside the 24h auto-recovery window.
+const PULL_NOW = () => new Date(INSIDE_WINDOW_MS + 30 * 60 * 1000);
 
 test('历史隔离默认仍走批次名正则：非日期批次被挡，旧行为完全不变', () => {
   for (const batchId of ['bess-a-8460930ac8cf', 'ad-bess-c-4db33746', 'game-bess-a-b823d424']) {
@@ -400,7 +403,7 @@ test('runBasePull 开启 statusDriven 后恢复窗内 bess-a PENDING 记录并�
   const store = recoveryStore();
   const result = await runBasePullWithIsolation({
     enabled: true, appToken: 'app', tableId: 'table',
-    minBatchId: '20261015-B',
+    minBatchId: '20261015-B', now: PULL_NOW,
     statusDriven: true, recoverAfter: '2026-10-15T00:00:00+08:00',
     client: { async request(method) {
       if (method === 'PUT') { writes += 1; return {}; }
@@ -423,7 +426,7 @@ test('runBasePull 未开启 statusDriven 时 bess-a 记录仍被历史隔离跳�
   let writes = 0;
   const result = await runBasePullWithIsolation({
     enabled: true, appToken: 'app', tableId: 'table',
-    minBatchId: '20261015-B',
+    minBatchId: '20261015-B', now: PULL_NOW,
     statusDriven: false, recoverAfter: '2026-10-15T00:00:00+08:00',
     client: { async request(method) {
       if (method === 'PUT') { writes += 1; return {}; }
@@ -446,7 +449,7 @@ test('runBasePull 开启 statusDriven 但记录缺 created_time 时 fail-closed 
   delete stale.created_time;
   const result = await runBasePullWithIsolation({
     enabled: true, appToken: 'app', tableId: 'table',
-    minBatchId: '20261015-B',
+    minBatchId: '20261015-B', now: PULL_NOW,
     statusDriven: true, recoverAfter: '2026-10-15T00:00:00+08:00',
     client: { async request() { return { data: { items: [stale], has_more: false } }; } },
     storeFactory: () => recoveryStore(),
@@ -460,7 +463,7 @@ test('runBasePull 非法 recoverAfter 配置自动降级为旧批次名规则，
   let publishes = 0;
   const result = await runBasePullWithIsolation({
     enabled: true, appToken: 'app', tableId: 'table',
-    minBatchId: '20261015-B',
+    minBatchId: '20261015-B', now: PULL_NOW,
     statusDriven: true, recoverAfter: 'not-a-date',
     client: { async request() { return { data: { items: [localBatchRecord()], has_more: false } }; } },
     storeFactory: () => recoveryStore(),
@@ -468,4 +471,98 @@ test('runBasePull 非法 recoverAfter 配置自动降级为旧批次名规则，
   });
   assert.equal(result.body.results[0].reason, 'BATCH_OUTSIDE_CONFIGURED_WINDOW');
   assert.equal(publishes, 0);
+});
+
+test('statusDriven 的自动恢复窗口上限：超过 24h 的历史 PENDING 不再自动重发', () => {
+  const dayMs = 24 * 60 * 60 * 1000;
+  // 窗口内（30 分钟前创建）放行
+  assert.deepEqual(
+    basePullHistoryEligibility({
+      recordId: 'rec-x', batchId: 'bess-a-8460930ac8cf', minBatchId: '20261015-B',
+      statusDriven: true, recoverAfterMs: RECOVER_AFTER_MS,
+      recordCreatedTime: INSIDE_WINDOW_MS,
+      maxRecordAgeMs: dayMs, nowMs: INSIDE_WINDOW_MS + 30 * 60 * 1000,
+    }),
+    { eligible: true, reason: 'RECORD_TIME_WINDOW' },
+  );
+  // 恰好等于窗口上限仍放行
+  assert.deepEqual(
+    basePullHistoryEligibility({
+      recordId: 'rec-x', batchId: 'bess-a-8460930ac8cf', minBatchId: '20261015-B',
+      statusDriven: true, recoverAfterMs: RECOVER_AFTER_MS,
+      recordCreatedTime: INSIDE_WINDOW_MS,
+      maxRecordAgeMs: dayMs, nowMs: INSIDE_WINDOW_MS + dayMs,
+    }),
+    { eligible: true, reason: 'RECORD_TIME_WINDOW' },
+  );
+  // 10/15-10/21 那类长期积压历史记录必须被挡在自动恢复之外
+  const backlogMs = new Date('2026-10-20T18:45:35+08:00').getTime();
+  assert.deepEqual(
+    basePullHistoryEligibility({
+      recordId: 'rec-old', batchId: 'game-bess-b-1f431047d35cc10393ca9864', minBatchId: '20261015-B',
+      statusDriven: true, recoverAfterMs: RECOVER_AFTER_MS,
+      recordCreatedTime: backlogMs,
+      maxRecordAgeMs: dayMs, nowMs: INSIDE_WINDOW_MS + 30 * 60 * 1000,
+    }),
+    { eligible: false, reason: 'RECORD_TOO_OLD_FOR_AUTO_RECOVERY' },
+  );
+  // allowlist 仍可人工精确指定，不受年龄上限限制
+  assert.deepEqual(
+    basePullHistoryEligibility({
+      recordId: 'rec-old', batchId: 'game-bess-b-1f431047d35cc10393ca9864', minBatchId: '20261015-B',
+      recordAllowlist: 'rec-old',
+      statusDriven: true, recoverAfterMs: RECOVER_AFTER_MS,
+      recordCreatedTime: backlogMs,
+      maxRecordAgeMs: dayMs, nowMs: INSIDE_WINDOW_MS + 30 * 60 * 1000,
+    }),
+    { eligible: true, reason: 'RECORD_ALLOWLIST' },
+  );
+});
+
+test('runBasePull 对超龄 PENDING 记录跳过且不 publish、不回写', async () => {
+  let publishes = 0;
+  let writes = 0;
+  const stale = localBatchRecord({
+    created_time: String(new Date('2026-10-20T18:45:35+08:00').getTime()),
+  });
+  const result = await runBasePullWithIsolation({
+    enabled: true, appToken: 'app', tableId: 'table',
+    minBatchId: '20261015-B',
+    now: PULL_NOW,
+    statusDriven: true, recoverAfter: '2026-10-15T00:00:00+08:00',
+    client: { async request(method) {
+      if (method === 'PUT') { writes += 1; return {}; }
+      return { data: { items: [stale], has_more: false } };
+    } },
+    storeFactory: () => recoveryStore(),
+    publishDispatch: async () => { publishes += 1; return {}; },
+  });
+  assert.deepEqual(
+    result.body.results.map(({ status, reason }) => ({ status, reason })),
+    [{ status: 'HISTORY_SKIPPED', reason: 'RECORD_TOO_OLD_FOR_AUTO_RECOVERY' }],
+  );
+  assert.equal(publishes, 0);
+  assert.equal(writes, 0);
+});
+
+test('runBasePull 年龄上限可通过参数覆盖，非法值自动降级为默认安全上限', async () => {
+  const stale = localBatchRecord({
+    created_time: String(new Date('2026-10-20T18:45:35+08:00').getTime()),
+  });
+  const run = (maxRecordAgeHours) => runBasePullWithIsolation({
+    enabled: true, appToken: 'app', tableId: 'table',
+    minBatchId: '20261015-B',
+    now: PULL_NOW,
+    maxRecordAgeHours,
+    statusDriven: true, recoverAfter: '2026-10-15T00:00:00+08:00',
+    client: { async request() { return { data: { items: [stale], has_more: false } }; } },
+    storeFactory: () => recoveryStore(),
+    publishDispatch: async () => ({}),
+  });
+  // 放宽到 60 天：同一记录恢复放行
+  const wide = await run(24 * 60);
+  assert.equal(wide.body.results[0].status, 'QUEUED');
+  // 非法值（0 / NaN 语义）回落到默认 24h，不会变成无上限
+  const invalid = await run('not-a-number');
+  assert.equal(invalid.body.results[0].reason, 'RECORD_TOO_OLD_FOR_AUTO_RECOVERY');
 });
