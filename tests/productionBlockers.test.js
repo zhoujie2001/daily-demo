@@ -162,6 +162,7 @@ test('Base pull 遍历分页快照并回写后续页，避免第一页饥饿', a
           conditions: [{ field_name: 'operation_id', operator: 'isEmpty', value: [] }],
         },
         sort: [{ field_name: 'batch_id', desc: true }],
+        automatic_fields: true,
       });
       requestedTokens.push(options.query.page_token || null);
       return options.query.page_token

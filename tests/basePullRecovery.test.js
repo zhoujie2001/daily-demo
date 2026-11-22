@@ -200,6 +200,7 @@ test('非 allowlist 仅搜索未受理记录并按 batch_id 倒序分页，再�
       conditions: [{ field_name: 'operation_id', operator: 'isEmpty', value: [] }],
     },
     sort: [{ field_name: 'batch_id', desc: true }],
+    automatic_fields: true,
   };
   assert.deepEqual(bodies, [expectedBody, expectedBody]);
   assert.equal(result.body.pages, 2);
@@ -595,4 +596,32 @@ test('PENDING/UNKNOWN 带人工或测试标记的记录不得自动恢复', () =
     basePullEligibility(mk('')),
     { eligible: true, status: 'PENDING' },
   );
+});
+
+test('runBasePull 的 Base 查询必须请求 automatic_fields，否则 created_time 缺失会让状态驱动静默失效', async () => {
+  const bodies = [];
+  await runBasePullWithIsolation({
+    enabled: true, appToken: 'app', tableId: 'table',
+    minBatchId: '20261015-B', now: PULL_NOW,
+    statusDriven: true, recoverAfter: '2026-10-15T00:00:00+08:00',
+    client: { async request(method, path, opts) {
+      if (method === 'POST' && String(path).endsWith('/records/search')) bodies.push(opts.body);
+      return { data: { items: [localBatchRecord()], has_more: false } };
+    } },
+    storeFactory: () => recoveryStore(),
+    publishDispatch: async () => ({}),
+  });
+  assert.equal(bodies.length, 1);
+  assert.equal(bodies[0].automatic_fields, true);
+  // 真实接口未带该参数时只返回 fields 与 record_id，此处同时固化“缺时间就必须 fail-closed”的行为
+  const minimal = { record_id: 'rec-min', fields: { dispatch_payload: { ...payload, batch_id: 'bess-a-x' }, automation_status: 'PENDING' } };
+  assert.deepEqual(
+    basePullHistoryEligibility({
+      recordId: 'rec-min', batchId: 'bess-a-x', minBatchId: '20261015-B',
+      statusDriven: true, recoverAfterMs: RECOVER_AFTER_MS,
+      recordCreatedTime: null,
+    }),
+    { eligible: false, reason: 'BATCH_OUTSIDE_CONFIGURED_WINDOW' },
+  );
+  assert.equal(minimal.record_id, 'rec-min');
 });
