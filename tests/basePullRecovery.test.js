@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { basePullEligibility, createBasePullHandler, runBasePull as runBasePullWithIsolation } from '../lib/dispatch/api/pull-base.js';
+import {
+  basePullEligibility,
+  basePullHistoryEligibility,
+  createBasePullHandler,
+  runBasePull as runBasePullWithIsolation,
+} from '../lib/dispatch/api/pull-base.js';
 
 const runBasePull = (options) => runBasePullWithIsolation({ enforceHistoryIsolation: false, ...options });
 
@@ -285,4 +290,182 @@ test('UNKNOWN handoff 不回写 Base；只有 QUEUED/SENT 可写 INGESTED', asyn
     assert.equal(patches, 0);
     assert.equal(result.body.results[0].ok, false);
   }
+});
+
+const RECOVER_AFTER_MS = new Date('2026-10-15T00:00:00+08:00').getTime();
+const INSIDE_WINDOW_MS = new Date('2026-11-22T10:01:22+08:00').getTime();
+const BEFORE_WINDOW_MS = new Date('2026-10-01T09:00:00+08:00').getTime();
+
+test('历史隔离默认仍走批次名正则：非日期批次被挡，旧行为完全不变', () => {
+  for (const batchId of ['bess-a-8460930ac8cf', 'ad-bess-c-4db33746', 'game-bess-a-b823d424']) {
+    assert.deepEqual(
+      basePullHistoryEligibility({
+        recordId: 'rec-x', batchId, minBatchId: '20261015-B',
+        recordCreatedTime: INSIDE_WINDOW_MS,
+      }),
+      { eligible: false, reason: 'BATCH_OUTSIDE_CONFIGURED_WINDOW' },
+    );
+  }
+  assert.deepEqual(
+    basePullHistoryEligibility({ recordId: 'rec-x', batchId: '20261016-new', minBatchId: '20261015-B' }),
+    { eligible: true, reason: 'BATCH_WINDOW' },
+  );
+});
+
+test('statusDriven 开启后按记录创建时间放行非日期批次，窗口与旧批次边界对齐', () => {
+  for (const batchId of ['bess-a-8460930ac8cf', 'ad-bess-c-4db33746', 'game-bess-a-b823d424', '20261016-new']) {
+    assert.deepEqual(
+      basePullHistoryEligibility({
+        recordId: 'rec-x', batchId, minBatchId: '20261015-B',
+        statusDriven: true, recoverAfterMs: RECOVER_AFTER_MS, recordCreatedTime: INSIDE_WINDOW_MS,
+      }),
+      { eligible: true, reason: 'RECORD_TIME_WINDOW' },
+    );
+  }
+  assert.deepEqual(
+    basePullHistoryEligibility({
+      recordId: 'rec-x', batchId: 'bess-a-old', minBatchId: '20261015-B',
+      statusDriven: true, recoverAfterMs: RECOVER_AFTER_MS, recordCreatedTime: BEFORE_WINDOW_MS,
+    }),
+    { eligible: false, reason: 'RECORD_BEFORE_RECOVER_AFTER' },
+  );
+});
+
+test('statusDriven 缺少时间证据时 fail-closed 回退批次名规则，绝不放开历史记录', () => {
+  // 记录无 created_time
+  assert.deepEqual(
+    basePullHistoryEligibility({
+      recordId: 'rec-x', batchId: 'bess-a-8460930ac8cf', minBatchId: '20261015-B',
+      statusDriven: true, recoverAfterMs: RECOVER_AFTER_MS, recordCreatedTime: null,
+    }),
+    { eligible: false, reason: 'BATCH_OUTSIDE_CONFIGURED_WINDOW' },
+  );
+  // 边界非法（NaN）
+  assert.deepEqual(
+    basePullHistoryEligibility({
+      recordId: 'rec-x', batchId: 'bess-a-8460930ac8cf', minBatchId: '20261015-B',
+      statusDriven: true, recoverAfterMs: NaN, recordCreatedTime: INSIDE_WINDOW_MS,
+    }),
+    { eligible: false, reason: 'BATCH_OUTSIDE_CONFIGURED_WINDOW' },
+  );
+  // 两者都缺且未配置旧边界
+  assert.deepEqual(
+    basePullHistoryEligibility({
+      recordId: 'rec-x', batchId: 'bess-a-8460930ac8cf', minBatchId: '',
+      statusDriven: true, recoverAfterMs: RECOVER_AFTER_MS, recordCreatedTime: null,
+    }),
+    { eligible: false, reason: 'HISTORY_ISOLATION_UNCONFIGURED' },
+  );
+});
+
+test('allowlist 在 statusDriven 模式下仍是最高优先边界', () => {
+  assert.deepEqual(
+    basePullHistoryEligibility({
+      recordId: 'rec-allow', batchId: 'bess-a-old', minBatchId: '20261015-B',
+      recordAllowlist: 'rec-allow',
+      statusDriven: true, recoverAfterMs: RECOVER_AFTER_MS, recordCreatedTime: BEFORE_WINDOW_MS,
+    }),
+    { eligible: true, reason: 'RECORD_ALLOWLIST' },
+  );
+});
+
+function localBatchRecord(overrides = {}) {
+  return {
+    record_id: 'rec-local-a',
+    created_time: String(INSIDE_WINDOW_MS),
+    fields: {
+      dispatch_payload: { ...payload, batch_id: 'bess-a-8460930ac8cfb5032e09e93e' },
+      automation_status: 'PENDING',
+    },
+    ...overrides,
+  };
+}
+
+function recoveryStore() {
+  const registrations = [];
+  return {
+    registrations,
+    async registerDispatchHandoff(value) {
+      registrations.push(value);
+      return { outcome: 'ACCEPTED', status: 'HANDOFF_PENDING' };
+    },
+    async claimDispatchHandoffPublish() { return { claimed: true, workerToken: 'worker' }; },
+    async confirmDispatchHandoff() { return { updated: true }; },
+  };
+}
+
+test('runBasePull 开启 statusDriven 后恢复窗内 bess-a PENDING 记录并回写 Base', async () => {
+  let publishes = 0;
+  let writes = 0;
+  const store = recoveryStore();
+  const result = await runBasePullWithIsolation({
+    enabled: true, appToken: 'app', tableId: 'table',
+    minBatchId: '20261015-B',
+    statusDriven: true, recoverAfter: '2026-10-15T00:00:00+08:00',
+    client: { async request(method) {
+      if (method === 'PUT') { writes += 1; return {}; }
+      return { data: { items: [localBatchRecord()], has_more: false } };
+    } },
+    storeFactory: () => store,
+    publishDispatch: async () => { publishes += 1; return {}; },
+  });
+  const item = result.body.results[0];
+  assert.equal(item.ok, true);
+  assert.equal(item.status, 'QUEUED');
+  assert.equal(publishes, 1);
+  assert.equal(writes, 1);
+  assert.equal(store.registrations[0].sourceRecordId, 'rec-local-a');
+  assert.equal(store.registrations[0].batchId, 'bess-a-8460930ac8cfb5032e09e93e');
+});
+
+test('runBasePull 未开启 statusDriven 时 bess-a 记录仍被历史隔离跳过且不 publish', async () => {
+  let publishes = 0;
+  let writes = 0;
+  const result = await runBasePullWithIsolation({
+    enabled: true, appToken: 'app', tableId: 'table',
+    minBatchId: '20261015-B',
+    statusDriven: false, recoverAfter: '2026-10-15T00:00:00+08:00',
+    client: { async request(method) {
+      if (method === 'PUT') { writes += 1; return {}; }
+      return { data: { items: [localBatchRecord()], has_more: false } };
+    } },
+    storeFactory: () => recoveryStore(),
+    publishDispatch: async () => { publishes += 1; return {}; },
+  });
+  assert.deepEqual(
+    result.body.results.map(({ status, reason }) => ({ status, reason })),
+    [{ status: 'HISTORY_SKIPPED', reason: 'BATCH_OUTSIDE_CONFIGURED_WINDOW' }],
+  );
+  assert.equal(publishes, 0);
+  assert.equal(writes, 0);
+});
+
+test('runBasePull 开启 statusDriven 但记录缺 created_time 时 fail-closed 跳过', async () => {
+  let publishes = 0;
+  const stale = localBatchRecord();
+  delete stale.created_time;
+  const result = await runBasePullWithIsolation({
+    enabled: true, appToken: 'app', tableId: 'table',
+    minBatchId: '20261015-B',
+    statusDriven: true, recoverAfter: '2026-10-15T00:00:00+08:00',
+    client: { async request() { return { data: { items: [stale], has_more: false } }; } },
+    storeFactory: () => recoveryStore(),
+    publishDispatch: async () => { publishes += 1; return {}; },
+  });
+  assert.equal(result.body.results[0].reason, 'BATCH_OUTSIDE_CONFIGURED_WINDOW');
+  assert.equal(publishes, 0);
+});
+
+test('runBasePull 非法 recoverAfter 配置自动降级为旧批次名规则，不扩大窗口', async () => {
+  let publishes = 0;
+  const result = await runBasePullWithIsolation({
+    enabled: true, appToken: 'app', tableId: 'table',
+    minBatchId: '20261015-B',
+    statusDriven: true, recoverAfter: 'not-a-date',
+    client: { async request() { return { data: { items: [localBatchRecord()], has_more: false } }; } },
+    storeFactory: () => recoveryStore(),
+    publishDispatch: async () => { publishes += 1; return {}; },
+  });
+  assert.equal(result.body.results[0].reason, 'BATCH_OUTSIDE_CONFIGURED_WINDOW');
+  assert.equal(publishes, 0);
 });
