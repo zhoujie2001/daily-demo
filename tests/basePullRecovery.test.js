@@ -566,3 +566,33 @@ test('runBasePull 年龄上限可通过参数覆盖，非法值自动降级为�
   const invalid = await run('not-a-number');
   assert.equal(invalid.body.results[0].reason, 'RECORD_TOO_OLD_FOR_AUTO_RECOVERY');
 });
+
+test('PENDING/UNKNOWN 带人工或测试标记的记录不得自动恢复', () => {
+  const mk = (errorDetail) => ({
+    record_id: 'rec-marked',
+    created_time: String(INSIDE_WINDOW_MS),
+    fields: {
+      dispatch_payload: { ...payload, batch_id: 'bess-a-8460930ac8cfb5032e09e93e' },
+      automation_status: 'PENDING',
+      error_detail: errorDetail,
+    },
+  });
+  for (const marker of [
+    'manual_recovery_rearm_attempt_2',
+    'gate1_recovery_dry_20261020184535',
+    'manual_paused_by_owner',
+    'dry_run_probe',
+    'smoke_test_20261122',
+  ]) {
+    assert.deepEqual(
+      basePullEligibility(mk(marker)),
+      { eligible: false, reason: 'MANUAL_OR_TEST_MARKED' },
+      marker,
+    );
+  }
+  // 普通 PENDING（无标记）仍然可恢复
+  assert.deepEqual(
+    basePullEligibility(mk('')),
+    { eligible: true, status: 'PENDING' },
+  );
+});
