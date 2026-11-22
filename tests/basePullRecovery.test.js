@@ -335,16 +335,24 @@ test('statusDriven 开启后按记录创建时间放行非日期批次，窗口�
   );
 });
 
-test('statusDriven 缺少时间证据时 fail-closed 回退批次名规则，绝不放开历史记录', () => {
-  // 记录无 created_time
+test('statusDriven 缺少时间证据时硬拒绝，绝不回退到可能放行超龄日期批次的旧规则', () => {
+  // 记录无 created_time：直接拒绝，不允许走旧批次名规则
   assert.deepEqual(
     basePullHistoryEligibility({
       recordId: 'rec-x', batchId: 'bess-a-8460930ac8cf', minBatchId: '20261015-B',
       statusDriven: true, recoverAfterMs: RECOVER_AFTER_MS, recordCreatedTime: null,
     }),
-    { eligible: false, reason: 'BATCH_OUTSIDE_CONFIGURED_WINDOW' },
+    { eligible: false, reason: 'MISSING_CREATED_TIME' },
   );
-  // 边界非法（NaN）
+  // 关键防绕过：即使批次名是旧正则会放行的日期前缀（20261020-*），缺时间同样硬拒绝
+  assert.deepEqual(
+    basePullHistoryEligibility({
+      recordId: 'rec-x', batchId: '20261020-old-but-date-prefixed', minBatchId: '20261015-B',
+      statusDriven: true, recoverAfterMs: RECOVER_AFTER_MS, recordCreatedTime: null,
+    }),
+    { eligible: false, reason: 'MISSING_CREATED_TIME' },
+  );
+  // 边界非法（NaN）才回退旧批次名规则
   assert.deepEqual(
     basePullHistoryEligibility({
       recordId: 'rec-x', batchId: 'bess-a-8460930ac8cf', minBatchId: '20261015-B',
@@ -352,13 +360,13 @@ test('statusDriven 缺少时间证据时 fail-closed 回退批次名规则，绝
     }),
     { eligible: false, reason: 'BATCH_OUTSIDE_CONFIGURED_WINDOW' },
   );
-  // 两者都缺且未配置旧边界
+  // 两者都缺：时间证据优先硬拒绝，不再依赖旧边界配置
   assert.deepEqual(
     basePullHistoryEligibility({
       recordId: 'rec-x', batchId: 'bess-a-8460930ac8cf', minBatchId: '',
       statusDriven: true, recoverAfterMs: RECOVER_AFTER_MS, recordCreatedTime: null,
     }),
-    { eligible: false, reason: 'HISTORY_ISOLATION_UNCONFIGURED' },
+    { eligible: false, reason: 'MISSING_CREATED_TIME' },
   );
 });
 
@@ -444,7 +452,7 @@ test('runBasePull 未开启 statusDriven 时 bess-a 记录仍被历史隔离跳�
   assert.equal(writes, 0);
 });
 
-test('runBasePull 开启 statusDriven 但记录缺 created_time 时 fail-closed 跳过', async () => {
+test('runBasePull 开启 statusDriven 但记录缺 created_time 时硬拒绝跳过', async () => {
   let publishes = 0;
   const stale = localBatchRecord();
   delete stale.created_time;
@@ -456,7 +464,7 @@ test('runBasePull 开启 statusDriven 但记录缺 created_time 时 fail-closed 
     storeFactory: () => recoveryStore(),
     publishDispatch: async () => { publishes += 1; return {}; },
   });
-  assert.equal(result.body.results[0].reason, 'BATCH_OUTSIDE_CONFIGURED_WINDOW');
+  assert.equal(result.body.results[0].reason, 'MISSING_CREATED_TIME');
   assert.equal(publishes, 0);
 });
 
@@ -613,7 +621,7 @@ test('runBasePull 的 Base 查询必须请求 automatic_fields，否则 created_
   });
   assert.equal(bodies.length, 1);
   assert.equal(bodies[0].automatic_fields, true);
-  // 真实接口未带该参数时只返回 fields 与 record_id，此处同时固化“缺时间就必须 fail-closed”的行为
+  // 真实接口未带该参数时只返回 fields 与 record_id，此处同时固化“缺时间就必须硬拒绝”的行为
   const minimal = { record_id: 'rec-min', fields: { dispatch_payload: { ...payload, batch_id: 'bess-a-x' }, automation_status: 'PENDING' } };
   assert.deepEqual(
     basePullHistoryEligibility({
@@ -621,7 +629,7 @@ test('runBasePull 的 Base 查询必须请求 automatic_fields，否则 created_
       statusDriven: true, recoverAfterMs: RECOVER_AFTER_MS,
       recordCreatedTime: null,
     }),
-    { eligible: false, reason: 'BATCH_OUTSIDE_CONFIGURED_WINDOW' },
+    { eligible: false, reason: 'MISSING_CREATED_TIME' },
   );
   assert.equal(minimal.record_id, 'rec-min');
 });
